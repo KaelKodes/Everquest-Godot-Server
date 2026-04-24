@@ -1,0 +1,803 @@
+[
+  {
+    Field: 'id',
+    Type: 'int(11) unsigned',
+    Null: 'NO',
+    Key: 'PRI',
+    Default: null,
+    Extra: 'auto_increment'
+  },
+  {
+    Field: 'account_id',
+    Type: 'int(11)',
+    Null: 'NO',
+    Key: 'MUL',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'name',
+    Type: 'varchar(64)',
+    Null: 'NO',
+    Key: 'UNI',
+    Default: '',
+    Extra: ''
+  },
+  {
+    Field: 'last_name',
+    Type: 'varchar(64)',
+    Null: 'NO',
+    Key: '',
+    Default: '',
+    Extra: ''
+  },
+  {
+    Field: 'title',
+    Type: 'varchar(32)',
+    Null: 'NO',
+    Key: '',
+    Default: '',
+    Extra: ''
+  },
+  {
+    Field: 'suffix',
+    Type: 'varchar(32)',
+    Null: 'NO',
+    Key: '',
+    Default: '',
+    Extra: ''
+  },
+  {
+    Field: 'zone_id',
+    Type: 'int(11) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'zone_instance',
+    Type: 'int(11) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'y',
+    Type: 'float',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'x',
+    Type: 'float',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'z',
+    Type: 'float',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'heading',
+    Type: 'float',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'gender',
+    Type: 'tinyint(11) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'race',
+    Type: 'smallint(11) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'class',
+    Type: 'tinyint(11) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'level',
+    Type: 'int(11) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'deity',
+    Type: 'int(11) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'birthday',
+    Type: 'int(11) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'last_login',
+    Type: 'int(11) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'time_played',
+    Type: 'int(11) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'level2',
+    Type: 'tinyint(11) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'anon',
+    Type: 'tinyint(11) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'gm',
+    Type: 'tinyint(11) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'face',
+    Type: 'int(11) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'hair_color',
+    Type: 'tinyint(11) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'hair_style',
+    Type: 'tinyint(11) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'beard',
+    Type: 'tinyint(11) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'beard_color',
+    Type: 'tinyint(11) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'eye_color_1',
+    Type: 'tinyint(11) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'eye_color_2',
+    Type: 'tinyint(11) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'drakkin_heritage',
+    Type: 'int(11) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'drakkin_tattoo',
+    Type: 'int(11) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'drakkin_details',
+    Type: 'int(11) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'ability_time_seconds',
+    Type: 'tinyint(11) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'ability_number',
+    Type: 'tinyint(11) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'ability_time_minutes',
+    Type: 'tinyint(11) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'ability_time_hours',
+    Type: 'tinyint(11) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'exp',
+    Type: 'int(11) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'exp_enabled',
+    Type: 'tinyint(1) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '1',
+    Extra: ''
+  },
+  {
+    Field: 'aa_points_spent',
+    Type: 'int(11) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'aa_exp',
+    Type: 'int(11) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'aa_points',
+    Type: 'int(11) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'group_leadership_exp',
+    Type: 'int(11) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'raid_leadership_exp',
+    Type: 'int(11) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'group_leadership_points',
+    Type: 'int(11) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'raid_leadership_points',
+    Type: 'int(11) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'points',
+    Type: 'int(11) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'cur_hp',
+    Type: 'int(11) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'mana',
+    Type: 'int(11) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'endurance',
+    Type: 'int(11) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'intoxication',
+    Type: 'int(11) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'str',
+    Type: 'int(11) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'sta',
+    Type: 'int(11) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'cha',
+    Type: 'int(11) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'dex',
+    Type: 'int(11) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'int',
+    Type: 'int(11) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'agi',
+    Type: 'int(11) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'wis',
+    Type: 'int(11) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'extra_haste',
+    Type: 'int(11)',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'zone_change_count',
+    Type: 'int(11) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'toxicity',
+    Type: 'int(11) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'hunger_level',
+    Type: 'int(11) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'thirst_level',
+    Type: 'int(11) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'ability_up',
+    Type: 'int(11) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'ldon_points_guk',
+    Type: 'int(11) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'ldon_points_mir',
+    Type: 'int(11) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'ldon_points_mmc',
+    Type: 'int(11) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'ldon_points_ruj',
+    Type: 'int(11) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'ldon_points_tak',
+    Type: 'int(11) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'ldon_points_available',
+    Type: 'int(11) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'tribute_time_remaining',
+    Type: 'int(11) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'career_tribute_points',
+    Type: 'int(11) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'tribute_points',
+    Type: 'int(11) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'tribute_active',
+    Type: 'int(11) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'pvp_status',
+    Type: 'tinyint(11) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'pvp_kills',
+    Type: 'int(11) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'pvp_deaths',
+    Type: 'int(11) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'pvp_current_points',
+    Type: 'int(11) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'pvp_career_points',
+    Type: 'int(11) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'pvp_best_kill_streak',
+    Type: 'int(11) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'pvp_worst_death_streak',
+    Type: 'int(11) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'pvp_current_kill_streak',
+    Type: 'int(11) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'pvp2',
+    Type: 'int(11) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'pvp_type',
+    Type: 'int(11) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'show_helm',
+    Type: 'int(11) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'group_auto_consent',
+    Type: 'tinyint(11) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'raid_auto_consent',
+    Type: 'tinyint(11) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'guild_auto_consent',
+    Type: 'tinyint(11) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'leadership_exp_on',
+    Type: 'tinyint(11) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'RestTimer',
+    Type: 'int(11) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'air_remaining',
+    Type: 'int(11) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'autosplit_enabled',
+    Type: 'int(11) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'lfp',
+    Type: 'tinyint(1) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'lfg',
+    Type: 'tinyint(1) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'mailkey',
+    Type: 'char(16)',
+    Null: 'NO',
+    Key: '',
+    Default: '',
+    Extra: ''
+  },
+  {
+    Field: 'xtargets',
+    Type: 'tinyint(3) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '5',
+    Extra: ''
+  },
+  {
+    Field: 'first_login',
+    Type: 'int(11) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'ingame',
+    Type: 'tinyint(1) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'e_aa_effects',
+    Type: 'int(11) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  {
+    Field: 'e_percent_to_aa',
+    Type: 'int(11) unsigned',
+    Null: 'NO',
+    Key: '',
+    Default: '0',
+    Extra: ''
+  },
+  ... 6 more items
+]

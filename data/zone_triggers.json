@@ -1,0 +1,10252 @@
+{
+  "acrylia": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -664.5,
+        "y": 99,
+        "z": 9.5
+      },
+      "eq_min": {
+        "x": -679.5,
+        "y": 38,
+        "z": -1
+      },
+      "eq_max": {
+        "x": -649.5,
+        "y": 160,
+        "z": 20
+      },
+      "eq_size": {
+        "width": 30,
+        "depth": 122,
+        "height": 21
+      }
+    }
+  ],
+  "airplane": [
+    {
+      "referenceIndex": 0,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 7.1,
+        "y": -119.5,
+        "z": -2779.3
+      },
+      "eq_min": {
+        "x": -2520.5,
+        "y": -2647.1,
+        "z": -2789.3
+      },
+      "eq_max": {
+        "x": 2534.7,
+        "y": 2408,
+        "z": -2769.3
+      },
+      "eq_size": {
+        "width": 5055.1,
+        "depth": 5055.1,
+        "height": 20
+      }
+    }
+  ],
+  "akanon": [
+    {
+      "referenceIndex": 1000,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -77,
+        "y": 63,
+        "z": 7
+      },
+      "eq_min": {
+        "x": -84,
+        "y": 56,
+        "z": 0
+      },
+      "eq_max": {
+        "x": -70,
+        "y": 70,
+        "z": 14
+      },
+      "eq_size": {
+        "width": 14,
+        "depth": 14,
+        "height": 14
+      }
+    }
+  ],
+  "akheva": [
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -74.5,
+        "y": -1467.5,
+        "z": 116
+      },
+      "eq_min": {
+        "x": -107,
+        "y": -1471,
+        "z": -5
+      },
+      "eq_max": {
+        "x": -42,
+        "y": -1464,
+        "z": 237
+      },
+      "eq_size": {
+        "width": 65,
+        "depth": 7,
+        "height": 242
+      }
+    },
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 183,
+        "y": -1468.5,
+        "z": 114
+      },
+      "eq_min": {
+        "x": 150,
+        "y": -1472,
+        "z": -9
+      },
+      "eq_max": {
+        "x": 216,
+        "y": -1465,
+        "z": 237
+      },
+      "eq_size": {
+        "width": 66,
+        "depth": 7,
+        "height": 246
+      }
+    }
+  ],
+  "arena": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -851.1,
+        "y": -58.4,
+        "z": 28
+      },
+      "eq_min": {
+        "x": -857.1,
+        "y": -76.6,
+        "z": 5.5
+      },
+      "eq_max": {
+        "x": -845.1,
+        "y": -40.1,
+        "z": 50.5
+      },
+      "eq_size": {
+        "width": 12,
+        "depth": 36.5,
+        "height": 45
+      }
+    }
+  ],
+  "barindu": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 255.6,
+        "y": -546.2,
+        "z": -39.4
+      },
+      "eq_min": {
+        "x": 245,
+        "y": -547.5,
+        "z": -50
+      },
+      "eq_max": {
+        "x": 266.3,
+        "y": -545,
+        "z": -28.7
+      },
+      "eq_size": {
+        "width": 21.3,
+        "depth": 2.5,
+        "height": 21.3
+      }
+    },
+    {
+      "referenceIndex": 5,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 711.3,
+        "y": -1546.9,
+        "z": -87.4
+      },
+      "eq_min": {
+        "x": 708.8,
+        "y": -1622.5,
+        "z": -158.7
+      },
+      "eq_max": {
+        "x": 713.8,
+        "y": -1471.2,
+        "z": -16.1
+      },
+      "eq_size": {
+        "width": 5,
+        "depth": 151.3,
+        "height": 142.7
+      }
+    },
+    {
+      "referenceIndex": 4,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 711.3,
+        "y": -1368.1,
+        "z": -87.4
+      },
+      "eq_min": {
+        "x": 708.8,
+        "y": -1442.5,
+        "z": -158.7
+      },
+      "eq_max": {
+        "x": 713.8,
+        "y": -1293.7,
+        "z": -16.1
+      },
+      "eq_size": {
+        "width": 5,
+        "depth": 148.8,
+        "height": 142.7
+      }
+    }
+  ],
+  "befallen": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 35,
+        "y": -59.5,
+        "z": 7
+      },
+      "eq_min": {
+        "x": 28,
+        "y": -63,
+        "z": 0
+      },
+      "eq_max": {
+        "x": 42,
+        "y": -56,
+        "z": 14
+      },
+      "eq_size": {
+        "width": 14,
+        "depth": 7,
+        "height": 14
+      }
+    }
+  ],
+  "blackburrow": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 13.5,
+        "y": -162.9,
+        "z": 6
+      },
+      "eq_min": {
+        "x": 12,
+        "y": -170.9,
+        "z": 0
+      },
+      "eq_max": {
+        "x": 15,
+        "y": -154.9,
+        "z": 12
+      },
+      "eq_size": {
+        "width": 3,
+        "depth": 16,
+        "height": 12
+      }
+    },
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -340,
+        "y": 102.5,
+        "z": 7.5
+      },
+      "eq_min": {
+        "x": -350.1,
+        "y": 100,
+        "z": 0
+      },
+      "eq_max": {
+        "x": -329.9,
+        "y": 105,
+        "z": 15
+      },
+      "eq_size": {
+        "width": 20.2,
+        "depth": 5,
+        "height": 15
+      }
+    }
+  ],
+  "bothunder": [
+    {
+      "referenceIndex": 18,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -100.5,
+        "y": 269,
+        "z": -1532
+      },
+      "eq_min": {
+        "x": -121,
+        "y": 248,
+        "z": -1563
+      },
+      "eq_max": {
+        "x": -80,
+        "y": 290,
+        "z": -1501
+      },
+      "eq_size": {
+        "width": 41,
+        "depth": 42,
+        "height": 62
+      }
+    },
+    {
+      "referenceIndex": 30,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -39.5,
+        "y": 460,
+        "z": -1396
+      },
+      "eq_min": {
+        "x": -40,
+        "y": 430,
+        "z": -1427
+      },
+      "eq_max": {
+        "x": -39,
+        "y": 490,
+        "z": -1365
+      },
+      "eq_size": {
+        "width": 1,
+        "depth": 60,
+        "height": 62
+      }
+    },
+    {
+      "referenceIndex": 21,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 220.5,
+        "y": 529,
+        "z": -1433
+      },
+      "eq_min": {
+        "x": 201,
+        "y": 508,
+        "z": -1501
+      },
+      "eq_max": {
+        "x": 240,
+        "y": 550,
+        "z": -1365
+      },
+      "eq_size": {
+        "width": 39,
+        "depth": 42,
+        "height": 136
+      }
+    },
+    {
+      "referenceIndex": 26,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -960,
+        "y": -40,
+        "z": -1413.5
+      },
+      "eq_min": {
+        "x": -979,
+        "y": -59,
+        "z": -1456
+      },
+      "eq_max": {
+        "x": -941,
+        "y": -21,
+        "z": -1371
+      },
+      "eq_size": {
+        "width": 38,
+        "depth": 38,
+        "height": 85
+      }
+    },
+    {
+      "referenceIndex": 27,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 704,
+        "y": 29,
+        "z": -1438
+      },
+      "eq_min": {
+        "x": 685,
+        "y": 10,
+        "z": -1469
+      },
+      "eq_max": {
+        "x": 723,
+        "y": 48,
+        "z": -1407
+      },
+      "eq_size": {
+        "width": 38,
+        "depth": 38,
+        "height": 62
+      }
+    },
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 422,
+        "y": -1180,
+        "z": 1205.5
+      },
+      "eq_min": {
+        "x": 411,
+        "y": -1191,
+        "z": 1184
+      },
+      "eq_max": {
+        "x": 433,
+        "y": -1169,
+        "z": 1227
+      },
+      "eq_size": {
+        "width": 22,
+        "depth": 22,
+        "height": 43
+      }
+    },
+    {
+      "referenceIndex": 3,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 262,
+        "y": -1143.5,
+        "z": 1649
+      },
+      "eq_min": {
+        "x": 252,
+        "y": -1154,
+        "z": 1627
+      },
+      "eq_max": {
+        "x": 272,
+        "y": -1133,
+        "z": 1671
+      },
+      "eq_size": {
+        "width": 20,
+        "depth": 21,
+        "height": 44
+      }
+    },
+    {
+      "referenceIndex": 5,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -494.5,
+        "y": -864,
+        "z": 1392
+      },
+      "eq_min": {
+        "x": -504,
+        "y": -884,
+        "z": 1371
+      },
+      "eq_max": {
+        "x": -485,
+        "y": -844,
+        "z": 1413
+      },
+      "eq_size": {
+        "width": 19,
+        "depth": 40,
+        "height": 42
+      }
+    },
+    {
+      "referenceIndex": 6,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -936.5,
+        "y": -742,
+        "z": 1792
+      },
+      "eq_min": {
+        "x": -946,
+        "y": -762,
+        "z": 1771
+      },
+      "eq_max": {
+        "x": -927,
+        "y": -722,
+        "z": 1813
+      },
+      "eq_size": {
+        "width": 19,
+        "depth": 40,
+        "height": 42
+      }
+    },
+    {
+      "referenceIndex": 7,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 131.5,
+        "y": -1296,
+        "z": 1606
+      },
+      "eq_min": {
+        "x": 114,
+        "y": -1318,
+        "z": 1592
+      },
+      "eq_max": {
+        "x": 149,
+        "y": -1274,
+        "z": 1620
+      },
+      "eq_size": {
+        "width": 35,
+        "depth": 44,
+        "height": 28
+      }
+    },
+    {
+      "referenceIndex": 8,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -60,
+        "y": -1271,
+        "z": 2279
+      },
+      "eq_min": {
+        "x": -82,
+        "y": -1290,
+        "z": 2258
+      },
+      "eq_max": {
+        "x": -38,
+        "y": -1252,
+        "z": 2300
+      },
+      "eq_size": {
+        "width": 44,
+        "depth": 38,
+        "height": 42
+      }
+    },
+    {
+      "referenceIndex": 4,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -786,
+        "y": -895.5,
+        "z": 1792
+      },
+      "eq_min": {
+        "x": -807,
+        "y": -910,
+        "z": 1771
+      },
+      "eq_max": {
+        "x": -765,
+        "y": -881,
+        "z": 1813
+      },
+      "eq_size": {
+        "width": 42,
+        "depth": 29,
+        "height": 42
+      }
+    },
+    {
+      "referenceIndex": 9,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -807,
+        "y": -660,
+        "z": 2145.5
+      },
+      "eq_min": {
+        "x": -825,
+        "y": -679,
+        "z": 2113
+      },
+      "eq_max": {
+        "x": -789,
+        "y": -641,
+        "z": 2178
+      },
+      "eq_size": {
+        "width": 36,
+        "depth": 38,
+        "height": 65
+      }
+    },
+    {
+      "referenceIndex": 28,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 244.5,
+        "y": -441.5,
+        "z": 536
+      },
+      "eq_min": {
+        "x": 56,
+        "y": -1169,
+        "z": 444
+      },
+      "eq_max": {
+        "x": 433,
+        "y": 286,
+        "z": 628
+      },
+      "eq_size": {
+        "width": 377,
+        "depth": 1455,
+        "height": 184
+      }
+    },
+    {
+      "referenceIndex": 10,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 233.5,
+        "y": 82,
+        "z": 644
+      },
+      "eq_min": {
+        "x": 56,
+        "y": 62,
+        "z": 628
+      },
+      "eq_max": {
+        "x": 411,
+        "y": 102,
+        "z": 660
+      },
+      "eq_size": {
+        "width": 355,
+        "depth": 40,
+        "height": 32
+      }
+    },
+    {
+      "referenceIndex": 11,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 68,
+        "y": 268,
+        "z": 743
+      },
+      "eq_min": {
+        "x": 50,
+        "y": 250,
+        "z": 722
+      },
+      "eq_max": {
+        "x": 86,
+        "y": 286,
+        "z": 764
+      },
+      "eq_size": {
+        "width": 36,
+        "depth": 36,
+        "height": 42
+      }
+    },
+    {
+      "referenceIndex": 12,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 61,
+        "y": -10,
+        "z": 1113
+      },
+      "eq_min": {
+        "x": 20,
+        "y": -30,
+        "z": 1083
+      },
+      "eq_max": {
+        "x": 102,
+        "y": 10,
+        "z": 1143
+      },
+      "eq_size": {
+        "width": 82,
+        "depth": 40,
+        "height": 60
+      }
+    },
+    {
+      "referenceIndex": 13,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 421.5,
+        "y": 412,
+        "z": 1171.5
+      },
+      "eq_min": {
+        "x": 405,
+        "y": 393,
+        "z": 1159
+      },
+      "eq_max": {
+        "x": 438,
+        "y": 431,
+        "z": 1184
+      },
+      "eq_size": {
+        "width": 33,
+        "depth": 38,
+        "height": 25
+      }
+    },
+    {
+      "referenceIndex": 14,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 36.5,
+        "y": 285,
+        "z": 1485
+      },
+      "eq_min": {
+        "x": 20,
+        "y": 266,
+        "z": 1455
+      },
+      "eq_max": {
+        "x": 53,
+        "y": 304,
+        "z": 1515
+      },
+      "eq_size": {
+        "width": 33,
+        "depth": 38,
+        "height": 60
+      }
+    },
+    {
+      "referenceIndex": 15,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 358.5,
+        "y": -1373,
+        "z": 1205.5
+      },
+      "eq_min": {
+        "x": 272,
+        "y": -1393,
+        "z": 1184
+      },
+      "eq_max": {
+        "x": 445,
+        "y": -1353,
+        "z": 1227
+      },
+      "eq_size": {
+        "width": 173,
+        "depth": 40,
+        "height": 43
+      }
+    },
+    {
+      "referenceIndex": 16,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -875,
+        "y": -864,
+        "z": 1392
+      },
+      "eq_min": {
+        "x": -885,
+        "y": -884,
+        "z": 1371
+      },
+      "eq_max": {
+        "x": -865,
+        "y": -844,
+        "z": 1413
+      },
+      "eq_size": {
+        "width": 20,
+        "depth": 40,
+        "height": 42
+      }
+    },
+    {
+      "referenceIndex": 29,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -161,
+        "y": 469,
+        "z": -1467
+      },
+      "eq_min": {
+        "x": -201,
+        "y": 448,
+        "z": -1501
+      },
+      "eq_max": {
+        "x": -121,
+        "y": 490,
+        "z": -1433
+      },
+      "eq_size": {
+        "width": 80,
+        "depth": 42,
+        "height": 68
+      }
+    }
+  ],
+  "burningwood": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -768.7,
+        "y": -5117.8,
+        "z": 317.4
+      },
+      "eq_min": {
+        "x": -988.7,
+        "y": -5172.8,
+        "z": 167.4
+      },
+      "eq_max": {
+        "x": -548.6,
+        "y": -5062.8,
+        "z": 467.4
+      },
+      "eq_size": {
+        "width": 440.1,
+        "depth": 110,
+        "height": 300
+      }
+    },
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 1724.7,
+        "y": 5325.5,
+        "z": -82.3
+      },
+      "eq_min": {
+        "x": 1542.2,
+        "y": 5301.1,
+        "z": -179.7
+      },
+      "eq_max": {
+        "x": 1907.2,
+        "y": 5349.8,
+        "z": 15
+      },
+      "eq_size": {
+        "width": 365.1,
+        "depth": 48.7,
+        "height": 194.7
+      }
+    },
+    {
+      "referenceIndex": 3,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -4649.1,
+        "y": -2776.3,
+        "z": -1.8
+      },
+      "eq_min": {
+        "x": -4746.9,
+        "y": -2876.2,
+        "z": -26.2
+      },
+      "eq_max": {
+        "x": -4551.3,
+        "y": -2676.5,
+        "z": 22.7
+      },
+      "eq_size": {
+        "width": 195.7,
+        "depth": 199.7,
+        "height": 49
+      }
+    },
+    {
+      "referenceIndex": 4,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -4148.9,
+        "y": 7094.4,
+        "z": -216.3
+      },
+      "eq_min": {
+        "x": -4185.3,
+        "y": 7087.4,
+        "z": -243
+      },
+      "eq_max": {
+        "x": -4112.4,
+        "y": 7101.4,
+        "z": -189.7
+      },
+      "eq_size": {
+        "width": 72.9,
+        "depth": 14,
+        "height": 53.3
+      }
+    }
+  ],
+  "butcher": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -3096.6,
+        "y": -1320.4,
+        "z": 75
+      },
+      "eq_min": {
+        "x": -3103.6,
+        "y": -1352.5,
+        "z": 0
+      },
+      "eq_max": {
+        "x": -3089.5,
+        "y": -1288.3,
+        "z": 150
+      },
+      "eq_size": {
+        "width": 14.2,
+        "depth": 64.2,
+        "height": 150
+      }
+    },
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -181,
+        "y": 3136.8,
+        "z": 8.9
+      },
+      "eq_min": {
+        "x": -193.4,
+        "y": 3135,
+        "z": -1.5
+      },
+      "eq_max": {
+        "x": -168.6,
+        "y": 3138.6,
+        "z": 19.2
+      },
+      "eq_size": {
+        "width": 24.8,
+        "depth": 3.6,
+        "height": 20.7
+      }
+    },
+    {
+      "referenceIndex": 3,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -338.7,
+        "y": -2944.5,
+        "z": 68.4
+      },
+      "eq_min": {
+        "x": -377.3,
+        "y": -2949.2,
+        "z": -5.4
+      },
+      "eq_max": {
+        "x": -300.1,
+        "y": -2939.8,
+        "z": 142.3
+      },
+      "eq_size": {
+        "width": 77.2,
+        "depth": 9.3,
+        "height": 147.7
+      }
+    }
+  ],
+  "cabeast": [
+    {
+      "referenceIndex": 9,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -188.9,
+        "y": 1004.6,
+        "z": 28
+      },
+      "eq_min": {
+        "x": -223.9,
+        "y": 1003.6,
+        "z": 14
+      },
+      "eq_max": {
+        "x": -153.9,
+        "y": 1005.6,
+        "z": 42
+      },
+      "eq_size": {
+        "width": 70,
+        "depth": 2,
+        "height": 28
+      }
+    },
+    {
+      "referenceIndex": 10,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -188.9,
+        "y": 1058.1,
+        "z": 60.5
+      },
+      "eq_min": {
+        "x": -205.9,
+        "y": 1054.6,
+        "z": 56
+      },
+      "eq_max": {
+        "x": -171.9,
+        "y": 1061.6,
+        "z": 65
+      },
+      "eq_size": {
+        "width": 34,
+        "depth": 7,
+        "height": 9
+      }
+    },
+    {
+      "referenceIndex": 81,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 293.9,
+        "y": -63,
+        "z": 0
+      },
+      "eq_min": {
+        "x": 223.9,
+        "y": -98,
+        "z": -14
+      },
+      "eq_max": {
+        "x": 363.9,
+        "y": -28,
+        "z": 14
+      },
+      "eq_size": {
+        "width": 139.9,
+        "depth": 70,
+        "height": 28
+      }
+    },
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -440.8,
+        "y": 1362.5,
+        "z": 84
+      },
+      "eq_min": {
+        "x": -445.8,
+        "y": 1347.5,
+        "z": 0
+      },
+      "eq_max": {
+        "x": -435.8,
+        "y": 1377.4,
+        "z": 167.9
+      },
+      "eq_size": {
+        "width": 10,
+        "depth": 30,
+        "height": 167.9
+      }
+    },
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -620.8,
+        "y": 1182.5,
+        "z": 84
+      },
+      "eq_min": {
+        "x": -635.7,
+        "y": 1177.5,
+        "z": 0
+      },
+      "eq_max": {
+        "x": -605.8,
+        "y": 1187.5,
+        "z": 167.9
+      },
+      "eq_size": {
+        "width": 30,
+        "depth": 10,
+        "height": 167.9
+      }
+    },
+    {
+      "referenceIndex": 4,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -478.8,
+        "y": -281.9,
+        "z": 84
+      },
+      "eq_min": {
+        "x": -483.8,
+        "y": -296.9,
+        "z": 0
+      },
+      "eq_max": {
+        "x": -473.8,
+        "y": -266.9,
+        "z": 167.9
+      },
+      "eq_size": {
+        "width": 10,
+        "depth": 30,
+        "height": 167.9
+      }
+    },
+    {
+      "referenceIndex": 3,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -658.7,
+        "y": -102,
+        "z": 84
+      },
+      "eq_min": {
+        "x": -673.7,
+        "y": -107,
+        "z": 0
+      },
+      "eq_max": {
+        "x": -643.7,
+        "y": -97,
+        "z": 167.9
+      },
+      "eq_size": {
+        "width": 30,
+        "depth": 10,
+        "height": 167.9
+      }
+    },
+    {
+      "referenceIndex": 80,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 21,
+        "y": -594.8,
+        "z": -49
+      },
+      "eq_min": {
+        "x": 14,
+        "y": -601.8,
+        "z": -56
+      },
+      "eq_max": {
+        "x": 28,
+        "y": -587.8,
+        "z": -42
+      },
+      "eq_size": {
+        "width": 14,
+        "depth": 14,
+        "height": 14
+      }
+    }
+  ],
+  "cabwest": [
+    {
+      "referenceIndex": 81,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 286.9,
+        "y": -63,
+        "z": 0
+      },
+      "eq_min": {
+        "x": 223.9,
+        "y": -98,
+        "z": -14
+      },
+      "eq_max": {
+        "x": 349.9,
+        "y": -28,
+        "z": 14
+      },
+      "eq_size": {
+        "width": 125.9,
+        "depth": 70,
+        "height": 28
+      }
+    },
+    {
+      "referenceIndex": 7,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 1328.5,
+        "y": 692.7,
+        "z": 84
+      },
+      "eq_min": {
+        "x": 1313.5,
+        "y": 687.7,
+        "z": 0
+      },
+      "eq_max": {
+        "x": 1343.5,
+        "y": 697.7,
+        "z": 167.9
+      },
+      "eq_size": {
+        "width": 30,
+        "depth": 10,
+        "height": 167.9
+      }
+    },
+    {
+      "referenceIndex": 6,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 768.7,
+        "y": -806.7,
+        "z": 84
+      },
+      "eq_min": {
+        "x": 753.7,
+        "y": -811.7,
+        "z": 0
+      },
+      "eq_max": {
+        "x": 783.7,
+        "y": -801.7,
+        "z": 167.9
+      },
+      "eq_size": {
+        "width": 30,
+        "depth": 10,
+        "height": 167.9
+      }
+    },
+    {
+      "referenceIndex": 5,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 588.8,
+        "y": -986.6,
+        "z": 84
+      },
+      "eq_min": {
+        "x": 583.8,
+        "y": -1001.6,
+        "z": 0
+      },
+      "eq_max": {
+        "x": 593.8,
+        "y": -971.6,
+        "z": 167.9
+      },
+      "eq_size": {
+        "width": 10,
+        "depth": 30,
+        "height": 167.9
+      }
+    }
+  ],
+  "cauldron": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 260.5,
+        "y": 2870.3,
+        "z": 537.8
+      },
+      "eq_min": {
+        "x": 221.9,
+        "y": 2865.7,
+        "z": 464
+      },
+      "eq_max": {
+        "x": 299,
+        "y": 2875,
+        "z": 611.6
+      },
+      "eq_size": {
+        "width": 77.2,
+        "depth": 9.3,
+        "height": 147.6
+      }
+    },
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -1008.1,
+        "y": -1188.8,
+        "z": -285.6
+      },
+      "eq_min": {
+        "x": -1025.9,
+        "y": -1191.5,
+        "z": -340.8
+      },
+      "eq_max": {
+        "x": -990.4,
+        "y": -1186.1,
+        "z": -230.4
+      },
+      "eq_size": {
+        "width": 35.6,
+        "depth": 5.4,
+        "height": 110.5
+      }
+    },
+    {
+      "referenceIndex": 3,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -628.1,
+        "y": -2041.3,
+        "z": 101.9
+      },
+      "eq_min": {
+        "x": -649.6,
+        "y": -2045.9,
+        "z": 88.2
+      },
+      "eq_max": {
+        "x": -606.6,
+        "y": -2036.7,
+        "z": 115.6
+      },
+      "eq_size": {
+        "width": 42.9,
+        "depth": 9.2,
+        "height": 27.4
+      }
+    }
+  ],
+  "cazicthule": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -70,
+        "y": 23,
+        "z": 6
+      },
+      "eq_min": {
+        "x": -84,
+        "y": 0,
+        "z": 0
+      },
+      "eq_max": {
+        "x": -56,
+        "y": 46,
+        "z": 12
+      },
+      "eq_size": {
+        "width": 28,
+        "depth": 46,
+        "height": 12
+      }
+    }
+  ],
+  "charasis": [
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 674.7,
+        "y": -99,
+        "z": 27
+      },
+      "eq_min": {
+        "x": 667.7,
+        "y": -106,
+        "z": 18
+      },
+      "eq_max": {
+        "x": 681.7,
+        "y": -92,
+        "z": 36
+      },
+      "eq_size": {
+        "width": 14,
+        "depth": 14,
+        "height": 18
+      }
+    },
+    {
+      "referenceIndex": 3,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 9,
+        "y": 656.7,
+        "z": -9
+      },
+      "eq_min": {
+        "x": 2,
+        "y": 649.7,
+        "z": -18
+      },
+      "eq_max": {
+        "x": 16,
+        "y": 663.7,
+        "z": 0
+      },
+      "eq_size": {
+        "width": 14,
+        "depth": 14,
+        "height": 18
+      }
+    },
+    {
+      "referenceIndex": 4,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -117,
+        "y": -764.7,
+        "z": -9
+      },
+      "eq_min": {
+        "x": -124,
+        "y": -771.7,
+        "z": -18
+      },
+      "eq_max": {
+        "x": -110,
+        "y": -757.7,
+        "z": 0
+      },
+      "eq_size": {
+        "width": 14,
+        "depth": 14,
+        "height": 18
+      }
+    },
+    {
+      "referenceIndex": 5,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -728.7,
+        "y": -9,
+        "z": 27
+      },
+      "eq_min": {
+        "x": -735.7,
+        "y": -16,
+        "z": 18
+      },
+      "eq_max": {
+        "x": -721.7,
+        "y": -2,
+        "z": 36
+      },
+      "eq_size": {
+        "width": 14,
+        "depth": 14,
+        "height": 18
+      }
+    }
+  ],
+  "chardok": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 859.7,
+        "y": 179.9,
+        "z": 120
+      },
+      "eq_min": {
+        "x": 839.7,
+        "y": 139.9,
+        "z": 100
+      },
+      "eq_max": {
+        "x": 879.6,
+        "y": 219.9,
+        "z": 139.9
+      },
+      "eq_size": {
+        "width": 40,
+        "depth": 80,
+        "height": 40
+      }
+    }
+  ],
+  "citymist": [
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -917.6,
+        "y": -27,
+        "z": 18
+      },
+      "eq_min": {
+        "x": -935.6,
+        "y": -36,
+        "z": 0
+      },
+      "eq_max": {
+        "x": -899.6,
+        "y": -18,
+        "z": 36
+      },
+      "eq_size": {
+        "width": 36,
+        "depth": 18,
+        "height": 36
+      }
+    },
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -917.6,
+        "y": 27,
+        "z": 18
+      },
+      "eq_min": {
+        "x": -935.6,
+        "y": 18,
+        "z": 0
+      },
+      "eq_max": {
+        "x": -899.6,
+        "y": 36,
+        "z": 36
+      },
+      "eq_size": {
+        "width": 36,
+        "depth": 18,
+        "height": 36
+      }
+    }
+  ],
+  "cobaltscar": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 1623.6,
+        "y": 1609.1,
+        "z": 75.3
+      },
+      "eq_min": {
+        "x": 1601.9,
+        "y": 1590.7,
+        "z": 60.9
+      },
+      "eq_max": {
+        "x": 1645.3,
+        "y": 1627.5,
+        "z": 89.7
+      },
+      "eq_size": {
+        "width": 43.4,
+        "depth": 36.8,
+        "height": 28.7
+      }
+    }
+  ],
+  "crushbone": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 164.4,
+        "y": -675.2,
+        "z": 20.5
+      },
+      "eq_min": {
+        "x": 141.9,
+        "y": -677.7,
+        "z": 0
+      },
+      "eq_max": {
+        "x": 186.9,
+        "y": -672.7,
+        "z": 41
+      },
+      "eq_size": {
+        "width": 45,
+        "depth": 5,
+        "height": 41
+      }
+    }
+  ],
+  "crystal": [
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 87,
+        "y": -552.8,
+        "z": -140.9
+      },
+      "eq_min": {
+        "x": 64,
+        "y": -569.8,
+        "z": -151.9
+      },
+      "eq_max": {
+        "x": 110,
+        "y": -535.8,
+        "z": -129.9
+      },
+      "eq_size": {
+        "width": 46,
+        "depth": 34,
+        "height": 22
+      }
+    },
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 312.9,
+        "y": 469.8,
+        "z": -64
+      },
+      "eq_min": {
+        "x": 301.9,
+        "y": 461.8,
+        "z": -78
+      },
+      "eq_max": {
+        "x": 323.9,
+        "y": 477.8,
+        "z": -50
+      },
+      "eq_size": {
+        "width": 22,
+        "depth": 16,
+        "height": 28
+      }
+    }
+  ],
+  "crystalshard": [
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 87,
+        "y": -552.8,
+        "z": -140.9
+      },
+      "eq_min": {
+        "x": 64,
+        "y": -569.8,
+        "z": -151.9
+      },
+      "eq_max": {
+        "x": 110,
+        "y": -535.8,
+        "z": -129.9
+      },
+      "eq_size": {
+        "width": 46,
+        "depth": 34,
+        "height": 22
+      }
+    },
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 312.9,
+        "y": 469.8,
+        "z": -64
+      },
+      "eq_min": {
+        "x": 301.9,
+        "y": 461.8,
+        "z": -78
+      },
+      "eq_max": {
+        "x": 323.9,
+        "y": 477.8,
+        "z": -50
+      },
+      "eq_size": {
+        "width": 22,
+        "depth": 16,
+        "height": 28
+      }
+    }
+  ],
+  "dalnir": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 105,
+        "y": -7,
+        "z": 7
+      },
+      "eq_min": {
+        "x": 98,
+        "y": -14,
+        "z": 0
+      },
+      "eq_max": {
+        "x": 112,
+        "y": 0,
+        "z": 14
+      },
+      "eq_size": {
+        "width": 14,
+        "depth": 14,
+        "height": 14
+      }
+    },
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -734.7,
+        "y": 314.9,
+        "z": -77
+      },
+      "eq_min": {
+        "x": -741.7,
+        "y": 307.9,
+        "z": -84
+      },
+      "eq_max": {
+        "x": -727.7,
+        "y": 321.9,
+        "z": -70
+      },
+      "eq_size": {
+        "width": 14,
+        "depth": 14,
+        "height": 14
+      }
+    },
+    {
+      "referenceIndex": 99,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -77,
+        "y": -342.9,
+        "z": -174.9
+      },
+      "eq_min": {
+        "x": -84,
+        "y": -349.9,
+        "z": -181.9
+      },
+      "eq_max": {
+        "x": -70,
+        "y": -335.9,
+        "z": -167.9
+      },
+      "eq_size": {
+        "width": 14,
+        "depth": 14,
+        "height": 14
+      }
+    }
+  ],
+  "dawnshroud": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 2134.6,
+        "y": -78.8,
+        "z": 108.9
+      },
+      "eq_min": {
+        "x": 2100.5,
+        "y": -128.8,
+        "z": 78.9
+      },
+      "eq_max": {
+        "x": 2168.7,
+        "y": -28.8,
+        "z": 138.9
+      },
+      "eq_size": {
+        "width": 68.2,
+        "depth": 100,
+        "height": 60
+      }
+    },
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -113.2,
+        "y": 2142.5,
+        "z": 131.2
+      },
+      "eq_min": {
+        "x": -138.2,
+        "y": 2098.8,
+        "z": 81.2
+      },
+      "eq_max": {
+        "x": -88.2,
+        "y": 2186.2,
+        "z": 181.2
+      },
+      "eq_size": {
+        "width": 50,
+        "depth": 87.5,
+        "height": 100
+      }
+    },
+    {
+      "referenceIndex": 3,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -869.7,
+        "y": -1972.6,
+        "z": 115.5
+      },
+      "eq_min": {
+        "x": -895.6,
+        "y": -1990.2,
+        "z": 95.5
+      },
+      "eq_max": {
+        "x": -843.8,
+        "y": -1955,
+        "z": 135.5
+      },
+      "eq_size": {
+        "width": 51.8,
+        "depth": 35.2,
+        "height": 40
+      }
+    },
+    {
+      "referenceIndex": 4,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -2142.6,
+        "y": -723.9,
+        "z": 60.6
+      },
+      "eq_min": {
+        "x": -2184.7,
+        "y": -796.1,
+        "z": 25.6
+      },
+      "eq_max": {
+        "x": -2100.4,
+        "y": -651.6,
+        "z": 95.6
+      },
+      "eq_size": {
+        "width": 84.3,
+        "depth": 144.4,
+        "height": 70
+      }
+    },
+    {
+      "referenceIndex": 5,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 2134.6,
+        "y": 78.5,
+        "z": 108.9
+      },
+      "eq_min": {
+        "x": 2100.5,
+        "y": 28.5,
+        "z": 78.9
+      },
+      "eq_max": {
+        "x": 2168.7,
+        "y": 128.5,
+        "z": 138.9
+      },
+      "eq_size": {
+        "width": 68.2,
+        "depth": 100,
+        "height": 60
+      }
+    },
+    {
+      "referenceIndex": 6,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -242.8,
+        "y": 2142.5,
+        "z": 131.2
+      },
+      "eq_min": {
+        "x": -267.8,
+        "y": 2098.8,
+        "z": 81.2
+      },
+      "eq_max": {
+        "x": -217.8,
+        "y": 2186.2,
+        "z": 181.2
+      },
+      "eq_size": {
+        "width": 50,
+        "depth": 87.5,
+        "height": 100
+      }
+    }
+  ],
+  "dreadlands": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -6138.4,
+        "y": 293.3,
+        "z": 152.8
+      },
+      "eq_min": {
+        "x": -6237.8,
+        "y": 195.9,
+        "z": 118.2
+      },
+      "eq_max": {
+        "x": -6039,
+        "y": 390.7,
+        "z": 187.4
+      },
+      "eq_size": {
+        "width": 198.8,
+        "depth": 194.8,
+        "height": 69.2
+      }
+    },
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -768.7,
+        "y": 3446.1,
+        "z": 317.4
+      },
+      "eq_min": {
+        "x": -988.7,
+        "y": 3391.1,
+        "z": 167.4
+      },
+      "eq_max": {
+        "x": -548.6,
+        "y": 3501.2,
+        "z": 467.4
+      },
+      "eq_size": {
+        "width": 440.1,
+        "depth": 110,
+        "height": 300
+      }
+    },
+    {
+      "referenceIndex": 3,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -3454.8,
+        "y": 2339.1,
+        "z": 152.8
+      },
+      "eq_min": {
+        "x": -3653.5,
+        "y": 2144.2,
+        "z": 118.2
+      },
+      "eq_max": {
+        "x": -3256,
+        "y": 2533.9,
+        "z": 187.4
+      },
+      "eq_size": {
+        "width": 397.6,
+        "depth": 389.7,
+        "height": 69.2
+      }
+    },
+    {
+      "referenceIndex": 4,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -1970.4,
+        "y": 503.3,
+        "z": 38.8
+      },
+      "eq_min": {
+        "x": -1975.4,
+        "y": 478.3,
+        "z": 21.3
+      },
+      "eq_max": {
+        "x": -1965.4,
+        "y": 528.3,
+        "z": 56.3
+      },
+      "eq_size": {
+        "width": 10,
+        "depth": 50,
+        "height": 35
+      }
+    },
+    {
+      "referenceIndex": 5,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -1970.4,
+        "y": 696.1,
+        "z": 38.8
+      },
+      "eq_min": {
+        "x": -1975.4,
+        "y": 671.1,
+        "z": 21.3
+      },
+      "eq_max": {
+        "x": -1965.4,
+        "y": 721.1,
+        "z": 56.3
+      },
+      "eq_size": {
+        "width": 10,
+        "depth": 50,
+        "height": 35
+      }
+    }
+  ],
+  "droga": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 343.9,
+        "y": 1423.4,
+        "z": 8
+      },
+      "eq_min": {
+        "x": 303.9,
+        "y": 1391.4,
+        "z": 0
+      },
+      "eq_max": {
+        "x": 383.8,
+        "y": 1455.4,
+        "z": 16
+      },
+      "eq_size": {
+        "width": 80,
+        "depth": 64,
+        "height": 16
+      }
+    },
+    {
+      "referenceIndex": 5,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -48,
+        "y": -1407.4,
+        "z": -183.9
+      },
+      "eq_min": {
+        "x": -367.9,
+        "y": -1439.4,
+        "z": -191.9
+      },
+      "eq_max": {
+        "x": 271.9,
+        "y": -1375.5,
+        "z": -175.9
+      },
+      "eq_size": {
+        "width": 639.7,
+        "depth": 64,
+        "height": 16
+      }
+    },
+    {
+      "referenceIndex": 6,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -647.7,
+        "y": -1327.5,
+        "z": -72
+      },
+      "eq_min": {
+        "x": -927.6,
+        "y": -1359.5,
+        "z": -80
+      },
+      "eq_max": {
+        "x": -367.9,
+        "y": -1295.5,
+        "z": -64
+      },
+      "eq_size": {
+        "width": 559.8,
+        "depth": 64,
+        "height": 16
+      }
+    }
+  ],
+  "drogab": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 343.9,
+        "y": 1423.4,
+        "z": 8
+      },
+      "eq_min": {
+        "x": 303.9,
+        "y": 1391.4,
+        "z": 0
+      },
+      "eq_max": {
+        "x": 383.8,
+        "y": 1455.4,
+        "z": 16
+      },
+      "eq_size": {
+        "width": 80,
+        "depth": 64,
+        "height": 16
+      }
+    },
+    {
+      "referenceIndex": 5,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -48,
+        "y": -1407.4,
+        "z": -183.9
+      },
+      "eq_min": {
+        "x": -367.9,
+        "y": -1439.4,
+        "z": -191.9
+      },
+      "eq_max": {
+        "x": 271.9,
+        "y": -1375.5,
+        "z": -175.9
+      },
+      "eq_size": {
+        "width": 639.7,
+        "depth": 64,
+        "height": 16
+      }
+    },
+    {
+      "referenceIndex": 6,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -647.7,
+        "y": -1327.5,
+        "z": -72
+      },
+      "eq_min": {
+        "x": -927.6,
+        "y": -1359.5,
+        "z": -80
+      },
+      "eq_max": {
+        "x": -367.9,
+        "y": -1295.5,
+        "z": -64
+      },
+      "eq_size": {
+        "width": 559.8,
+        "depth": 64,
+        "height": 16
+      }
+    }
+  ],
+  "dulak": [
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 261,
+        "y": 851,
+        "z": 104
+      },
+      "eq_min": {
+        "x": -58,
+        "y": 408,
+        "z": -2
+      },
+      "eq_max": {
+        "x": 580,
+        "y": 1294,
+        "z": 210
+      },
+      "eq_size": {
+        "width": 638,
+        "depth": 886,
+        "height": 212
+      }
+    }
+  ],
+  "eastkarana": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 1199.7,
+        "y": 12.6,
+        "z": 44.3
+      },
+      "eq_min": {
+        "x": 1145.9,
+        "y": -46.5,
+        "z": -129.3
+      },
+      "eq_max": {
+        "x": 1253.4,
+        "y": 71.6,
+        "z": 217.9
+      },
+      "eq_size": {
+        "width": 107.5,
+        "depth": 118.2,
+        "height": 347.2
+      }
+    },
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -1971.8,
+        "y": 3708.6,
+        "z": 191.6
+      },
+      "eq_min": {
+        "x": -2226.1,
+        "y": 3632.6,
+        "z": 0
+      },
+      "eq_max": {
+        "x": -1717.4,
+        "y": 3784.6,
+        "z": 383.2
+      },
+      "eq_size": {
+        "width": 508.7,
+        "depth": 151.9,
+        "height": 383.2
+      }
+    },
+    {
+      "referenceIndex": 3,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -8338.4,
+        "y": -3107,
+        "z": 718.3
+      },
+      "eq_min": {
+        "x": -8357.3,
+        "y": -3115.4,
+        "z": 681.8
+      },
+      "eq_max": {
+        "x": -8319.5,
+        "y": -3098.6,
+        "z": 754.8
+      },
+      "eq_size": {
+        "width": 37.7,
+        "depth": 16.8,
+        "height": 72.9
+      }
+    }
+  ],
+  "eastwastes": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -5973.2,
+        "y": -4491.6,
+        "z": 633.1
+      },
+      "eq_min": {
+        "x": -6021.1,
+        "y": -4700.2,
+        "z": 533.1
+      },
+      "eq_max": {
+        "x": -5925.3,
+        "y": -4283.1,
+        "z": 733.1
+      },
+      "eq_size": {
+        "width": 95.7,
+        "depth": 417.1,
+        "height": 200
+      }
+    },
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 7040.9,
+        "y": -6250.5,
+        "z": -253.5
+      },
+      "eq_min": {
+        "x": 7020.9,
+        "y": -6290.5,
+        "z": -308.5
+      },
+      "eq_max": {
+        "x": 7060.9,
+        "y": -6210.5,
+        "z": -198.5
+      },
+      "eq_size": {
+        "width": 40,
+        "depth": 80,
+        "height": 110
+      }
+    },
+    {
+      "referenceIndex": 3,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 6729.9,
+        "y": -1806.3,
+        "z": 302.4
+      },
+      "eq_min": {
+        "x": 6679.9,
+        "y": -2006.3,
+        "z": 152.4
+      },
+      "eq_max": {
+        "x": 6779.9,
+        "y": -1606.3,
+        "z": 452.4
+      },
+      "eq_size": {
+        "width": 100,
+        "depth": 400,
+        "height": 300
+      }
+    }
+  ],
+  "eastwastesshard": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -5973.2,
+        "y": -4491.6,
+        "z": 633.1
+      },
+      "eq_min": {
+        "x": -6021.1,
+        "y": -4700.2,
+        "z": 533.1
+      },
+      "eq_max": {
+        "x": -5925.3,
+        "y": -4283.1,
+        "z": 733.1
+      },
+      "eq_size": {
+        "width": 95.7,
+        "depth": 417.1,
+        "height": 200
+      }
+    },
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 7040.9,
+        "y": -6250.5,
+        "z": -253.5
+      },
+      "eq_min": {
+        "x": 7020.9,
+        "y": -6290.5,
+        "z": -308.5
+      },
+      "eq_max": {
+        "x": 7060.9,
+        "y": -6210.5,
+        "z": -198.5
+      },
+      "eq_size": {
+        "width": 40,
+        "depth": 80,
+        "height": 110
+      }
+    },
+    {
+      "referenceIndex": 3,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 6729.9,
+        "y": -1806.3,
+        "z": 302.4
+      },
+      "eq_min": {
+        "x": 6679.9,
+        "y": -2006.3,
+        "z": 152.4
+      },
+      "eq_max": {
+        "x": 6779.9,
+        "y": -1606.3,
+        "z": 452.4
+      },
+      "eq_size": {
+        "width": 100,
+        "depth": 400,
+        "height": 300
+      }
+    }
+  ],
+  "echo": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -907,
+        "y": 816,
+        "z": -22
+      },
+      "eq_min": {
+        "x": -917,
+        "y": 806,
+        "z": -33
+      },
+      "eq_max": {
+        "x": -897,
+        "y": 826,
+        "z": -11
+      },
+      "eq_size": {
+        "width": 20,
+        "depth": 20,
+        "height": 22
+      }
+    },
+    {
+      "referenceIndex": 4,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -79.5,
+        "y": -1031,
+        "z": 17
+      },
+      "eq_min": {
+        "x": -95,
+        "y": -1040,
+        "z": -3
+      },
+      "eq_max": {
+        "x": -64,
+        "y": -1022,
+        "z": 37
+      },
+      "eq_size": {
+        "width": 31,
+        "depth": 18,
+        "height": 40
+      }
+    },
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 1055,
+        "y": 1147,
+        "z": -88
+      },
+      "eq_min": {
+        "x": 1043,
+        "y": 1128,
+        "z": -127
+      },
+      "eq_max": {
+        "x": 1067,
+        "y": 1166,
+        "z": -49
+      },
+      "eq_size": {
+        "width": 24,
+        "depth": 38,
+        "height": 78
+      }
+    },
+    {
+      "referenceIndex": 3,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 1588,
+        "y": -1803.5,
+        "z": 135.5
+      },
+      "eq_min": {
+        "x": 1557,
+        "y": -1832,
+        "z": 122
+      },
+      "eq_max": {
+        "x": 1619,
+        "y": -1775,
+        "z": 149
+      },
+      "eq_size": {
+        "width": 62,
+        "depth": 57,
+        "height": 27
+      }
+    }
+  ],
+  "emeraldjungle": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 5373.4,
+        "y": -1957,
+        "z": 108.5
+      },
+      "eq_min": {
+        "x": 5359.2,
+        "y": -2198.6,
+        "z": -81.3
+      },
+      "eq_max": {
+        "x": 5387.7,
+        "y": -1715.4,
+        "z": 298.2
+      },
+      "eq_size": {
+        "width": 28.4,
+        "depth": 483.2,
+        "height": 379.5
+      }
+    },
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -1852.6,
+        "y": 271.9,
+        "z": -321
+      },
+      "eq_min": {
+        "x": -1855.5,
+        "y": 260.2,
+        "z": -336
+      },
+      "eq_max": {
+        "x": -1849.7,
+        "y": 283.7,
+        "z": -306
+      },
+      "eq_size": {
+        "width": 5.9,
+        "depth": 23.5,
+        "height": 30
+      }
+    },
+    {
+      "referenceIndex": 3,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -1852.6,
+        "y": 326.9,
+        "z": -321
+      },
+      "eq_min": {
+        "x": -1855.5,
+        "y": 315.2,
+        "z": -336
+      },
+      "eq_max": {
+        "x": -1849.7,
+        "y": 338.7,
+        "z": -306
+      },
+      "eq_size": {
+        "width": 5.9,
+        "depth": 23.5,
+        "height": 30
+      }
+    },
+    {
+      "referenceIndex": 4,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 1523.8,
+        "y": -3452.6,
+        "z": -315.8
+      },
+      "eq_min": {
+        "x": 1438.3,
+        "y": -3467.1,
+        "z": -365.8
+      },
+      "eq_max": {
+        "x": 1609.3,
+        "y": -3438.2,
+        "z": -265.8
+      },
+      "eq_size": {
+        "width": 171,
+        "depth": 28.9,
+        "height": 100
+      }
+    }
+  ],
+  "erudnext": [
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -310.9,
+        "y": -1405.4,
+        "z": 39
+      },
+      "eq_min": {
+        "x": -317.9,
+        "y": -1417.4,
+        "z": 36
+      },
+      "eq_max": {
+        "x": -303.9,
+        "y": -1393.4,
+        "z": 42
+      },
+      "eq_size": {
+        "width": 14,
+        "depth": 24,
+        "height": 6
+      }
+    },
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -254.9,
+        "y": -1392.4,
+        "z": -40
+      },
+      "eq_min": {
+        "x": -261.9,
+        "y": -1395.4,
+        "z": -48
+      },
+      "eq_max": {
+        "x": -247.9,
+        "y": -1389.4,
+        "z": -32
+      },
+      "eq_size": {
+        "width": 14,
+        "depth": 6,
+        "height": 16
+      }
+    },
+    {
+      "referenceIndex": 3,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -215.9,
+        "y": -1559.4,
+        "z": -32
+      },
+      "eq_min": {
+        "x": -255.9,
+        "y": -1583.4,
+        "z": -48
+      },
+      "eq_max": {
+        "x": -175.9,
+        "y": -1535.4,
+        "z": -16
+      },
+      "eq_size": {
+        "width": 80,
+        "depth": 48,
+        "height": 32
+      }
+    }
+  ],
+  "everfrost": [
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -525.5,
+        "y": -3072.6,
+        "z": -103.8
+      },
+      "eq_min": {
+        "x": -548.3,
+        "y": -3074.9,
+        "z": -119
+      },
+      "eq_max": {
+        "x": -502.8,
+        "y": -3070.2,
+        "z": -88.7
+      },
+      "eq_size": {
+        "width": 45.5,
+        "depth": 4.7,
+        "height": 30.3
+      }
+    },
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 374,
+        "y": 3747.9,
+        "z": 19.7
+      },
+      "eq_min": {
+        "x": 333.4,
+        "y": 3734.1,
+        "z": -2.3
+      },
+      "eq_max": {
+        "x": 414.6,
+        "y": 3761.7,
+        "z": 41.7
+      },
+      "eq_size": {
+        "width": 81.2,
+        "depth": 27.6,
+        "height": 44
+      }
+    },
+    {
+      "referenceIndex": 3,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -7091.8,
+        "y": 2021,
+        "z": -34.7
+      },
+      "eq_min": {
+        "x": -7101.5,
+        "y": 1984.2,
+        "z": -81.1
+      },
+      "eq_max": {
+        "x": -7082.1,
+        "y": 2057.7,
+        "z": 11.7
+      },
+      "eq_size": {
+        "width": 19.3,
+        "depth": 73.5,
+        "height": 92.8
+      }
+    },
+    {
+      "referenceIndex": 4,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -4228.4,
+        "y": 4756.5,
+        "z": -92.3
+      },
+      "eq_min": {
+        "x": -4375.1,
+        "y": 4750.8,
+        "z": -98.3
+      },
+      "eq_max": {
+        "x": -4081.7,
+        "y": 4762.1,
+        "z": -86.4
+      },
+      "eq_size": {
+        "width": 293.5,
+        "depth": 11.2,
+        "height": 11.8
+      }
+    }
+  ],
+  "fearplane": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 480,
+        "y": 837.8,
+        "z": 153.4
+      },
+      "eq_min": {
+        "x": 469.9,
+        "y": 830.3,
+        "z": 137.4
+      },
+      "eq_max": {
+        "x": 490.1,
+        "y": 845.2,
+        "z": 169.4
+      },
+      "eq_size": {
+        "width": 20.2,
+        "depth": 14.9,
+        "height": 32
+      }
+    }
+  ],
+  "feerrott": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -3140.1,
+        "y": -1145.4,
+        "z": 11.2
+      },
+      "eq_min": {
+        "x": -3149.9,
+        "y": -1198,
+        "z": -14
+      },
+      "eq_max": {
+        "x": -3130.3,
+        "y": -1092.9,
+        "z": 36.5
+      },
+      "eq_size": {
+        "width": 19.6,
+        "depth": 105,
+        "height": 50.4
+      }
+    },
+    {
+      "referenceIndex": 3,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -110.2,
+        "y": -1473.1,
+        "z": 57.4
+      },
+      "eq_min": {
+        "x": -125.6,
+        "y": -1476.1,
+        "z": 37.4
+      },
+      "eq_max": {
+        "x": -94.7,
+        "y": -1470.1,
+        "z": 77.4
+      },
+      "eq_size": {
+        "width": 30.9,
+        "depth": 5.9,
+        "height": 40
+      }
+    },
+    {
+      "referenceIndex": 4,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 810.2,
+        "y": 1680.9,
+        "z": 84.5
+      },
+      "eq_min": {
+        "x": 778.4,
+        "y": 1675.6,
+        "z": 54.2
+      },
+      "eq_max": {
+        "x": 842.1,
+        "y": 1686.2,
+        "z": 114.7
+      },
+      "eq_size": {
+        "width": 63.7,
+        "depth": 10.6,
+        "height": 60.5
+      }
+    },
+    {
+      "referenceIndex": 5,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 2603.7,
+        "y": -2387.1,
+        "z": 59.9
+      },
+      "eq_min": {
+        "x": 2576.1,
+        "y": -2389.2,
+        "z": 21.1
+      },
+      "eq_max": {
+        "x": 2631.3,
+        "y": -2385,
+        "z": 98.8
+      },
+      "eq_size": {
+        "width": 55.2,
+        "depth": 4.2,
+        "height": 77.7
+      }
+    }
+  ],
+  "felwithea": [
+    {
+      "referenceIndex": 3,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 223.9,
+        "y": 42,
+        "z": 14
+      },
+      "eq_min": {
+        "x": 209.9,
+        "y": 28,
+        "z": 0
+      },
+      "eq_max": {
+        "x": 237.9,
+        "y": 56,
+        "z": 28
+      },
+      "eq_size": {
+        "width": 28,
+        "depth": 28,
+        "height": 28
+      }
+    },
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -720.7,
+        "y": 363.9,
+        "z": -7
+      },
+      "eq_min": {
+        "x": -727.7,
+        "y": 349.9,
+        "z": -14
+      },
+      "eq_max": {
+        "x": -713.7,
+        "y": 377.8,
+        "z": 0
+      },
+      "eq_size": {
+        "width": 14,
+        "depth": 28,
+        "height": 14
+      }
+    }
+  ],
+  "felwitheb": [
+    {
+      "referenceIndex": 7,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -913.6,
+        "y": 552.8,
+        "z": 14
+      },
+      "eq_min": {
+        "x": -923.6,
+        "y": 537.8,
+        "z": 4
+      },
+      "eq_max": {
+        "x": -903.6,
+        "y": 567.8,
+        "z": 24
+      },
+      "eq_size": {
+        "width": 20,
+        "depth": 30,
+        "height": 20
+      }
+    },
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -832.7,
+        "y": 223.9,
+        "z": -7
+      },
+      "eq_min": {
+        "x": -839.7,
+        "y": 209.9,
+        "z": -14
+      },
+      "eq_max": {
+        "x": -825.7,
+        "y": 237.9,
+        "z": 0
+      },
+      "eq_size": {
+        "width": 14,
+        "depth": 28,
+        "height": 14
+      }
+    },
+    {
+      "referenceIndex": 4,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -618.8,
+        "y": 435.8,
+        "z": 41.5
+      },
+      "eq_min": {
+        "x": -621.8,
+        "y": 429.8,
+        "z": 31
+      },
+      "eq_max": {
+        "x": -615.8,
+        "y": 441.8,
+        "z": 52
+      },
+      "eq_size": {
+        "width": 6,
+        "depth": 12,
+        "height": 21
+      }
+    },
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -584.8,
+        "y": 435.8,
+        "z": 41.5
+      },
+      "eq_min": {
+        "x": -587.8,
+        "y": 429.8,
+        "z": 31
+      },
+      "eq_max": {
+        "x": -581.8,
+        "y": 441.8,
+        "z": 52
+      },
+      "eq_size": {
+        "width": 6,
+        "depth": 12,
+        "height": 21
+      }
+    },
+    {
+      "referenceIndex": 3,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -597.8,
+        "y": 443.8,
+        "z": 41.5
+      },
+      "eq_min": {
+        "x": -615.8,
+        "y": 423.8,
+        "z": 31
+      },
+      "eq_max": {
+        "x": -579.8,
+        "y": 463.8,
+        "z": 52
+      },
+      "eq_size": {
+        "width": 36,
+        "depth": 40,
+        "height": 21
+      }
+    },
+    {
+      "referenceIndex": 6,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -532.8,
+        "y": 745.7,
+        "z": 13
+      },
+      "eq_min": {
+        "x": -535.8,
+        "y": 739.7,
+        "z": 4
+      },
+      "eq_max": {
+        "x": -529.8,
+        "y": 751.7,
+        "z": 22
+      },
+      "eq_size": {
+        "width": 6,
+        "depth": 12,
+        "height": 18
+      }
+    },
+    {
+      "referenceIndex": 5,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -340.9,
+        "y": 503.8,
+        "z": 14
+      },
+      "eq_min": {
+        "x": -347.9,
+        "y": 497.8,
+        "z": 4
+      },
+      "eq_max": {
+        "x": -333.9,
+        "y": 509.8,
+        "z": 24
+      },
+      "eq_size": {
+        "width": 14,
+        "depth": 12,
+        "height": 20
+      }
+    }
+  ],
+  "ferubi": [
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 1486.5,
+        "y": 566.5,
+        "z": 160
+      },
+      "eq_min": {
+        "x": 1440,
+        "y": 565,
+        "z": 100
+      },
+      "eq_max": {
+        "x": 1533,
+        "y": 568,
+        "z": 220
+      },
+      "eq_size": {
+        "width": 93,
+        "depth": 3,
+        "height": 120
+      }
+    },
+    {
+      "referenceIndex": 3,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -48.5,
+        "y": 1605,
+        "z": 160
+      },
+      "eq_min": {
+        "x": -50,
+        "y": 1565,
+        "z": 100
+      },
+      "eq_max": {
+        "x": -47,
+        "y": 1645,
+        "z": 220
+      },
+      "eq_size": {
+        "width": 3,
+        "depth": 80,
+        "height": 120
+      }
+    },
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -1848,
+        "y": 566.5,
+        "z": 160
+      },
+      "eq_min": {
+        "x": -1888,
+        "y": 565,
+        "z": 100
+      },
+      "eq_max": {
+        "x": -1808,
+        "y": 568,
+        "z": 220
+      },
+      "eq_size": {
+        "width": 80,
+        "depth": 3,
+        "height": 120
+      }
+    }
+  ],
+  "fieldofbone": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 3529.2,
+        "y": -2751.3,
+        "z": 79.7
+      },
+      "eq_min": {
+        "x": 3505.8,
+        "y": -2758.8,
+        "z": -14.6
+      },
+      "eq_max": {
+        "x": 3552.6,
+        "y": -2743.7,
+        "z": 174
+      },
+      "eq_size": {
+        "width": 46.8,
+        "depth": 15.1,
+        "height": 188.7
+      }
+    },
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 3699.7,
+        "y": -2552.3,
+        "z": 79.7
+      },
+      "eq_min": {
+        "x": 3692.2,
+        "y": -2575.7,
+        "z": -14.6
+      },
+      "eq_max": {
+        "x": 3707.3,
+        "y": -2528.9,
+        "z": 174
+      },
+      "eq_size": {
+        "width": 15.1,
+        "depth": 46.9,
+        "height": 188.7
+      }
+    },
+    {
+      "referenceIndex": 3,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -145.1,
+        "y": -1893,
+        "z": -120.2
+      },
+      "eq_min": {
+        "x": -153,
+        "y": -1911.9,
+        "z": -133.3
+      },
+      "eq_max": {
+        "x": -137.3,
+        "y": -1874.1,
+        "z": -107.2
+      },
+      "eq_size": {
+        "width": 15.7,
+        "depth": 37.7,
+        "height": 26.1
+      }
+    },
+    {
+      "referenceIndex": 4,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 1032.3,
+        "y": 460.4,
+        "z": 82.8
+      },
+      "eq_min": {
+        "x": 1030,
+        "y": 445.3,
+        "z": 60.4
+      },
+      "eq_max": {
+        "x": 1034.6,
+        "y": 475.4,
+        "z": 105.2
+      },
+      "eq_size": {
+        "width": 4.5,
+        "depth": 30.1,
+        "height": 44.8
+      }
+    },
+    {
+      "referenceIndex": 5,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 958.5,
+        "y": 460.4,
+        "z": 82.8
+      },
+      "eq_min": {
+        "x": 956.2,
+        "y": 445.3,
+        "z": 60.4
+      },
+      "eq_max": {
+        "x": 960.8,
+        "y": 475.4,
+        "z": 105.2
+      },
+      "eq_size": {
+        "width": 4.5,
+        "depth": 30.1,
+        "height": 44.8
+      }
+    },
+    {
+      "referenceIndex": 8,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -1276.5,
+        "y": -1960,
+        "z": 96
+      },
+      "eq_min": {
+        "x": -1289.5,
+        "y": -2199.9,
+        "z": -120.4
+      },
+      "eq_max": {
+        "x": -1263.5,
+        "y": -1720,
+        "z": 312.5
+      },
+      "eq_size": {
+        "width": 26,
+        "depth": 479.9,
+        "height": 432.9
+      }
+    },
+    {
+      "referenceIndex": 6,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 4342.2,
+        "y": 1416.9,
+        "z": 53.6
+      },
+      "eq_min": {
+        "x": 4325.9,
+        "y": 1075.6,
+        "z": -70.1
+      },
+      "eq_max": {
+        "x": 4358.5,
+        "y": 1758.2,
+        "z": 177.3
+      },
+      "eq_size": {
+        "width": 32.6,
+        "depth": 682.5,
+        "height": 247.3
+      }
+    },
+    {
+      "referenceIndex": 7,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 1116.9,
+        "y": -3398.4,
+        "z": 84.6
+      },
+      "eq_min": {
+        "x": 778.4,
+        "y": -3416,
+        "z": -31.2
+      },
+      "eq_max": {
+        "x": 1455.4,
+        "y": -3380.8,
+        "z": 200.3
+      },
+      "eq_size": {
+        "width": 677,
+        "depth": 35.2,
+        "height": 231.5
+      }
+    }
+  ],
+  "firiona": [
+    {
+      "referenceIndex": 4,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 3584.9,
+        "y": 1295.9,
+        "z": 244.6
+      },
+      "eq_min": {
+        "x": 3528.7,
+        "y": 1197.7,
+        "z": 83.3
+      },
+      "eq_max": {
+        "x": 3641.1,
+        "y": 1394.1,
+        "z": 405.9
+      },
+      "eq_size": {
+        "width": 112.4,
+        "depth": 196.4,
+        "height": 322.6
+      }
+    },
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 5932.9,
+        "y": 282.3,
+        "z": -58
+      },
+      "eq_min": {
+        "x": 5833.2,
+        "y": 183.9,
+        "z": -92.6
+      },
+      "eq_max": {
+        "x": 6032.5,
+        "y": 380.7,
+        "z": -23.4
+      },
+      "eq_size": {
+        "width": 199.3,
+        "depth": 196.8,
+        "height": 69.2
+      }
+    },
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -2442.8,
+        "y": 5013.1,
+        "z": 98.1
+      },
+      "eq_min": {
+        "x": -3013.1,
+        "y": 5001.5,
+        "z": -77
+      },
+      "eq_max": {
+        "x": -1872.6,
+        "y": 5024.7,
+        "z": 273.3
+      },
+      "eq_size": {
+        "width": 1140.5,
+        "depth": 23.1,
+        "height": 350.3
+      }
+    },
+    {
+      "referenceIndex": 3,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 2644.9,
+        "y": 4957.4,
+        "z": 2.7
+      },
+      "eq_min": {
+        "x": 2433.9,
+        "y": 4944.5,
+        "z": -174.2
+      },
+      "eq_max": {
+        "x": 2856,
+        "y": 4970.3,
+        "z": 179.7
+      },
+      "eq_size": {
+        "width": 422,
+        "depth": 25.9,
+        "height": 353.8
+      }
+    }
+  ],
+  "freporte": [
+    {
+      "referenceIndex": 9,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -370.9,
+        "y": 447.8,
+        "z": 1
+      },
+      "eq_min": {
+        "x": -377.8,
+        "y": 433.8,
+        "z": -28
+      },
+      "eq_max": {
+        "x": -363.9,
+        "y": 461.8,
+        "z": 30
+      },
+      "eq_size": {
+        "width": 14,
+        "depth": 28,
+        "height": 58
+      }
+    },
+    {
+      "referenceIndex": 10,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -63,
+        "y": 119,
+        "z": 1
+      },
+      "eq_min": {
+        "x": -70,
+        "y": 112,
+        "z": -28
+      },
+      "eq_max": {
+        "x": -56,
+        "y": 125.9,
+        "z": 30
+      },
+      "eq_size": {
+        "width": 14,
+        "depth": 14,
+        "height": 58
+      }
+    },
+    {
+      "referenceIndex": 11,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -699.7,
+        "y": -1599.4,
+        "z": -13
+      },
+      "eq_min": {
+        "x": -1279.5,
+        "y": -1899.2,
+        "z": -56
+      },
+      "eq_max": {
+        "x": -120,
+        "y": -1299.5,
+        "z": 30
+      },
+      "eq_size": {
+        "width": 1159.5,
+        "depth": 599.8,
+        "height": 86
+      }
+    },
+    {
+      "referenceIndex": 53,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 342.9,
+        "y": -174.9,
+        "z": -91
+      },
+      "eq_min": {
+        "x": 335.9,
+        "y": -181.9,
+        "z": -98
+      },
+      "eq_max": {
+        "x": 349.9,
+        "y": -167.9,
+        "z": -84
+      },
+      "eq_size": {
+        "width": 14,
+        "depth": 14,
+        "height": 14
+      }
+    }
+  ],
+  "freportn": [
+    {
+      "referenceIndex": 8,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 489.8,
+        "y": -440.8,
+        "z": 68
+      },
+      "eq_min": {
+        "x": 475.8,
+        "y": -447.8,
+        "z": -14
+      },
+      "eq_max": {
+        "x": 503.8,
+        "y": -433.8,
+        "z": 149.9
+      },
+      "eq_size": {
+        "width": 28,
+        "depth": 14,
+        "height": 163.9
+      }
+    },
+    {
+      "referenceIndex": 7,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -84,
+        "y": -398.8,
+        "z": 61
+      },
+      "eq_min": {
+        "x": -98,
+        "y": -405.8,
+        "z": -28
+      },
+      "eq_max": {
+        "x": -70,
+        "y": -391.8,
+        "z": 149.9
+      },
+      "eq_size": {
+        "width": 28,
+        "depth": 14,
+        "height": 177.9
+      }
+    },
+    {
+      "referenceIndex": 51,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 706.7,
+        "y": 370.9,
+        "z": -7
+      },
+      "eq_min": {
+        "x": 699.7,
+        "y": 363.9,
+        "z": -14
+      },
+      "eq_max": {
+        "x": 713.7,
+        "y": 377.8,
+        "z": 0
+      },
+      "eq_size": {
+        "width": 14,
+        "depth": 14,
+        "height": 14
+      }
+    }
+  ],
+  "freportw": [
+    {
+      "referenceIndex": 8,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -125.9,
+        "y": 244.9,
+        "z": 68
+      },
+      "eq_min": {
+        "x": -139.9,
+        "y": 237.9,
+        "z": -14
+      },
+      "eq_max": {
+        "x": -112,
+        "y": 251.9,
+        "z": 149.9
+      },
+      "eq_size": {
+        "width": 28,
+        "depth": 14,
+        "height": 163.9
+      }
+    },
+    {
+      "referenceIndex": 7,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -699.7,
+        "y": 286.9,
+        "z": 61
+      },
+      "eq_min": {
+        "x": -713.7,
+        "y": 279.9,
+        "z": -28
+      },
+      "eq_max": {
+        "x": -685.7,
+        "y": 293.9,
+        "z": 149.9
+      },
+      "eq_size": {
+        "width": 28,
+        "depth": 14,
+        "height": 177.9
+      }
+    },
+    {
+      "referenceIndex": 10,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -916.6,
+        "y": -84,
+        "z": 61
+      },
+      "eq_min": {
+        "x": -923.6,
+        "y": -98,
+        "z": -28
+      },
+      "eq_max": {
+        "x": -909.6,
+        "y": -70,
+        "z": 149.9
+      },
+      "eq_size": {
+        "width": 14,
+        "depth": 28,
+        "height": 177.9
+      }
+    },
+    {
+      "referenceIndex": 9,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -622.8,
+        "y": -426.8,
+        "z": 61
+      },
+      "eq_min": {
+        "x": -629.7,
+        "y": -433.8,
+        "z": -28
+      },
+      "eq_max": {
+        "x": -615.8,
+        "y": -419.8,
+        "z": 149.9
+      },
+      "eq_size": {
+        "width": 14,
+        "depth": 14,
+        "height": 177.9
+      }
+    },
+    {
+      "referenceIndex": 6,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -657.7,
+        "y": 100,
+        "z": -34.5
+      },
+      "eq_min": {
+        "x": -661.7,
+        "y": 88,
+        "z": -41
+      },
+      "eq_max": {
+        "x": -653.7,
+        "y": 112,
+        "z": -28
+      },
+      "eq_size": {
+        "width": 8,
+        "depth": 24,
+        "height": 13
+      }
+    },
+    {
+      "referenceIndex": 12,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 1099.6,
+        "y": 0,
+        "z": 61
+      },
+      "eq_min": {
+        "x": 799.7,
+        "y": -579.8,
+        "z": -28
+      },
+      "eq_max": {
+        "x": 1399.4,
+        "y": 579.8,
+        "z": 149.9
+      },
+      "eq_size": {
+        "width": 599.8,
+        "depth": 1159.5,
+        "height": 177.9
+      }
+    },
+    {
+      "referenceIndex": 5,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -715.7,
+        "y": 157.9,
+        "z": -6.5
+      },
+      "eq_min": {
+        "x": -719.7,
+        "y": 153.9,
+        "z": -12
+      },
+      "eq_max": {
+        "x": -711.7,
+        "y": 161.9,
+        "z": -1
+      },
+      "eq_size": {
+        "width": 8,
+        "depth": 8,
+        "height": 11
+      }
+    },
+    {
+      "referenceIndex": 51,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -258.9,
+        "y": 1588.4,
+        "z": 7
+      },
+      "eq_min": {
+        "x": -265.9,
+        "y": 1581.4,
+        "z": 0
+      },
+      "eq_max": {
+        "x": -251.9,
+        "y": 1595.4,
+        "z": 14
+      },
+      "eq_size": {
+        "width": 14,
+        "depth": 14,
+        "height": 14
+      }
+    },
+    {
+      "referenceIndex": 53,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -1630.3,
+        "y": -720.7,
+        "z": -91
+      },
+      "eq_min": {
+        "x": -1637.3,
+        "y": -727.7,
+        "z": -98
+      },
+      "eq_max": {
+        "x": -1623.4,
+        "y": -713.7,
+        "z": -84
+      },
+      "eq_size": {
+        "width": 14,
+        "depth": 14,
+        "height": 14
+      }
+    }
+  ],
+  "frontiermtns": [
+    {
+      "referenceIndex": 3,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 4255.7,
+        "y": -2304.2,
+        "z": -434.7
+      },
+      "eq_min": {
+        "x": 4181,
+        "y": -2354.2,
+        "z": -459.8
+      },
+      "eq_max": {
+        "x": 4330.4,
+        "y": -2254.2,
+        "z": -409.5
+      },
+      "eq_size": {
+        "width": 149.4,
+        "depth": 100,
+        "height": 50.3
+      }
+    },
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -3191.7,
+        "y": -3854.2,
+        "z": -332.7
+      },
+      "eq_min": {
+        "x": -3291.3,
+        "y": -3954.2,
+        "z": -367.3
+      },
+      "eq_max": {
+        "x": -3092.1,
+        "y": -3754.2,
+        "z": -298.1
+      },
+      "eq_size": {
+        "width": 199.3,
+        "depth": 200,
+        "height": 69.2
+      }
+    },
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -4643,
+        "y": -405.4,
+        "z": 251.8
+      },
+      "eq_min": {
+        "x": -4656.6,
+        "y": -547.4,
+        "z": 109.3
+      },
+      "eq_max": {
+        "x": -4629.4,
+        "y": -263.4,
+        "z": 394.2
+      },
+      "eq_size": {
+        "width": 27.2,
+        "depth": 284,
+        "height": 285
+      }
+    },
+    {
+      "referenceIndex": 4,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -539.1,
+        "y": -2673.1,
+        "z": -491.3
+      },
+      "eq_min": {
+        "x": -561.5,
+        "y": -2678,
+        "z": -504.6
+      },
+      "eq_max": {
+        "x": -516.7,
+        "y": -2668.3,
+        "z": -478
+      },
+      "eq_size": {
+        "width": 44.8,
+        "depth": 9.7,
+        "height": 26.6
+      }
+    },
+    {
+      "referenceIndex": 5,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 2966.8,
+        "y": 3270.5,
+        "z": 350.7
+      },
+      "eq_min": {
+        "x": 2950.2,
+        "y": 3266.5,
+        "z": 340.7
+      },
+      "eq_max": {
+        "x": 2983.4,
+        "y": 3274.6,
+        "z": 360.7
+      },
+      "eq_size": {
+        "width": 33.2,
+        "depth": 8.1,
+        "height": 20
+      }
+    },
+    {
+      "referenceIndex": 6,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 256,
+        "y": 154.8,
+        "z": -248.7
+      },
+      "eq_min": {
+        "x": 159.5,
+        "y": 136.5,
+        "z": -290
+      },
+      "eq_max": {
+        "x": 352.5,
+        "y": 173.2,
+        "z": -207.3
+      },
+      "eq_size": {
+        "width": 193,
+        "depth": 36.8,
+        "height": 82.7
+      }
+    },
+    {
+      "referenceIndex": 7,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 1418.3,
+        "y": 6057.9,
+        "z": 632.6
+      },
+      "eq_min": {
+        "x": 973,
+        "y": 5978.4,
+        "z": 346.4
+      },
+      "eq_max": {
+        "x": 1863.6,
+        "y": 6137.4,
+        "z": 918.9
+      },
+      "eq_size": {
+        "width": 890.5,
+        "depth": 159,
+        "height": 572.5
+      }
+    }
+  ],
+  "fungusgrove": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -1155,
+        "y": -2332.5,
+        "z": -286.5
+      },
+      "eq_min": {
+        "x": -1158,
+        "y": -2367,
+        "z": -315
+      },
+      "eq_max": {
+        "x": -1152,
+        "y": -2298,
+        "z": -258
+      },
+      "eq_size": {
+        "width": 6,
+        "depth": 69,
+        "height": 57
+      }
+    }
+  ],
+  "gfaydark": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -2646.3,
+        "y": -1932.4,
+        "z": 33.3
+      },
+      "eq_min": {
+        "x": -2654.5,
+        "y": -1951.9,
+        "z": 0
+      },
+      "eq_max": {
+        "x": -2638.2,
+        "y": -1913,
+        "z": 66.5
+      },
+      "eq_size": {
+        "width": 16.3,
+        "depth": 38.9,
+        "height": 66.5
+      }
+    },
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -1112.9,
+        "y": -2636.9,
+        "z": 75
+      },
+      "eq_min": {
+        "x": -1162.2,
+        "y": -2645,
+        "z": 0
+      },
+      "eq_max": {
+        "x": -1063.7,
+        "y": -2628.8,
+        "z": 150
+      },
+      "eq_size": {
+        "width": 98.6,
+        "depth": 16.2,
+        "height": 150
+      }
+    },
+    {
+      "referenceIndex": 4,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -51,
+        "y": 2618.9,
+        "z": 44.6
+      },
+      "eq_min": {
+        "x": -92.7,
+        "y": 2614.5,
+        "z": 0
+      },
+      "eq_max": {
+        "x": -9.4,
+        "y": 2623.4,
+        "z": 89.2
+      },
+      "eq_size": {
+        "width": 83.3,
+        "depth": 8.9,
+        "height": 89.2
+      }
+    },
+    {
+      "referenceIndex": 3,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 2683.8,
+        "y": -1650.3,
+        "z": 65.5
+      },
+      "eq_min": {
+        "x": 2678.4,
+        "y": -1682.7,
+        "z": -9.5
+      },
+      "eq_max": {
+        "x": 2689.3,
+        "y": -1618,
+        "z": 140.5
+      },
+      "eq_size": {
+        "width": 10.9,
+        "depth": 64.7,
+        "height": 150
+      }
+    }
+  ],
+  "greatdivide": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -5183.2,
+        "y": -1806.3,
+        "z": 302.4
+      },
+      "eq_min": {
+        "x": -5233.2,
+        "y": -2006.3,
+        "z": 152.4
+      },
+      "eq_max": {
+        "x": -5133.2,
+        "y": -1606.3,
+        "z": 452.4
+      },
+      "eq_size": {
+        "width": 100,
+        "depth": 400,
+        "height": 300
+      }
+    },
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -142.5,
+        "y": 64.3,
+        "z": 103.8
+      },
+      "eq_min": {
+        "x": -152.7,
+        "y": 61.5,
+        "z": 93.7
+      },
+      "eq_max": {
+        "x": -132.3,
+        "y": 67.1,
+        "z": 114
+      },
+      "eq_size": {
+        "width": 20.4,
+        "depth": 5.6,
+        "height": 20.3
+      }
+    },
+    {
+      "referenceIndex": 3,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 3332.2,
+        "y": -6810.6,
+        "z": -19.9
+      },
+      "eq_min": {
+        "x": 3285.8,
+        "y": -6832,
+        "z": -43.1
+      },
+      "eq_max": {
+        "x": 3378.7,
+        "y": -6789.1,
+        "z": 3.4
+      },
+      "eq_size": {
+        "width": 92.9,
+        "depth": 43,
+        "height": 46.5
+      }
+    }
+  ],
+  "griegsend": [
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 3523,
+        "y": -17,
+        "z": 1.5
+      },
+      "eq_min": {
+        "x": 3517,
+        "y": -30,
+        "z": -17
+      },
+      "eq_max": {
+        "x": 3529,
+        "y": -4,
+        "z": 20
+      },
+      "eq_size": {
+        "width": 12,
+        "depth": 26,
+        "height": 37
+      }
+    },
+    {
+      "referenceIndex": 3,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 2419,
+        "y": 192,
+        "z": -48
+      },
+      "eq_min": {
+        "x": 2398,
+        "y": 172,
+        "z": -66
+      },
+      "eq_max": {
+        "x": 2440,
+        "y": 212,
+        "z": -30
+      },
+      "eq_size": {
+        "width": 42,
+        "depth": 40,
+        "height": 36
+      }
+    }
+  ],
+  "grimling": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 1942.5,
+        "y": 842.9,
+        "z": -263.9
+      },
+      "eq_min": {
+        "x": 1924.3,
+        "y": 827.3,
+        "z": -279
+      },
+      "eq_max": {
+        "x": 1960.7,
+        "y": 858.4,
+        "z": -248.8
+      },
+      "eq_size": {
+        "width": 36.5,
+        "depth": 31.1,
+        "height": 30.2
+      }
+    },
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -1214.9,
+        "y": -1837.1,
+        "z": 81.4
+      },
+      "eq_min": {
+        "x": -1249,
+        "y": -1866.6,
+        "z": 21.4
+      },
+      "eq_max": {
+        "x": -1180.7,
+        "y": -1807.7,
+        "z": 141.4
+      },
+      "eq_size": {
+        "width": 68.3,
+        "depth": 59,
+        "height": 120
+      }
+    },
+    {
+      "referenceIndex": 3,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -695.4,
+        "y": 1629.2,
+        "z": 93.2
+      },
+      "eq_min": {
+        "x": -739,
+        "y": 1604,
+        "z": 43.2
+      },
+      "eq_max": {
+        "x": -651.8,
+        "y": 1654.5,
+        "z": 143.2
+      },
+      "eq_size": {
+        "width": 87.2,
+        "depth": 50.5,
+        "height": 100
+      }
+    }
+  ],
+  "grobb": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 50,
+        "y": -139.9,
+        "z": 15
+      },
+      "eq_min": {
+        "x": 40,
+        "y": -141.9,
+        "z": 0
+      },
+      "eq_max": {
+        "x": 60,
+        "y": -137.9,
+        "z": 30
+      },
+      "eq_size": {
+        "width": 20,
+        "depth": 4,
+        "height": 30
+      }
+    }
+  ],
+  "gukbottom": [
+    {
+      "referenceIndex": 5,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -202.9,
+        "y": 1196.5,
+        "z": -77
+      },
+      "eq_min": {
+        "x": -209.9,
+        "y": 1189.5,
+        "z": -84
+      },
+      "eq_max": {
+        "x": -195.9,
+        "y": 1203.5,
+        "z": -70
+      },
+      "eq_size": {
+        "width": 14,
+        "depth": 14,
+        "height": 14
+      }
+    },
+    {
+      "referenceIndex": 4,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 636.7,
+        "y": 1112.6,
+        "z": -83
+      },
+      "eq_min": {
+        "x": 629.7,
+        "y": 1105.6,
+        "z": -90
+      },
+      "eq_max": {
+        "x": 643.7,
+        "y": 1119.6,
+        "z": -76
+      },
+      "eq_size": {
+        "width": 14,
+        "depth": 14,
+        "height": 14
+      }
+    },
+    {
+      "referenceIndex": 3,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 77,
+        "y": -127,
+        "z": -230.9
+      },
+      "eq_min": {
+        "x": 72,
+        "y": -127.9,
+        "z": -236.9
+      },
+      "eq_max": {
+        "x": 82,
+        "y": -126,
+        "z": -224.9
+      },
+      "eq_size": {
+        "width": 10,
+        "depth": 2,
+        "height": 12
+      }
+    }
+  ],
+  "guktop": [
+    {
+      "referenceIndex": 6,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 49,
+        "y": -63,
+        "z": 7
+      },
+      "eq_min": {
+        "x": 42,
+        "y": -70,
+        "z": 0
+      },
+      "eq_max": {
+        "x": 56,
+        "y": -56,
+        "z": 14
+      },
+      "eq_size": {
+        "width": 14,
+        "depth": 14,
+        "height": 14
+      }
+    },
+    {
+      "referenceIndex": 5,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -202.9,
+        "y": 1196.5,
+        "z": -77
+      },
+      "eq_min": {
+        "x": -209.9,
+        "y": 1189.5,
+        "z": -84
+      },
+      "eq_max": {
+        "x": -195.9,
+        "y": 1203.5,
+        "z": -70
+      },
+      "eq_size": {
+        "width": 14,
+        "depth": 14,
+        "height": 14
+      }
+    },
+    {
+      "referenceIndex": 7,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 265.9,
+        "y": 1595.1,
+        "z": -57
+      },
+      "eq_min": {
+        "x": 189.9,
+        "y": 1441.4,
+        "z": -85
+      },
+      "eq_max": {
+        "x": 341.9,
+        "y": 1748.8,
+        "z": -29.1
+      },
+      "eq_size": {
+        "width": 151.9,
+        "depth": 307.4,
+        "height": 55.9
+      }
+    },
+    {
+      "referenceIndex": 4,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 601.8,
+        "y": 1109.6,
+        "z": -307.5
+      },
+      "eq_min": {
+        "x": 573.8,
+        "y": 1105.6,
+        "z": -314.5
+      },
+      "eq_max": {
+        "x": 629.7,
+        "y": 1113.6,
+        "z": -300.5
+      },
+      "eq_size": {
+        "width": 56,
+        "depth": 8,
+        "height": 14
+      }
+    }
+  ],
+  "gunthak": [
+    {
+      "referenceIndex": 3,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 1329.5,
+        "y": -2303,
+        "z": 39
+      },
+      "eq_min": {
+        "x": 926.1,
+        "y": -2315,
+        "z": -103
+      },
+      "eq_max": {
+        "x": 1732.9,
+        "y": -2291,
+        "z": 181
+      },
+      "eq_size": {
+        "width": 806.8,
+        "depth": 24,
+        "height": 284
+      }
+    },
+    {
+      "referenceIndex": 4,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 2877,
+        "y": -3798,
+        "z": 576
+      },
+      "eq_min": {
+        "x": 2870,
+        "y": -3816,
+        "z": 550
+      },
+      "eq_max": {
+        "x": 2884,
+        "y": -3780,
+        "z": 602
+      },
+      "eq_size": {
+        "width": 14,
+        "depth": 36,
+        "height": 52
+      }
+    }
+  ],
+  "halas": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -76,
+        "y": -699.7,
+        "z": 19.5
+      },
+      "eq_min": {
+        "x": -101,
+        "y": -705.7,
+        "z": 0
+      },
+      "eq_max": {
+        "x": -51,
+        "y": -693.7,
+        "z": 39
+      },
+      "eq_size": {
+        "width": 50,
+        "depth": 12,
+        "height": 39
+      }
+    }
+  ],
+  "hatesfury": [
+    {
+      "referenceIndex": 5,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 1480,
+        "y": 941,
+        "z": -494
+      },
+      "eq_min": {
+        "x": 1458,
+        "y": 920,
+        "z": -512
+      },
+      "eq_max": {
+        "x": 1502,
+        "y": 962,
+        "z": -476
+      },
+      "eq_size": {
+        "width": 44,
+        "depth": 42,
+        "height": 36
+      }
+    },
+    {
+      "referenceIndex": 3,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -18,
+        "y": -181,
+        "z": 40
+      },
+      "eq_min": {
+        "x": -40,
+        "y": -202,
+        "z": 22
+      },
+      "eq_max": {
+        "x": 4,
+        "y": -160,
+        "z": 58
+      },
+      "eq_size": {
+        "width": 44,
+        "depth": 42,
+        "height": 36
+      }
+    },
+    {
+      "referenceIndex": 4,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -88,
+        "y": 1149,
+        "z": -492
+      },
+      "eq_min": {
+        "x": -110,
+        "y": 1128,
+        "z": -510
+      },
+      "eq_max": {
+        "x": -66,
+        "y": 1170,
+        "z": -474
+      },
+      "eq_size": {
+        "width": 44,
+        "depth": 42,
+        "height": 36
+      }
+    },
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -930,
+        "y": 65,
+        "z": -26
+      },
+      "eq_min": {
+        "x": -952,
+        "y": 44,
+        "z": -44
+      },
+      "eq_max": {
+        "x": -908,
+        "y": 86,
+        "z": -8
+      },
+      "eq_size": {
+        "width": 44,
+        "depth": 42,
+        "height": 36
+      }
+    },
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -1028,
+        "y": 146,
+        "z": 20.5
+      },
+      "eq_min": {
+        "x": -1048,
+        "y": 144,
+        "z": -12
+      },
+      "eq_max": {
+        "x": -1008,
+        "y": 148,
+        "z": 53
+      },
+      "eq_size": {
+        "width": 40,
+        "depth": 4,
+        "height": 65
+      }
+    }
+  ],
+  "highkeep": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 115.5,
+        "y": -70,
+        "z": 7
+      },
+      "eq_min": {
+        "x": 105,
+        "y": -98,
+        "z": 0
+      },
+      "eq_max": {
+        "x": 125.9,
+        "y": -42,
+        "z": 14
+      },
+      "eq_size": {
+        "width": 21,
+        "depth": 56,
+        "height": 14
+      }
+    },
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 115.5,
+        "y": 36,
+        "z": 7
+      },
+      "eq_min": {
+        "x": 105,
+        "y": 2,
+        "z": 0
+      },
+      "eq_max": {
+        "x": 125.9,
+        "y": 70,
+        "z": 14
+      },
+      "eq_size": {
+        "width": 21,
+        "depth": 68,
+        "height": 14
+      }
+    }
+  ],
+  "hole": [
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 88,
+        "y": 587.8,
+        "z": -91
+      },
+      "eq_min": {
+        "x": -118,
+        "y": 405.8,
+        "z": -98
+      },
+      "eq_max": {
+        "x": 293.9,
+        "y": 769.7,
+        "z": -84
+      },
+      "eq_size": {
+        "width": 411.8,
+        "depth": 363.9,
+        "height": 14
+      }
+    },
+    {
+      "referenceIndex": 6,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 265.9,
+        "y": 846.7,
+        "z": -888.6
+      },
+      "eq_min": {
+        "x": 244.9,
+        "y": 825.7,
+        "z": -895.6
+      },
+      "eq_max": {
+        "x": 286.9,
+        "y": 867.7,
+        "z": -881.6
+      },
+      "eq_size": {
+        "width": 42,
+        "depth": 42,
+        "height": 14
+      }
+    },
+    {
+      "referenceIndex": 3,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 373.9,
+        "y": 46.5,
+        "z": -373.9
+      },
+      "eq_min": {
+        "x": 364.9,
+        "y": 29,
+        "z": -384.8
+      },
+      "eq_max": {
+        "x": 382.8,
+        "y": 64,
+        "z": -362.9
+      },
+      "eq_size": {
+        "width": 18,
+        "depth": 35,
+        "height": 22
+      }
+    },
+    {
+      "referenceIndex": 4,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 360.4,
+        "y": 82,
+        "z": -367.4
+      },
+      "eq_min": {
+        "x": 337.9,
+        "y": 67,
+        "z": -384.8
+      },
+      "eq_max": {
+        "x": 382.8,
+        "y": 97,
+        "z": -349.9
+      },
+      "eq_size": {
+        "width": 45,
+        "depth": 30,
+        "height": 35
+      }
+    },
+    {
+      "referenceIndex": 5,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 297.4,
+        "y": 46.5,
+        "z": -346.4
+      },
+      "eq_min": {
+        "x": 267.9,
+        "y": 29,
+        "z": -384.8
+      },
+      "eq_max": {
+        "x": 326.9,
+        "y": 64,
+        "z": -307.9
+      },
+      "eq_size": {
+        "width": 59,
+        "depth": 35,
+        "height": 77
+      }
+    }
+  ],
+  "hollowshade": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 3294.1,
+        "y": 1170.9,
+        "z": 135.9
+      },
+      "eq_min": {
+        "x": 3264.1,
+        "y": 1120.9,
+        "z": 85.9
+      },
+      "eq_max": {
+        "x": 3324.1,
+        "y": 1220.9,
+        "z": 185.9
+      },
+      "eq_size": {
+        "width": 60,
+        "depth": 100,
+        "height": 100
+      }
+    },
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -2535.2,
+        "y": 3357.4,
+        "z": 306.9
+      },
+      "eq_min": {
+        "x": -2593.6,
+        "y": 3331.1,
+        "z": 231.9
+      },
+      "eq_max": {
+        "x": -2476.7,
+        "y": 3383.7,
+        "z": 381.9
+      },
+      "eq_size": {
+        "width": 116.9,
+        "depth": 52.6,
+        "height": 150
+      }
+    },
+    {
+      "referenceIndex": 3,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 3065.1,
+        "y": -1632,
+        "z": -112.6
+      },
+      "eq_min": {
+        "x": 3045.8,
+        "y": -1674.3,
+        "z": -138.7
+      },
+      "eq_max": {
+        "x": 3084.3,
+        "y": -1589.7,
+        "z": -86.5
+      },
+      "eq_size": {
+        "width": 38.6,
+        "depth": 84.6,
+        "height": 52.2
+      }
+    }
+  ],
+  "iceclad": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 10756.1,
+        "y": -4491.6,
+        "z": 633.1
+      },
+      "eq_min": {
+        "x": 10708.3,
+        "y": -4700.2,
+        "z": 533.1
+      },
+      "eq_max": {
+        "x": 10804,
+        "y": -4283.1,
+        "z": 733.1
+      },
+      "eq_size": {
+        "width": 95.7,
+        "depth": 417.1,
+        "height": 200
+      }
+    }
+  ],
+  "innothule": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 1166,
+        "y": 2619.9,
+        "z": 26.5
+      },
+      "eq_min": {
+        "x": 1020.1,
+        "y": 2476.4,
+        "z": -35.9
+      },
+      "eq_max": {
+        "x": 1312,
+        "y": 2763.3,
+        "z": 88.8
+      },
+      "eq_size": {
+        "width": 291.9,
+        "depth": 286.9,
+        "height": 124.7
+      }
+    },
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 1910.6,
+        "y": -1145.4,
+        "z": 11.2
+      },
+      "eq_min": {
+        "x": 1900.9,
+        "y": -1198,
+        "z": -14
+      },
+      "eq_max": {
+        "x": 1920.4,
+        "y": -1092.9,
+        "z": 36.5
+      },
+      "eq_size": {
+        "width": 19.6,
+        "depth": 105,
+        "height": 50.4
+      }
+    },
+    {
+      "referenceIndex": 3,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -615.2,
+        "y": -2751,
+        "z": 11.5
+      },
+      "eq_min": {
+        "x": -629.2,
+        "y": -2752.5,
+        "z": -52.4
+      },
+      "eq_max": {
+        "x": -601.1,
+        "y": -2749.5,
+        "z": 75.4
+      },
+      "eq_size": {
+        "width": 28.2,
+        "depth": 3,
+        "height": 127.8
+      }
+    },
+    {
+      "referenceIndex": 4,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -830.1,
+        "y": 142.8,
+        "z": -2.8
+      },
+      "eq_min": {
+        "x": -831.6,
+        "y": 131.8,
+        "z": -11.5
+      },
+      "eq_max": {
+        "x": -828.6,
+        "y": 153.9,
+        "z": 5.9
+      },
+      "eq_size": {
+        "width": 3,
+        "depth": 22,
+        "height": 17.4
+      }
+    }
+  ],
+  "jaggedpine": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -2320.4,
+        "y": 1144,
+        "z": 8.6
+      },
+      "eq_min": {
+        "x": -2350.7,
+        "y": 1118.5,
+        "z": -23
+      },
+      "eq_max": {
+        "x": -2290,
+        "y": 1169.6,
+        "z": 40.3
+      },
+      "eq_size": {
+        "width": 60.7,
+        "depth": 51.2,
+        "height": 63.3
+      }
+    },
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 3961,
+        "y": -474.2,
+        "z": 11.5
+      },
+      "eq_min": {
+        "x": 3912.4,
+        "y": -512.2,
+        "z": -13.5
+      },
+      "eq_max": {
+        "x": 4009.7,
+        "y": -436.1,
+        "z": 36.5
+      },
+      "eq_size": {
+        "width": 97.3,
+        "depth": 76.1,
+        "height": 50
+      }
+    }
+  ],
+  "kael": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 3228.7,
+        "y": -129.9,
+        "z": -349.9
+      },
+      "eq_min": {
+        "x": 3198.7,
+        "y": -159.9,
+        "z": -399.8
+      },
+      "eq_max": {
+        "x": 3258.7,
+        "y": -100,
+        "z": -299.9
+      },
+      "eq_size": {
+        "width": 60,
+        "depth": 60,
+        "height": 100
+      }
+    },
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -699.7,
+        "y": -10,
+        "z": 169.9
+      },
+      "eq_min": {
+        "x": -739.7,
+        "y": -40,
+        "z": 120
+      },
+      "eq_max": {
+        "x": -659.7,
+        "y": 20,
+        "z": 219.9
+      },
+      "eq_size": {
+        "width": 80,
+        "depth": 60,
+        "height": 100
+      }
+    }
+  ],
+  "kaelshard": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 3228.7,
+        "y": -129.9,
+        "z": -349.9
+      },
+      "eq_min": {
+        "x": 3198.7,
+        "y": -159.9,
+        "z": -399.8
+      },
+      "eq_max": {
+        "x": 3258.7,
+        "y": -100,
+        "z": -299.9
+      },
+      "eq_size": {
+        "width": 60,
+        "depth": 60,
+        "height": 100
+      }
+    },
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -699.7,
+        "y": -10,
+        "z": 169.9
+      },
+      "eq_min": {
+        "x": -739.7,
+        "y": -40,
+        "z": 120
+      },
+      "eq_max": {
+        "x": -659.7,
+        "y": 20,
+        "z": 219.9
+      },
+      "eq_size": {
+        "width": 80,
+        "depth": 60,
+        "height": 100
+      }
+    }
+  ],
+  "kaesora": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 40,
+        "y": 415.8,
+        "z": 104
+      },
+      "eq_min": {
+        "x": 32,
+        "y": 383.8,
+        "z": 96
+      },
+      "eq_max": {
+        "x": 48,
+        "y": 447.8,
+        "z": 112
+      },
+      "eq_size": {
+        "width": 16,
+        "depth": 64,
+        "height": 16
+      }
+    }
+  ],
+  "kaladima": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 42,
+        "y": -90,
+        "z": 8
+      },
+      "eq_min": {
+        "x": 36,
+        "y": -96,
+        "z": 0
+      },
+      "eq_max": {
+        "x": 48,
+        "y": -84,
+        "z": 16
+      },
+      "eq_size": {
+        "width": 12,
+        "depth": 12,
+        "height": 16
+      }
+    }
+  ],
+  "kaladimb": [
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -222.9,
+        "y": 347.9,
+        "z": 12
+      },
+      "eq_min": {
+        "x": -229.9,
+        "y": 345.9,
+        "z": 0
+      },
+      "eq_max": {
+        "x": -215.9,
+        "y": 349.9,
+        "z": 24
+      },
+      "eq_size": {
+        "width": 14,
+        "depth": 4,
+        "height": 24
+      }
+    },
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 341.9,
+        "y": 407.8,
+        "z": -12
+      },
+      "eq_min": {
+        "x": 333.9,
+        "y": 405.8,
+        "z": -24
+      },
+      "eq_max": {
+        "x": 349.9,
+        "y": 409.8,
+        "z": 0
+      },
+      "eq_size": {
+        "width": 16,
+        "depth": 4,
+        "height": 24
+      }
+    }
+  ],
+  "karnor": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 406.3,
+        "y": 115.5,
+        "z": 52.5
+      },
+      "eq_min": {
+        "x": 404.8,
+        "y": 98,
+        "z": 0
+      },
+      "eq_max": {
+        "x": 407.8,
+        "y": 132.9,
+        "z": 105
+      },
+      "eq_size": {
+        "width": 3,
+        "depth": 35,
+        "height": 105
+      }
+    },
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 404.3,
+        "y": -80.5,
+        "z": 52.5
+      },
+      "eq_min": {
+        "x": 402.8,
+        "y": -98,
+        "z": 0
+      },
+      "eq_max": {
+        "x": 405.8,
+        "y": -63,
+        "z": 105
+      },
+      "eq_size": {
+        "width": 3,
+        "depth": 35,
+        "height": 105
+      }
+    }
+  ],
+  "kerraridge": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -954.6,
+        "y": 414.8,
+        "z": 30
+      },
+      "eq_min": {
+        "x": -959.6,
+        "y": 399.8,
+        "z": 20
+      },
+      "eq_max": {
+        "x": -949.6,
+        "y": 429.8,
+        "z": 40
+      },
+      "eq_size": {
+        "width": 10,
+        "depth": 30,
+        "height": 20
+      }
+    }
+  ],
+  "kithicor": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 4892.9,
+        "y": 566.7,
+        "z": 718.3
+      },
+      "eq_min": {
+        "x": 4874,
+        "y": 558.3,
+        "z": 681.8
+      },
+      "eq_max": {
+        "x": 4911.8,
+        "y": 575.1,
+        "z": 754.8
+      },
+      "eq_size": {
+        "width": 37.7,
+        "depth": 16.8,
+        "height": 72.9
+      }
+    },
+    {
+      "referenceIndex": 3,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -1100,
+        "y": 1483.6,
+        "z": -15.4
+      },
+      "eq_min": {
+        "x": -1126.4,
+        "y": 1475.8,
+        "z": -56.5
+      },
+      "eq_max": {
+        "x": -1073.7,
+        "y": 1491.5,
+        "z": 25.6
+      },
+      "eq_size": {
+        "width": 52.7,
+        "depth": 15.7,
+        "height": 82.1
+      }
+    },
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 3825.2,
+        "y": 2027.1,
+        "z": 468.3
+      },
+      "eq_min": {
+        "x": 3810.5,
+        "y": 2023.5,
+        "z": 460.5
+      },
+      "eq_max": {
+        "x": 3840,
+        "y": 2030.7,
+        "z": 476.1
+      },
+      "eq_size": {
+        "width": 29.4,
+        "depth": 7.2,
+        "height": 15.6
+      }
+    }
+  ],
+  "kodtaz": [
+    {
+      "referenceIndex": 3,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 2689,
+        "y": -640.5,
+        "z": -184.5
+      },
+      "eq_min": {
+        "x": 2684,
+        "y": -795,
+        "z": -192
+      },
+      "eq_max": {
+        "x": 2694,
+        "y": -486,
+        "z": -177
+      },
+      "eq_size": {
+        "width": 10,
+        "depth": 309,
+        "height": 15
+      }
+    },
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 2540,
+        "y": -2764.8,
+        "z": -184.5
+      },
+      "eq_min": {
+        "x": 2535,
+        "y": -2994.2,
+        "z": -192
+      },
+      "eq_max": {
+        "x": 2545,
+        "y": -2535.3,
+        "z": -177
+      },
+      "eq_size": {
+        "width": 10,
+        "depth": 458.9,
+        "height": 15
+      }
+    },
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 533,
+        "y": -2745.6,
+        "z": -314
+      },
+      "eq_min": {
+        "x": 528,
+        "y": -2959.7,
+        "z": -451
+      },
+      "eq_max": {
+        "x": 538,
+        "y": -2531.5,
+        "z": -177
+      },
+      "eq_size": {
+        "width": 10,
+        "depth": 428.2,
+        "height": 274
+      }
+    },
+    {
+      "referenceIndex": 4,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -1323.2,
+        "y": 1377.5,
+        "z": -440
+      },
+      "eq_min": {
+        "x": -1529,
+        "y": 1363,
+        "z": -688
+      },
+      "eq_max": {
+        "x": -1117.3,
+        "y": 1392,
+        "z": -192
+      },
+      "eq_size": {
+        "width": 411.7,
+        "depth": 29,
+        "height": 496
+      }
+    }
+  ],
+  "kurn": [
+    {
+      "referenceIndex": 3,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -302.1,
+        "y": 34.5,
+        "z": -87
+      },
+      "eq_min": {
+        "x": -309.9,
+        "y": 28,
+        "z": -99
+      },
+      "eq_max": {
+        "x": -294.4,
+        "y": 41,
+        "z": -75
+      },
+      "eq_size": {
+        "width": 15.5,
+        "depth": 13,
+        "height": 24
+      }
+    },
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 45.5,
+        "y": -283.4,
+        "z": 42
+      },
+      "eq_min": {
+        "x": 42,
+        "y": -293.9,
+        "z": 0
+      },
+      "eq_max": {
+        "x": 49,
+        "y": -272.9,
+        "z": 84
+      },
+      "eq_size": {
+        "width": 7,
+        "depth": 21,
+        "height": 84
+      }
+    },
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -45.5,
+        "y": -283.4,
+        "z": 42
+      },
+      "eq_min": {
+        "x": -49,
+        "y": -293.9,
+        "z": 0
+      },
+      "eq_max": {
+        "x": -42,
+        "y": -272.9,
+        "z": 84
+      },
+      "eq_size": {
+        "width": 7,
+        "depth": 21,
+        "height": 84
+      }
+    }
+  ],
+  "lakeofillomen": [
+    {
+      "referenceIndex": 4,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -4463.8,
+        "y": 1268.5,
+        "z": 282.8
+      },
+      "eq_min": {
+        "x": -4499.1,
+        "y": 1142.8,
+        "z": 121.3
+      },
+      "eq_max": {
+        "x": -4428.5,
+        "y": 1394.3,
+        "z": 444.4
+      },
+      "eq_size": {
+        "width": 70.6,
+        "depth": 251.4,
+        "height": 323.1
+      }
+    },
+    {
+      "referenceIndex": 6,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -6629,
+        "y": 6525,
+        "z": 110.7
+      },
+      "eq_min": {
+        "x": -6652.6,
+        "y": 6517.5,
+        "z": 16.4
+      },
+      "eq_max": {
+        "x": -6605.4,
+        "y": 6532.6,
+        "z": 205.1
+      },
+      "eq_size": {
+        "width": 47.2,
+        "depth": 15.1,
+        "height": 188.7
+      }
+    },
+    {
+      "referenceIndex": 7,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -6799.3,
+        "y": 6325.8,
+        "z": 110.7
+      },
+      "eq_min": {
+        "x": -6806.8,
+        "y": 6302.6,
+        "z": 16.4
+      },
+      "eq_max": {
+        "x": -6791.7,
+        "y": 6349.1,
+        "z": 205.1
+      },
+      "eq_size": {
+        "width": 15.1,
+        "depth": 46.5,
+        "height": 188.7
+      }
+    },
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -74.2,
+        "y": -339,
+        "z": -185.4
+      },
+      "eq_min": {
+        "x": -77.1,
+        "y": -353.8,
+        "z": -200.3
+      },
+      "eq_max": {
+        "x": -71.2,
+        "y": -324.2,
+        "z": -170.5
+      },
+      "eq_size": {
+        "width": 5.9,
+        "depth": 29.6,
+        "height": 29.8
+      }
+    },
+    {
+      "referenceIndex": 3,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -74.2,
+        "y": -417.8,
+        "z": -185.4
+      },
+      "eq_min": {
+        "x": -77.1,
+        "y": -432.6,
+        "z": -200.3
+      },
+      "eq_max": {
+        "x": -71.2,
+        "y": -403,
+        "z": -170.5
+      },
+      "eq_size": {
+        "width": 5.9,
+        "depth": 29.6,
+        "height": 29.8
+      }
+    },
+    {
+      "referenceIndex": 5,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 1179.3,
+        "y": 4336.4,
+        "z": 61.3
+      },
+      "eq_min": {
+        "x": 1177.4,
+        "y": 4308.8,
+        "z": 27.6
+      },
+      "eq_max": {
+        "x": 1181.1,
+        "y": 4364.1,
+        "z": 94.9
+      },
+      "eq_size": {
+        "width": 3.7,
+        "depth": 55.3,
+        "height": 67.3
+      }
+    },
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 3362.6,
+        "y": -406.9,
+        "z": 236.7
+      },
+      "eq_min": {
+        "x": 3350.2,
+        "y": -549.4,
+        "z": 75.3
+      },
+      "eq_max": {
+        "x": 3375,
+        "y": -264.5,
+        "z": 398.1
+      },
+      "eq_size": {
+        "width": 24.8,
+        "depth": 284.9,
+        "height": 322.9
+      }
+    }
+  ],
+  "lakerathe": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -2315.9,
+        "y": 2541.9,
+        "z": 123.9
+      },
+      "eq_min": {
+        "x": -2342.8,
+        "y": 2457.1,
+        "z": 0
+      },
+      "eq_max": {
+        "x": -2289.1,
+        "y": 2626.7,
+        "z": 247.7
+      },
+      "eq_size": {
+        "width": 53.7,
+        "depth": 169.6,
+        "height": 247.7
+      }
+    },
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 2706.1,
+        "y": 2346.1,
+        "z": 112.5
+      },
+      "eq_min": {
+        "x": 2700.1,
+        "y": 2327.9,
+        "z": 90
+      },
+      "eq_max": {
+        "x": 2712,
+        "y": 2364.4,
+        "z": 135
+      },
+      "eq_size": {
+        "width": 12,
+        "depth": 36.5,
+        "height": 45
+      }
+    },
+    {
+      "referenceIndex": 3,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 1153.1,
+        "y": 4387.2,
+        "z": 17.5
+      },
+      "eq_min": {
+        "x": 1111.6,
+        "y": 4377.3,
+        "z": -10.4
+      },
+      "eq_max": {
+        "x": 1194.5,
+        "y": 4397.2,
+        "z": 45.5
+      },
+      "eq_size": {
+        "width": 83,
+        "depth": 19.9,
+        "height": 55.8
+      }
+    }
+  ],
+  "letalis": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -6.5,
+        "y": 1446.1,
+        "z": 52.2
+      },
+      "eq_min": {
+        "x": -61.3,
+        "y": 1423.7,
+        "z": 27.2
+      },
+      "eq_max": {
+        "x": 48.4,
+        "y": 1468.4,
+        "z": 77.2
+      },
+      "eq_size": {
+        "width": 109.7,
+        "depth": 44.7,
+        "height": 50
+      }
+    },
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -697.4,
+        "y": -1429.4,
+        "z": 47.3
+      },
+      "eq_min": {
+        "x": -736.7,
+        "y": -1445.3,
+        "z": 18.5
+      },
+      "eq_max": {
+        "x": -658,
+        "y": -1413.5,
+        "z": 76.2
+      },
+      "eq_size": {
+        "width": 78.7,
+        "depth": 31.8,
+        "height": 57.7
+      }
+    }
+  ],
+  "lfaydark": [
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -1199.2,
+        "y": 2188,
+        "z": 75
+      },
+      "eq_min": {
+        "x": -1248.5,
+        "y": 2179.9,
+        "z": 0
+      },
+      "eq_max": {
+        "x": -1149.9,
+        "y": 2196.1,
+        "z": 150
+      },
+      "eq_size": {
+        "width": 98.6,
+        "depth": 16.2,
+        "height": 150
+      }
+    },
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -2190,
+        "y": 911.3,
+        "z": 73.2
+      },
+      "eq_min": {
+        "x": -2195.1,
+        "y": 864.6,
+        "z": -14.3
+      },
+      "eq_max": {
+        "x": -2185,
+        "y": 958,
+        "z": 160.6
+      },
+      "eq_size": {
+        "width": 10.1,
+        "depth": 93.4,
+        "height": 174.9
+      }
+    },
+    {
+      "referenceIndex": 3,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 3358.7,
+        "y": -1107.9,
+        "z": 56.2
+      },
+      "eq_min": {
+        "x": 3325.4,
+        "y": -1111.9,
+        "z": -3.8
+      },
+      "eq_max": {
+        "x": 3392,
+        "y": -1103.8,
+        "z": 116.2
+      },
+      "eq_size": {
+        "width": 66.7,
+        "depth": 8.1,
+        "height": 120
+      }
+    }
+  ],
+  "maiden": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 2151.5,
+        "y": 1007.8,
+        "z": -200.3
+      },
+      "eq_min": {
+        "x": 2126.5,
+        "y": 982.8,
+        "z": -235.3
+      },
+      "eq_max": {
+        "x": 2176.5,
+        "y": 1032.8,
+        "z": -165.3
+      },
+      "eq_size": {
+        "width": 50,
+        "depth": 50,
+        "height": 70
+      }
+    },
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 243.2,
+        "y": -2332.8,
+        "z": -73.3
+      },
+      "eq_min": {
+        "x": 204.7,
+        "y": -2359.9,
+        "z": -163.3
+      },
+      "eq_max": {
+        "x": 281.8,
+        "y": -2305.8,
+        "z": 16.7
+      },
+      "eq_size": {
+        "width": 77.1,
+        "depth": 54.1,
+        "height": 180
+      }
+    },
+    {
+      "referenceIndex": 3,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 70.3,
+        "y": -2282.2,
+        "z": -74.3
+      },
+      "eq_min": {
+        "x": 35,
+        "y": -2303.1,
+        "z": -164.3
+      },
+      "eq_max": {
+        "x": 105.7,
+        "y": -2261.4,
+        "z": 15.7
+      },
+      "eq_size": {
+        "width": 70.7,
+        "depth": 41.6,
+        "height": 180
+      }
+    },
+    {
+      "referenceIndex": 4,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -2108.4,
+        "y": -395,
+        "z": -112.1
+      },
+      "eq_min": {
+        "x": -2192.5,
+        "y": -521.4,
+        "z": -162.1
+      },
+      "eq_max": {
+        "x": -2024.2,
+        "y": -268.5,
+        "z": -62.1
+      },
+      "eq_size": {
+        "width": 168.3,
+        "depth": 252.9,
+        "height": 100
+      }
+    }
+  ],
+  "mistmoore": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 153.9,
+        "y": -349.9,
+        "z": -146.9
+      },
+      "eq_min": {
+        "x": 112,
+        "y": -391.8,
+        "z": -181.9
+      },
+      "eq_max": {
+        "x": 195.9,
+        "y": -307.9,
+        "z": -112
+      },
+      "eq_size": {
+        "width": 84,
+        "depth": 84,
+        "height": 70
+      }
+    }
+  ],
+  "mseru": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -1119.7,
+        "y": -2140.2,
+        "z": -13.1
+      },
+      "eq_min": {
+        "x": -1159.7,
+        "y": -2180.2,
+        "z": -38.1
+      },
+      "eq_max": {
+        "x": -1079.7,
+        "y": -2100.2,
+        "z": 11.9
+      },
+      "eq_size": {
+        "width": 80,
+        "depth": 80,
+        "height": 50
+      }
+    },
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -1858.4,
+        "y": 596.6,
+        "z": 19
+      },
+      "eq_min": {
+        "x": -1878.4,
+        "y": 571.6,
+        "z": -31
+      },
+      "eq_max": {
+        "x": -1838.4,
+        "y": 621.6,
+        "z": 69
+      },
+      "eq_size": {
+        "width": 40,
+        "depth": 50,
+        "height": 100
+      }
+    },
+    {
+      "referenceIndex": 3,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -1181.9,
+        "y": 2200.1,
+        "z": 173.5
+      },
+      "eq_min": {
+        "x": -1231.9,
+        "y": 2165.1,
+        "z": 123.5
+      },
+      "eq_max": {
+        "x": -1131.9,
+        "y": 2235.1,
+        "z": 223.5
+      },
+      "eq_size": {
+        "width": 100,
+        "depth": 70,
+        "height": 100
+      }
+    },
+    {
+      "referenceIndex": 4,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -1858.4,
+        "y": 472.4,
+        "z": 19
+      },
+      "eq_min": {
+        "x": -1878.4,
+        "y": 447.4,
+        "z": -31
+      },
+      "eq_max": {
+        "x": -1838.4,
+        "y": 497.4,
+        "z": 69
+      },
+      "eq_size": {
+        "width": 40,
+        "depth": 50,
+        "height": 100
+      }
+    }
+  ],
+  "nadox": [
+    {
+      "referenceIndex": 3,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -608.5,
+        "y": -1348,
+        "z": -22
+      },
+      "eq_min": {
+        "x": -611,
+        "y": -1366,
+        "z": -48
+      },
+      "eq_max": {
+        "x": -606,
+        "y": -1330,
+        "z": 4
+      },
+      "eq_size": {
+        "width": 5,
+        "depth": 36,
+        "height": 52
+      }
+    },
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 682.9,
+        "y": -673,
+        "z": 19
+      },
+      "eq_min": {
+        "x": 281.3,
+        "y": -679,
+        "z": -52
+      },
+      "eq_max": {
+        "x": 1084.5,
+        "y": -667,
+        "z": 90
+      },
+      "eq_size": {
+        "width": 803.2,
+        "depth": 12,
+        "height": 142
+      }
+    },
+    {
+      "referenceIndex": 4,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -1584,
+        "y": 0.5,
+        "z": 82
+      },
+      "eq_min": {
+        "x": -1624,
+        "y": -3,
+        "z": -4
+      },
+      "eq_max": {
+        "x": -1544,
+        "y": 4,
+        "z": 168
+      },
+      "eq_size": {
+        "width": 80,
+        "depth": 7,
+        "height": 172
+      }
+    }
+  ],
+  "najena": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 884.6,
+        "y": -15,
+        "z": 25
+      },
+      "eq_min": {
+        "x": 869.7,
+        "y": -30,
+        "z": 0
+      },
+      "eq_max": {
+        "x": 899.6,
+        "y": 0,
+        "z": 50
+      },
+      "eq_size": {
+        "width": 30,
+        "depth": 30,
+        "height": 50
+      }
+    }
+  ],
+  "natimbi": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 212.6,
+        "y": 2074.3,
+        "z": 610.1
+      },
+      "eq_min": {
+        "x": 190.7,
+        "y": 1990,
+        "z": 535.1
+      },
+      "eq_max": {
+        "x": 234.5,
+        "y": 2158.7,
+        "z": 685.1
+      },
+      "eq_size": {
+        "width": 43.8,
+        "depth": 168.7,
+        "height": 150
+      }
+    }
+  ],
+  "nedaria": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -1800.7,
+        "y": -127.5,
+        "z": 273.2
+      },
+      "eq_min": {
+        "x": -1850.2,
+        "y": -166.5,
+        "z": 250.2
+      },
+      "eq_max": {
+        "x": -1751.3,
+        "y": -88.5,
+        "z": 296.2
+      },
+      "eq_size": {
+        "width": 98.9,
+        "depth": 78,
+        "height": 46
+      }
+    }
+  ],
+  "nektulos": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -1108.7,
+        "y": 2244.3,
+        "z": 9.6
+      },
+      "eq_min": {
+        "x": -1134.5,
+        "y": 2237.5,
+        "z": -3.8
+      },
+      "eq_max": {
+        "x": -1082.8,
+        "y": 2251,
+        "z": 23.1
+      },
+      "eq_size": {
+        "width": 51.7,
+        "depth": 13.5,
+        "height": 26.9
+      }
+    },
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -655.5,
+        "y": -2717.6,
+        "z": 84.5
+      },
+      "eq_min": {
+        "x": -725,
+        "y": -2733.8,
+        "z": -29.3
+      },
+      "eq_max": {
+        "x": -586.1,
+        "y": -2701.5,
+        "z": 198.4
+      },
+      "eq_size": {
+        "width": 138.9,
+        "depth": 32.3,
+        "height": 227.7
+      }
+    },
+    {
+      "referenceIndex": 3,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 293.3,
+        "y": 3144.2,
+        "z": 78.1
+      },
+      "eq_min": {
+        "x": 164.1,
+        "y": 3111.9,
+        "z": -46.9
+      },
+      "eq_max": {
+        "x": 422.4,
+        "y": 3176.5,
+        "z": 203.1
+      },
+      "eq_size": {
+        "width": 258.3,
+        "depth": 64.6,
+        "height": 250
+      }
+    }
+  ],
+  "neriaka": [
+    {
+      "referenceIndex": 3,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 153.9,
+        "y": 77,
+        "z": 35
+      },
+      "eq_min": {
+        "x": 139.9,
+        "y": 56,
+        "z": 28
+      },
+      "eq_max": {
+        "x": 167.9,
+        "y": 98,
+        "z": 42
+      },
+      "eq_size": {
+        "width": 28,
+        "depth": 42,
+        "height": 14
+      }
+    },
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -384.8,
+        "y": 84,
+        "z": 0
+      },
+      "eq_min": {
+        "x": -405.8,
+        "y": 70,
+        "z": -14
+      },
+      "eq_max": {
+        "x": -363.9,
+        "y": 98,
+        "z": 14
+      },
+      "eq_size": {
+        "width": 42,
+        "depth": 28,
+        "height": 28
+      }
+    },
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -468.8,
+        "y": -234.4,
+        "z": 21
+      },
+      "eq_min": {
+        "x": -489.8,
+        "y": -244.9,
+        "z": 14
+      },
+      "eq_max": {
+        "x": -447.8,
+        "y": -223.9,
+        "z": 28
+      },
+      "eq_size": {
+        "width": 42,
+        "depth": 21,
+        "height": 14
+      }
+    }
+  ],
+  "neriakb": [
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -342.9,
+        "y": 84,
+        "z": 0
+      },
+      "eq_min": {
+        "x": -363.9,
+        "y": 70,
+        "z": -14
+      },
+      "eq_max": {
+        "x": -321.9,
+        "y": 98,
+        "z": 14
+      },
+      "eq_size": {
+        "width": 42,
+        "depth": 28,
+        "height": 28
+      }
+    },
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -475.8,
+        "y": -255.4,
+        "z": 21
+      },
+      "eq_min": {
+        "x": -503.8,
+        "y": -265.9,
+        "z": 14
+      },
+      "eq_max": {
+        "x": -447.8,
+        "y": -244.9,
+        "z": 28
+      },
+      "eq_size": {
+        "width": 56,
+        "depth": 21,
+        "height": 14
+      }
+    },
+    {
+      "referenceIndex": 3,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -838.7,
+        "y": 213.4,
+        "z": -36
+      },
+      "eq_min": {
+        "x": -860.7,
+        "y": 202.9,
+        "z": -42
+      },
+      "eq_max": {
+        "x": -816.7,
+        "y": 223.9,
+        "z": -30
+      },
+      "eq_size": {
+        "width": 44,
+        "depth": 21,
+        "height": 12
+      }
+    }
+  ],
+  "neriakc": [
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -1860.3,
+        "y": 790.7,
+        "z": -105
+      },
+      "eq_min": {
+        "x": -1873.3,
+        "y": 783.7,
+        "z": -112
+      },
+      "eq_max": {
+        "x": -1847.3,
+        "y": 797.7,
+        "z": -98
+      },
+      "eq_size": {
+        "width": 26,
+        "depth": 14,
+        "height": 14
+      }
+    },
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -839.7,
+        "y": 192.4,
+        "z": -36
+      },
+      "eq_min": {
+        "x": -860.7,
+        "y": 181.9,
+        "z": -42
+      },
+      "eq_max": {
+        "x": -818.7,
+        "y": 202.9,
+        "z": -30
+      },
+      "eq_size": {
+        "width": 42,
+        "depth": 21,
+        "height": 12
+      }
+    }
+  ],
+  "netherbian": [
+    {
+      "referenceIndex": 4,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 1041.5,
+        "y": 398.5,
+        "z": 106.5
+      },
+      "eq_min": {
+        "x": 1040,
+        "y": 385,
+        "z": 69
+      },
+      "eq_max": {
+        "x": 1043,
+        "y": 412,
+        "z": 144
+      },
+      "eq_size": {
+        "width": 3,
+        "depth": 27,
+        "height": 75
+      }
+    },
+    {
+      "referenceIndex": 3,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 1041.5,
+        "y": 522.5,
+        "z": 106.5
+      },
+      "eq_min": {
+        "x": 1040,
+        "y": 509,
+        "z": 69
+      },
+      "eq_max": {
+        "x": 1043,
+        "y": 536,
+        "z": 144
+      },
+      "eq_size": {
+        "width": 3,
+        "depth": 27,
+        "height": 75
+      }
+    },
+    {
+      "referenceIndex": 6,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -54,
+        "y": -728.5,
+        "z": 37.5
+      },
+      "eq_min": {
+        "x": -66,
+        "y": -730,
+        "z": 0
+      },
+      "eq_max": {
+        "x": -42,
+        "y": -727,
+        "z": 75
+      },
+      "eq_size": {
+        "width": 24,
+        "depth": 3,
+        "height": 75
+      }
+    },
+    {
+      "referenceIndex": 5,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 75,
+        "y": -728.5,
+        "z": 37.5
+      },
+      "eq_min": {
+        "x": 63,
+        "y": -730,
+        "z": 0
+      },
+      "eq_max": {
+        "x": 87,
+        "y": -727,
+        "z": 75
+      },
+      "eq_size": {
+        "width": 24,
+        "depth": 3,
+        "height": 75
+      }
+    },
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -367,
+        "y": -650,
+        "z": 15
+      },
+      "eq_min": {
+        "x": -387,
+        "y": -689,
+        "z": -8
+      },
+      "eq_max": {
+        "x": -347,
+        "y": -611,
+        "z": 38
+      },
+      "eq_size": {
+        "width": 40,
+        "depth": 78,
+        "height": 46
+      }
+    }
+  ],
+  "nexus": [
+    {
+      "referenceIndex": 3,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -447.5,
+        "y": -44,
+        "z": -26
+      },
+      "eq_min": {
+        "x": -462.5,
+        "y": -58,
+        "z": -44.5
+      },
+      "eq_max": {
+        "x": -432.5,
+        "y": -30,
+        "z": -7.5
+      },
+      "eq_size": {
+        "width": 30,
+        "depth": 28,
+        "height": 37
+      }
+    },
+    {
+      "referenceIndex": 4,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -209.2,
+        "y": -410,
+        "z": -37
+      },
+      "eq_min": {
+        "x": -432.5,
+        "y": -415,
+        "z": -66.5
+      },
+      "eq_max": {
+        "x": 14,
+        "y": -405,
+        "z": -7.5
+      },
+      "eq_size": {
+        "width": 446.5,
+        "depth": 10,
+        "height": 59
+      }
+    },
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 477.2,
+        "y": -2.5,
+        "z": -21
+      },
+      "eq_min": {
+        "x": 468,
+        "y": -15,
+        "z": -34.5
+      },
+      "eq_max": {
+        "x": 486.5,
+        "y": 10,
+        "z": -7.5
+      },
+      "eq_size": {
+        "width": 18.5,
+        "depth": 25,
+        "height": 27
+      }
+    },
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 42.5,
+        "y": 420,
+        "z": -21
+      },
+      "eq_min": {
+        "x": 25,
+        "y": 402.5,
+        "z": -34.5
+      },
+      "eq_max": {
+        "x": 60,
+        "y": 437.5,
+        "z": -7.5
+      },
+      "eq_size": {
+        "width": 35,
+        "depth": 35,
+        "height": 27
+      }
+    }
+  ],
+  "nro": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 347.1,
+        "y": 4186,
+        "z": 112.4
+      },
+      "eq_min": {
+        "x": -263.4,
+        "y": 4175.7,
+        "z": -37
+      },
+      "eq_max": {
+        "x": 957.6,
+        "y": 4196.3,
+        "z": 261.8
+      },
+      "eq_size": {
+        "width": 1221,
+        "depth": 20.6,
+        "height": 298.8
+      }
+    },
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 56.2,
+        "y": -1907.3,
+        "z": 54.1
+      },
+      "eq_min": {
+        "x": -1456.5,
+        "y": -1925.3,
+        "z": -72
+      },
+      "eq_max": {
+        "x": 1569,
+        "y": -1889.2,
+        "z": 180.1
+      },
+      "eq_size": {
+        "width": 3025.5,
+        "depth": 36,
+        "height": 252.1
+      }
+    }
+  ],
+  "nurga": [
+    {
+      "referenceIndex": 5,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 287.9,
+        "y": -1023.6,
+        "z": -104
+      },
+      "eq_min": {
+        "x": 96,
+        "y": -1055.6,
+        "z": -112
+      },
+      "eq_max": {
+        "x": 479.8,
+        "y": -991.6,
+        "z": -96
+      },
+      "eq_size": {
+        "width": 383.8,
+        "depth": 64,
+        "height": 16
+      }
+    },
+    {
+      "referenceIndex": 6,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -519.8,
+        "y": -831.7,
+        "z": -167.9
+      },
+      "eq_min": {
+        "x": -927.6,
+        "y": -863.7,
+        "z": -175.9
+      },
+      "eq_max": {
+        "x": -112,
+        "y": -799.7,
+        "z": -159.9
+      },
+      "eq_size": {
+        "width": 815.7,
+        "depth": 64,
+        "height": 16
+      }
+    },
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -1807.3,
+        "y": -2247.1,
+        "z": 8
+      },
+      "eq_min": {
+        "x": -1823.3,
+        "y": -2287.1,
+        "z": 0
+      },
+      "eq_max": {
+        "x": -1791.3,
+        "y": -2207.1,
+        "z": 16
+      },
+      "eq_size": {
+        "width": 32,
+        "depth": 80,
+        "height": 16
+      }
+    }
+  ],
+  "oggok": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 79.3,
+        "y": -144.9,
+        "z": 299.9
+      },
+      "eq_min": {
+        "x": -171.2,
+        "y": -401.8,
+        "z": 0
+      },
+      "eq_max": {
+        "x": 329.9,
+        "y": 112,
+        "z": 599.8
+      },
+      "eq_size": {
+        "width": 501.1,
+        "depth": 513.8,
+        "height": 599.8
+      }
+    }
+  ],
+  "overthere": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -4423.1,
+        "y": -219.9,
+        "z": 351.7
+      },
+      "eq_min": {
+        "x": -4446.7,
+        "y": -561.3,
+        "z": 114.3
+      },
+      "eq_max": {
+        "x": -4399.5,
+        "y": 121.5,
+        "z": 589
+      },
+      "eq_size": {
+        "width": 47.2,
+        "depth": 682.9,
+        "height": 474.7
+      }
+    },
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 1418.3,
+        "y": -6137.5,
+        "z": 632.6
+      },
+      "eq_min": {
+        "x": 973,
+        "y": -6217,
+        "z": 346.4
+      },
+      "eq_max": {
+        "x": 1863.6,
+        "y": -6058,
+        "z": 918.9
+      },
+      "eq_size": {
+        "width": 890.5,
+        "depth": 159,
+        "height": 572.5
+      }
+    },
+    {
+      "referenceIndex": 4,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 4226.5,
+        "y": -1098.7,
+        "z": 119.7
+      },
+      "eq_min": {
+        "x": 4223.2,
+        "y": -1111,
+        "z": 94
+      },
+      "eq_max": {
+        "x": 4229.9,
+        "y": -1086.5,
+        "z": 145.5
+      },
+      "eq_size": {
+        "width": 6.7,
+        "depth": 24.5,
+        "height": 51.5
+      }
+    },
+    {
+      "referenceIndex": 3,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 4226.5,
+        "y": -988.2,
+        "z": 119.7
+      },
+      "eq_min": {
+        "x": 4223.2,
+        "y": -1000.4,
+        "z": 94
+      },
+      "eq_max": {
+        "x": 4229.9,
+        "y": -975.9,
+        "z": 145.5
+      },
+      "eq_size": {
+        "width": 6.7,
+        "depth": 24.5,
+        "height": 51.5
+      }
+    }
+  ],
+  "paineel": [
+    {
+      "referenceIndex": 11,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 542.3,
+        "y": 958.6,
+        "z": -72
+      },
+      "eq_min": {
+        "x": 539.8,
+        "y": 953.6,
+        "z": -88
+      },
+      "eq_max": {
+        "x": 544.8,
+        "y": 963.6,
+        "z": -56
+      },
+      "eq_size": {
+        "width": 5,
+        "depth": 10,
+        "height": 32
+      }
+    },
+    {
+      "referenceIndex": 4,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 265.9,
+        "y": 685.7,
+        "z": -91
+      },
+      "eq_min": {
+        "x": 70,
+        "y": 601.8,
+        "z": -98
+      },
+      "eq_max": {
+        "x": 461.8,
+        "y": 769.7,
+        "z": -84
+      },
+      "eq_size": {
+        "width": 391.8,
+        "depth": 167.9,
+        "height": 14
+      }
+    },
+    {
+      "referenceIndex": 15,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 146.4,
+        "y": 539.3,
+        "z": 48.5
+      },
+      "eq_min": {
+        "x": 70,
+        "y": 476.8,
+        "z": 42
+      },
+      "eq_max": {
+        "x": 222.9,
+        "y": 601.8,
+        "z": 55
+      },
+      "eq_size": {
+        "width": 152.9,
+        "depth": 124.9,
+        "height": 13
+      }
+    },
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 279.9,
+        "y": 922.1,
+        "z": 10
+      },
+      "eq_min": {
+        "x": 70,
+        "y": 890.6,
+        "z": 0
+      },
+      "eq_max": {
+        "x": 489.8,
+        "y": 953.6,
+        "z": 20
+      },
+      "eq_size": {
+        "width": 419.8,
+        "depth": 63,
+        "height": 20
+      }
+    },
+    {
+      "referenceIndex": 3,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -881.6,
+        "y": 745.2,
+        "z": -31
+      },
+      "eq_min": {
+        "x": -888.6,
+        "y": 734.7,
+        "z": -37
+      },
+      "eq_max": {
+        "x": -874.7,
+        "y": 755.7,
+        "z": -25
+      },
+      "eq_size": {
+        "width": 14,
+        "depth": 21,
+        "height": 12
+      }
+    },
+    {
+      "referenceIndex": 14,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 657.7,
+        "y": 1074.1,
+        "z": -34
+      },
+      "eq_min": {
+        "x": 652.7,
+        "y": 1071.6,
+        "z": -39
+      },
+      "eq_max": {
+        "x": 662.7,
+        "y": 1076.6,
+        "z": -29
+      },
+      "eq_size": {
+        "width": 10,
+        "depth": 5,
+        "height": 10
+      }
+    },
+    {
+      "referenceIndex": 13,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 657.7,
+        "y": 1081.1,
+        "z": -34
+      },
+      "eq_min": {
+        "x": 652.7,
+        "y": 1078.6,
+        "z": -39
+      },
+      "eq_max": {
+        "x": 662.7,
+        "y": 1083.6,
+        "z": -29
+      },
+      "eq_size": {
+        "width": 10,
+        "depth": 5,
+        "height": 10
+      }
+    },
+    {
+      "referenceIndex": 10,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 524.8,
+        "y": 913.1,
+        "z": -117
+      },
+      "eq_min": {
+        "x": 519.8,
+        "y": 910.6,
+        "z": -122
+      },
+      "eq_max": {
+        "x": 529.8,
+        "y": 915.6,
+        "z": -112
+      },
+      "eq_size": {
+        "width": 10,
+        "depth": 5,
+        "height": 10
+      }
+    },
+    {
+      "referenceIndex": 12,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 755.7,
+        "y": 877.7,
+        "z": -76
+      },
+      "eq_min": {
+        "x": 750.7,
+        "y": 874.7,
+        "z": -81
+      },
+      "eq_max": {
+        "x": 760.7,
+        "y": 880.7,
+        "z": -71
+      },
+      "eq_size": {
+        "width": 10,
+        "depth": 6,
+        "height": 10
+      }
+    }
+  ],
+  "permafrost": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 139.9,
+        "y": -60,
+        "z": 20
+      },
+      "eq_min": {
+        "x": 120,
+        "y": -80,
+        "z": 0
+      },
+      "eq_max": {
+        "x": 159.9,
+        "y": -40,
+        "z": 40
+      },
+      "eq_size": {
+        "width": 40,
+        "depth": 40,
+        "height": 40
+      }
+    }
+  ],
+  "podisease": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 2115.2,
+        "y": -131.8,
+        "z": 195.5
+      },
+      "eq_min": {
+        "x": 2067.1,
+        "y": -178,
+        "z": 101.2
+      },
+      "eq_max": {
+        "x": 2163.3,
+        "y": -85.6,
+        "z": 289.7
+      },
+      "eq_size": {
+        "width": 96.2,
+        "depth": 92.4,
+        "height": 188.6
+      }
+    },
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -1939.5,
+        "y": -1196.7,
+        "z": -104.9
+      },
+      "eq_min": {
+        "x": -1982,
+        "y": -1239.2,
+        "z": -129.9
+      },
+      "eq_max": {
+        "x": -1897,
+        "y": -1154.2,
+        "z": -79.9
+      },
+      "eq_size": {
+        "width": 85,
+        "depth": 85,
+        "height": 50
+      }
+    }
+  ],
+  "potactics": [
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -1024,
+        "y": -1016.5,
+        "z": 288
+      },
+      "eq_min": {
+        "x": -1052,
+        "y": -2050,
+        "z": 242
+      },
+      "eq_max": {
+        "x": -996,
+        "y": 17,
+        "z": 334
+      },
+      "eq_size": {
+        "width": 56,
+        "depth": 2067,
+        "height": 92
+      }
+    },
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -1024,
+        "y": 2099,
+        "z": 284
+      },
+      "eq_min": {
+        "x": -1056,
+        "y": 2068,
+        "z": 242
+      },
+      "eq_max": {
+        "x": -992,
+        "y": 2130,
+        "z": 326
+      },
+      "eq_size": {
+        "width": 64,
+        "depth": 62,
+        "height": 84
+      }
+    }
+  ],
+  "potranquility": [
+    {
+      "referenceIndex": 17,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -1440.2,
+        "y": 1710.3,
+        "z": -840.3
+      },
+      "eq_min": {
+        "x": -1450.4,
+        "y": 1693.4,
+        "z": -860.9
+      },
+      "eq_max": {
+        "x": -1430.1,
+        "y": 1727.3,
+        "z": -819.7
+      },
+      "eq_size": {
+        "width": 20.3,
+        "depth": 33.9,
+        "height": 41.2
+      }
+    }
+  ],
+  "qcat": [
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -286.9,
+        "y": 216.9,
+        "z": -35
+      },
+      "eq_min": {
+        "x": -293.9,
+        "y": 209.9,
+        "z": -42
+      },
+      "eq_max": {
+        "x": -279.9,
+        "y": 223.9,
+        "z": -28
+      },
+      "eq_size": {
+        "width": 14,
+        "depth": 14,
+        "height": 14
+      }
+    },
+    {
+      "referenceIndex": 5,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 119,
+        "y": 636.7,
+        "z": -35
+      },
+      "eq_min": {
+        "x": 112,
+        "y": 629.7,
+        "z": -42
+      },
+      "eq_max": {
+        "x": 125.9,
+        "y": 643.7,
+        "z": -28
+      },
+      "eq_size": {
+        "width": 14,
+        "depth": 14,
+        "height": 14
+      }
+    }
+  ],
+  "qey2hh1": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 84.3,
+        "y": 16.5,
+        "z": 55.3
+      },
+      "eq_min": {
+        "x": 60.1,
+        "y": -132.4,
+        "z": -17.5
+      },
+      "eq_max": {
+        "x": 108.6,
+        "y": 165.4,
+        "z": 128
+      },
+      "eq_size": {
+        "width": 48.5,
+        "depth": 297.9,
+        "height": 145.5
+      }
+    }
+  ],
+  "qeynos": [
+    {
+      "referenceIndex": 33,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -622.8,
+        "y": -146.9,
+        "z": -21
+      },
+      "eq_min": {
+        "x": -629.7,
+        "y": -153.9,
+        "z": -28
+      },
+      "eq_max": {
+        "x": -615.8,
+        "y": -139.9,
+        "z": -14
+      },
+      "eq_size": {
+        "width": 14,
+        "depth": 14,
+        "height": 14
+      }
+    }
+  ],
+  "qeynos2": [
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -656,
+        "y": -199.5,
+        "z": -181.4
+      },
+      "eq_min": {
+        "x": -808.3,
+        "y": -413.1,
+        "z": -390.8
+      },
+      "eq_max": {
+        "x": -503.8,
+        "y": 14,
+        "z": 28
+      },
+      "eq_size": {
+        "width": 304.5,
+        "depth": 427.1,
+        "height": 418.8
+      }
+    },
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -475.8,
+        "y": -160.9,
+        "z": 40
+      },
+      "eq_min": {
+        "x": -480.8,
+        "y": -165.9,
+        "z": 33
+      },
+      "eq_max": {
+        "x": -470.8,
+        "y": -155.9,
+        "z": 47
+      },
+      "eq_size": {
+        "width": 10,
+        "depth": 10,
+        "height": 14
+      }
+    },
+    {
+      "referenceIndex": 5,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 77,
+        "y": 174.9,
+        "z": -35
+      },
+      "eq_min": {
+        "x": 70,
+        "y": 167.9,
+        "z": -42
+      },
+      "eq_max": {
+        "x": 84,
+        "y": 181.9,
+        "z": -28
+      },
+      "eq_size": {
+        "width": 14,
+        "depth": 14,
+        "height": 14
+      }
+    }
+  ],
+  "qeytoqrg": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 5.3,
+        "y": -651,
+        "z": 148
+      },
+      "eq_min": {
+        "x": -1197.6,
+        "y": -951,
+        "z": -9
+      },
+      "eq_max": {
+        "x": 1208.2,
+        "y": -350.9,
+        "z": 305
+      },
+      "eq_size": {
+        "width": 2405.8,
+        "depth": 600.1,
+        "height": 314
+      }
+    },
+    {
+      "referenceIndex": 4,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 84.1,
+        "y": 5210.7,
+        "z": 4.2
+      },
+      "eq_min": {
+        "x": 55.9,
+        "y": 5199.4,
+        "z": -7.8
+      },
+      "eq_max": {
+        "x": 112.2,
+        "y": 5222,
+        "z": 16.3
+      },
+      "eq_size": {
+        "width": 56.3,
+        "depth": 22.5,
+        "height": 24.1
+      }
+    },
+    {
+      "referenceIndex": 3,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -1149.7,
+        "y": 3423.4,
+        "z": 8.3
+      },
+      "eq_min": {
+        "x": -1153.8,
+        "y": 3413.4,
+        "z": -0.5
+      },
+      "eq_max": {
+        "x": -1145.6,
+        "y": 3433.4,
+        "z": 17.2
+      },
+      "eq_size": {
+        "width": 8.1,
+        "depth": 20,
+        "height": 17.7
+      }
+    },
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -2504.3,
+        "y": 1201.9,
+        "z": 61.4
+      },
+      "eq_min": {
+        "x": -2540.5,
+        "y": 981.4,
+        "z": -22.2
+      },
+      "eq_max": {
+        "x": -2468,
+        "y": 1422.4,
+        "z": 145
+      },
+      "eq_size": {
+        "width": 72.5,
+        "depth": 441,
+        "height": 167.3
+      }
+    }
+  ],
+  "qinimi": [
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -1616.2,
+        "y": -352.2,
+        "z": 91.4
+      },
+      "eq_min": {
+        "x": -1636.2,
+        "y": -750,
+        "z": -117.3
+      },
+      "eq_max": {
+        "x": -1596.2,
+        "y": 45.6,
+        "z": 300
+      },
+      "eq_size": {
+        "width": 40,
+        "depth": 795.6,
+        "height": 417.3
+      }
+    },
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -212.5,
+        "y": -99.4,
+        "z": 46.3
+      },
+      "eq_min": {
+        "x": -245,
+        "y": -110,
+        "z": -13.7
+      },
+      "eq_max": {
+        "x": -180,
+        "y": -88.7,
+        "z": 106.3
+      },
+      "eq_size": {
+        "width": 65,
+        "depth": 21.3,
+        "height": 120
+      }
+    }
+  ],
+  "qvic": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -2625,
+        "y": -959.5,
+        "z": -260.4
+      },
+      "eq_min": {
+        "x": -2630,
+        "y": -1114,
+        "z": -695
+      },
+      "eq_max": {
+        "x": -2620,
+        "y": -805,
+        "z": 174.1
+      },
+      "eq_size": {
+        "width": 10,
+        "depth": 309,
+        "height": 869.1
+      }
+    },
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -2559,
+        "y": 767.5,
+        "z": -558
+      },
+      "eq_min": {
+        "x": -2564,
+        "y": 613,
+        "z": -695
+      },
+      "eq_max": {
+        "x": -2554,
+        "y": 922,
+        "z": -421
+      },
+      "eq_size": {
+        "width": 10,
+        "depth": 309,
+        "height": 274
+      }
+    }
+  ],
+  "rathemtn": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 3066.2,
+        "y": 3435.9,
+        "z": 117.9
+      },
+      "eq_min": {
+        "x": 3039.3,
+        "y": 3351.1,
+        "z": -5.9
+      },
+      "eq_max": {
+        "x": 3093,
+        "y": 3520.8,
+        "z": 241.8
+      },
+      "eq_size": {
+        "width": 53.7,
+        "depth": 169.6,
+        "height": 247.7
+      }
+    }
+  ],
+  "rivervale": [
+    {
+      "referenceIndex": 98,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -281.9,
+        "y": -383.8,
+        "z": 12
+      },
+      "eq_min": {
+        "x": -287.9,
+        "y": -395.8,
+        "z": 0
+      },
+      "eq_max": {
+        "x": -275.9,
+        "y": -371.9,
+        "z": 24
+      },
+      "eq_size": {
+        "width": 12,
+        "depth": 24,
+        "height": 24
+      }
+    },
+    {
+      "referenceIndex": 99,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 114,
+        "y": -36,
+        "z": 12
+      },
+      "eq_min": {
+        "x": 60,
+        "y": -96,
+        "z": 0
+      },
+      "eq_max": {
+        "x": 167.9,
+        "y": 24,
+        "z": 24
+      },
+      "eq_size": {
+        "width": 108,
+        "depth": 120,
+        "height": 24
+      }
+    }
+  ],
+  "riwwi": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -558.1,
+        "y": -463.1,
+        "z": 65
+      },
+      "eq_min": {
+        "x": -568.7,
+        "y": -733.7,
+        "z": 5
+      },
+      "eq_max": {
+        "x": -547.5,
+        "y": -192.5,
+        "z": 125
+      },
+      "eq_size": {
+        "width": 21.3,
+        "depth": 541.3,
+        "height": 120
+      }
+    },
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -1518.7,
+        "y": -296.2,
+        "z": 30
+      },
+      "eq_min": {
+        "x": -1523.7,
+        "y": -362.5,
+        "z": -5
+      },
+      "eq_max": {
+        "x": -1513.7,
+        "y": -230,
+        "z": 65
+      },
+      "eq_size": {
+        "width": 10,
+        "depth": 132.5,
+        "height": 70
+      }
+    }
+  ],
+  "runnyeye": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -10.5,
+        "y": -111,
+        "z": 8.5
+      },
+      "eq_min": {
+        "x": -13,
+        "y": -119,
+        "z": 0
+      },
+      "eq_max": {
+        "x": -8,
+        "y": -103,
+        "z": 17
+      },
+      "eq_size": {
+        "width": 5,
+        "depth": 16,
+        "height": 17
+      }
+    },
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 149.4,
+        "y": 250.4,
+        "z": 9
+      },
+      "eq_min": {
+        "x": 135.9,
+        "y": 247.9,
+        "z": 1
+      },
+      "eq_max": {
+        "x": 162.9,
+        "y": 252.9,
+        "z": 17
+      },
+      "eq_size": {
+        "width": 27,
+        "depth": 5,
+        "height": 16
+      }
+    }
+  ],
+  "scarlet": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -562.7,
+        "y": 2265.3,
+        "z": 31.4
+      },
+      "eq_min": {
+        "x": -613.4,
+        "y": 2234.1,
+        "z": 1.4
+      },
+      "eq_max": {
+        "x": -511.9,
+        "y": 2296.4,
+        "z": 61.4
+      },
+      "eq_size": {
+        "width": 101.5,
+        "depth": 62.3,
+        "height": 60
+      }
+    },
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -1832.1,
+        "y": -1201.7,
+        "z": 55.6
+      },
+      "eq_min": {
+        "x": -1948.8,
+        "y": -1279.3,
+        "z": -119.4
+      },
+      "eq_max": {
+        "x": -1715.4,
+        "y": -1124.1,
+        "z": 230.6
+      },
+      "eq_size": {
+        "width": 233.4,
+        "depth": 155.2,
+        "height": 350
+      }
+    },
+    {
+      "referenceIndex": 3,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 2000.3,
+        "y": 776.2,
+        "z": 11.2
+      },
+      "eq_min": {
+        "x": 1969.3,
+        "y": 730.4,
+        "z": -51.5
+      },
+      "eq_max": {
+        "x": 2031.4,
+        "y": 822,
+        "z": 73.9
+      },
+      "eq_size": {
+        "width": 62.1,
+        "depth": 91.6,
+        "height": 125.4
+      }
+    }
+  ],
+  "sebilis": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -72,
+        "y": -97,
+        "z": -27
+      },
+      "eq_min": {
+        "x": -79,
+        "y": -104,
+        "z": -38
+      },
+      "eq_max": {
+        "x": -65,
+        "y": -90,
+        "z": -16
+      },
+      "eq_size": {
+        "width": 14,
+        "depth": 14,
+        "height": 22
+      }
+    },
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -9,
+        "y": -674.7,
+        "z": -170.9
+      },
+      "eq_min": {
+        "x": -16,
+        "y": -681.7,
+        "z": -181.9
+      },
+      "eq_max": {
+        "x": -2,
+        "y": -667.7,
+        "z": -159.9
+      },
+      "eq_size": {
+        "width": 14,
+        "depth": 14,
+        "height": 22
+      }
+    }
+  ],
+  "shadeweaver": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -3625.7,
+        "y": -2066.9,
+        "z": -61.9
+      },
+      "eq_min": {
+        "x": -3648.2,
+        "y": -2106.9,
+        "z": -101.9
+      },
+      "eq_max": {
+        "x": -3603.2,
+        "y": -2026.9,
+        "z": -21.9
+      },
+      "eq_size": {
+        "width": 45,
+        "depth": 80,
+        "height": 80
+      }
+    },
+    {
+      "referenceIndex": 3,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -468.5,
+        "y": 2471.7,
+        "z": -338.2
+      },
+      "eq_min": {
+        "x": -538.8,
+        "y": 2432.9,
+        "z": -394.3
+      },
+      "eq_max": {
+        "x": -398.3,
+        "y": 2510.5,
+        "z": -282
+      },
+      "eq_size": {
+        "width": 140.5,
+        "depth": 77.6,
+        "height": 112.4
+      }
+    }
+  ],
+  "shadowhaven": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 1475,
+        "y": 164,
+        "z": -50
+      },
+      "eq_min": {
+        "x": 1460,
+        "y": 143,
+        "z": -60
+      },
+      "eq_max": {
+        "x": 1490,
+        "y": 185,
+        "z": -40
+      },
+      "eq_size": {
+        "width": 30,
+        "depth": 42,
+        "height": 20
+      }
+    },
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 1798.5,
+        "y": 396,
+        "z": -49.5
+      },
+      "eq_min": {
+        "x": 1788,
+        "y": 386,
+        "z": -65
+      },
+      "eq_max": {
+        "x": 1809,
+        "y": 406,
+        "z": -34
+      },
+      "eq_size": {
+        "width": 21,
+        "depth": 20,
+        "height": 31
+      }
+    },
+    {
+      "referenceIndex": 4,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 265.3,
+        "y": -1122.5,
+        "z": -6
+      },
+      "eq_min": {
+        "x": 150.7,
+        "y": -1159,
+        "z": -33
+      },
+      "eq_max": {
+        "x": 380,
+        "y": -1086,
+        "z": 21
+      },
+      "eq_size": {
+        "width": 229.3,
+        "depth": 73,
+        "height": 54
+      }
+    },
+    {
+      "referenceIndex": 5,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -230,
+        "y": 1700.5,
+        "z": -96.5
+      },
+      "eq_min": {
+        "x": -240,
+        "y": 1681,
+        "z": -108
+      },
+      "eq_max": {
+        "x": -220,
+        "y": 1720,
+        "z": -85
+      },
+      "eq_size": {
+        "width": 20,
+        "depth": 39,
+        "height": 23
+      }
+    },
+    {
+      "referenceIndex": 7,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 1335.5,
+        "y": 190,
+        "z": -46.5
+      },
+      "eq_min": {
+        "x": 1311,
+        "y": 180,
+        "z": -58
+      },
+      "eq_max": {
+        "x": 1360,
+        "y": 200,
+        "z": -35
+      },
+      "eq_size": {
+        "width": 49,
+        "depth": 20,
+        "height": 23
+      }
+    },
+    {
+      "referenceIndex": 8,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 994.5,
+        "y": 340,
+        "z": -82
+      },
+      "eq_min": {
+        "x": 780,
+        "y": 320,
+        "z": -104
+      },
+      "eq_max": {
+        "x": 1209,
+        "y": 360,
+        "z": -60
+      },
+      "eq_size": {
+        "width": 429,
+        "depth": 40,
+        "height": 44
+      }
+    },
+    {
+      "referenceIndex": 9,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 675,
+        "y": 340,
+        "z": -82
+      },
+      "eq_min": {
+        "x": 660,
+        "y": 320,
+        "z": -104
+      },
+      "eq_max": {
+        "x": 690,
+        "y": 360,
+        "z": -60
+      },
+      "eq_size": {
+        "width": 30,
+        "depth": 40,
+        "height": 44
+      }
+    },
+    {
+      "referenceIndex": 10,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 204.8,
+        "y": -598.6,
+        "z": -166
+      },
+      "eq_min": {
+        "x": 150.7,
+        "y": -606.6,
+        "z": -176
+      },
+      "eq_max": {
+        "x": 259,
+        "y": -590.6,
+        "z": -156
+      },
+      "eq_size": {
+        "width": 108.3,
+        "depth": 16,
+        "height": 20
+      }
+    }
+  ],
+  "sirens": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 73,
+        "y": -610.8,
+        "z": -84
+      },
+      "eq_min": {
+        "x": 63,
+        "y": -613.8,
+        "z": -97
+      },
+      "eq_max": {
+        "x": 83,
+        "y": -607.8,
+        "z": -71
+      },
+      "eq_size": {
+        "width": 20,
+        "depth": 6,
+        "height": 26
+      }
+    },
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -90,
+        "y": 219.9,
+        "z": 13
+      },
+      "eq_min": {
+        "x": -100,
+        "y": 216.9,
+        "z": 0
+      },
+      "eq_max": {
+        "x": -80,
+        "y": 222.9,
+        "z": 26
+      },
+      "eq_size": {
+        "width": 20,
+        "depth": 6,
+        "height": 26
+      }
+    }
+  ],
+  "soldunga": [
+    {
+      "referenceIndex": 8,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -594.8,
+        "y": -165.9,
+        "z": 55.9
+      },
+      "eq_min": {
+        "x": -616.8,
+        "y": -172.9,
+        "z": 14
+      },
+      "eq_max": {
+        "x": -572.8,
+        "y": -158.9,
+        "z": 97.8
+      },
+      "eq_size": {
+        "width": 44,
+        "depth": 14,
+        "height": 83.8
+      }
+    },
+    {
+      "referenceIndex": 12,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -352.9,
+        "y": -894.6,
+        "z": 12
+      },
+      "eq_min": {
+        "x": -370.9,
+        "y": -912.6,
+        "z": 6
+      },
+      "eq_max": {
+        "x": -334.9,
+        "y": -876.6,
+        "z": 18
+      },
+      "eq_size": {
+        "width": 36,
+        "depth": 36,
+        "height": 12
+      }
+    },
+    {
+      "referenceIndex": 7,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -539.8,
+        "y": -269.9,
+        "z": 28
+      },
+      "eq_min": {
+        "x": -579.8,
+        "y": -271.9,
+        "z": 22
+      },
+      "eq_max": {
+        "x": -499.8,
+        "y": -267.9,
+        "z": 34
+      },
+      "eq_size": {
+        "width": 80,
+        "depth": 4,
+        "height": 12
+      }
+    }
+  ],
+  "soldungb": [
+    {
+      "referenceIndex": 7,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -507.3,
+        "y": -290.9,
+        "z": 28
+      },
+      "eq_min": {
+        "x": -514.8,
+        "y": -300.9,
+        "z": 22
+      },
+      "eq_max": {
+        "x": -499.8,
+        "y": -280.9,
+        "z": 34
+      },
+      "eq_size": {
+        "width": 15,
+        "depth": 20,
+        "height": 12
+      }
+    },
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -245.9,
+        "y": -399.8,
+        "z": -106
+      },
+      "eq_min": {
+        "x": -269.9,
+        "y": -409.8,
+        "z": -112
+      },
+      "eq_max": {
+        "x": -221.9,
+        "y": -389.8,
+        "z": -100
+      },
+      "eq_size": {
+        "width": 48,
+        "depth": 20,
+        "height": 12
+      }
+    }
+  ],
+  "soldungc": [
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 268,
+        "y": -484,
+        "z": -44
+      },
+      "eq_min": {
+        "x": 243,
+        "y": -491,
+        "z": -71
+      },
+      "eq_max": {
+        "x": 293,
+        "y": -477,
+        "z": -17
+      },
+      "eq_size": {
+        "width": 50,
+        "depth": 14,
+        "height": 54
+      }
+    },
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -768,
+        "y": 814,
+        "z": -29
+      },
+      "eq_min": {
+        "x": -803,
+        "y": 807,
+        "z": -53
+      },
+      "eq_max": {
+        "x": -733,
+        "y": 821,
+        "z": -5
+      },
+      "eq_size": {
+        "width": 70,
+        "depth": 14,
+        "height": 48
+      }
+    }
+  ],
+  "solrotower": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 18,
+        "y": -1056,
+        "z": 15
+      },
+      "eq_min": {
+        "x": -240,
+        "y": -1392,
+        "z": 6
+      },
+      "eq_max": {
+        "x": 276,
+        "y": -720,
+        "z": 24
+      },
+      "eq_size": {
+        "width": 516,
+        "depth": 672,
+        "height": 18
+      }
+    }
+  ],
+  "soltemple": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 43,
+        "y": 231.9,
+        "z": 5
+      },
+      "eq_min": {
+        "x": 24,
+        "y": 219.9,
+        "z": -1
+      },
+      "eq_max": {
+        "x": 62,
+        "y": 243.9,
+        "z": 11
+      },
+      "eq_size": {
+        "width": 38,
+        "depth": 24,
+        "height": 12
+      }
+    }
+  ],
+  "southkarana": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 1153.1,
+        "y": -8575.6,
+        "z": 46
+      },
+      "eq_min": {
+        "x": 1111.6,
+        "y": -8585.6,
+        "z": -10.4
+      },
+      "eq_max": {
+        "x": 1194.5,
+        "y": -8565.6,
+        "z": 102.4
+      },
+      "eq_size": {
+        "width": 83,
+        "depth": 20,
+        "height": 112.7
+      }
+    }
+  ],
+  "ssratemple": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -47.5,
+        "y": -35,
+        "z": 7.8
+      },
+      "eq_min": {
+        "x": -60,
+        "y": -45,
+        "z": 0
+      },
+      "eq_max": {
+        "x": -35,
+        "y": -25,
+        "z": 15.5
+      },
+      "eq_size": {
+        "width": 25,
+        "depth": 20,
+        "height": 15.5
+      }
+    },
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -485.7,
+        "y": -239.9,
+        "z": -248.7
+      },
+      "eq_min": {
+        "x": -501.5,
+        "y": -861,
+        "z": -260
+      },
+      "eq_max": {
+        "x": -470,
+        "y": 381.1,
+        "z": -237.5
+      },
+      "eq_size": {
+        "width": 31.5,
+        "depth": 1242.1,
+        "height": 22.5
+      }
+    }
+  ],
+  "steamfont": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 528.4,
+        "y": -2066,
+        "z": -104.3
+      },
+      "eq_min": {
+        "x": 516.1,
+        "y": -2067.3,
+        "z": -118
+      },
+      "eq_max": {
+        "x": 540.7,
+        "y": -2064.7,
+        "z": -90.6
+      },
+      "eq_size": {
+        "width": 24.7,
+        "depth": 2.6,
+        "height": 27.3
+      }
+    },
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 2216.9,
+        "y": 577,
+        "z": -35.3
+      },
+      "eq_min": {
+        "x": 2211.8,
+        "y": 530.3,
+        "z": -122.7
+      },
+      "eq_max": {
+        "x": 2221.9,
+        "y": 623.7,
+        "z": 52.1
+      },
+      "eq_size": {
+        "width": 10.1,
+        "depth": 93.4,
+        "height": 174.9
+      }
+    }
+  ],
+  "stonebrunt": [
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -4054.6,
+        "y": 2215.1,
+        "z": 790
+      },
+      "eq_min": {
+        "x": -4074.6,
+        "y": 2150.1,
+        "z": 765
+      },
+      "eq_max": {
+        "x": -4034.6,
+        "y": 2280.1,
+        "z": 815
+      },
+      "eq_size": {
+        "width": 40,
+        "depth": 130,
+        "height": 50
+      }
+    },
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 2920.7,
+        "y": -3710.6,
+        "z": -29.7
+      },
+      "eq_min": {
+        "x": 2906.7,
+        "y": -3722.6,
+        "z": -42.3
+      },
+      "eq_max": {
+        "x": 2934.7,
+        "y": -3698.6,
+        "z": -17.2
+      },
+      "eq_size": {
+        "width": 28,
+        "depth": 24,
+        "height": 25
+      }
+    },
+    {
+      "referenceIndex": 3,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -664.7,
+        "y": 2248.7,
+        "z": 788.4
+      },
+      "eq_min": {
+        "x": -681.1,
+        "y": 2191.1,
+        "z": 761
+      },
+      "eq_max": {
+        "x": -648.2,
+        "y": 2306.2,
+        "z": 815.9
+      },
+      "eq_size": {
+        "width": 32.8,
+        "depth": 115.2,
+        "height": 54.9
+      }
+    }
+  ],
+  "swampofnohope": [
+    {
+      "referenceIndex": 5,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 3249.6,
+        "y": 2970.1,
+        "z": 75.7
+      },
+      "eq_min": {
+        "x": 3242.1,
+        "y": 2946.7,
+        "z": -18.6
+      },
+      "eq_max": {
+        "x": 3257.2,
+        "y": 2993.6,
+        "z": 170.1
+      },
+      "eq_size": {
+        "width": 15.1,
+        "depth": 46.8,
+        "height": 188.7
+      }
+    },
+    {
+      "referenceIndex": 6,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 3050.7,
+        "y": 3140.6,
+        "z": 75.7
+      },
+      "eq_min": {
+        "x": 3027.3,
+        "y": 3133.1,
+        "z": -18.6
+      },
+      "eq_max": {
+        "x": 3074.1,
+        "y": 3148.2,
+        "z": 170.1
+      },
+      "eq_size": {
+        "width": 46.8,
+        "depth": 15.1,
+        "height": 188.7
+      }
+    },
+    {
+      "referenceIndex": 7,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 1117.4,
+        "y": 5597.4,
+        "z": 106.9
+      },
+      "eq_min": {
+        "x": 769,
+        "y": 5587.1,
+        "z": -56.1
+      },
+      "eq_max": {
+        "x": 1465.8,
+        "y": 5607.7,
+        "z": 270
+      },
+      "eq_size": {
+        "width": 696.8,
+        "depth": 20.6,
+        "height": 326.1
+      }
+    },
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -2448.6,
+        "y": -4466.1,
+        "z": 98.2
+      },
+      "eq_min": {
+        "x": -3021.4,
+        "y": -4478.3,
+        "z": -67.8
+      },
+      "eq_max": {
+        "x": -1875.9,
+        "y": -4454,
+        "z": 264.1
+      },
+      "eq_size": {
+        "width": 1145.4,
+        "depth": 24.3,
+        "height": 331.9
+      }
+    },
+    {
+      "referenceIndex": 4,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -4459.5,
+        "y": 1760.5,
+        "z": -16.2
+      },
+      "eq_min": {
+        "x": -4672,
+        "y": 1747.4,
+        "z": -180.2
+      },
+      "eq_max": {
+        "x": -4247,
+        "y": 1773.5,
+        "z": 147.9
+      },
+      "eq_size": {
+        "width": 425,
+        "depth": 26.1,
+        "height": 328.1
+      }
+    },
+    {
+      "referenceIndex": 3,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 2690.3,
+        "y": -4515.6,
+        "z": 129.5
+      },
+      "eq_min": {
+        "x": 2475.3,
+        "y": -4528.4,
+        "z": -34.2
+      },
+      "eq_max": {
+        "x": 2905.3,
+        "y": -4502.9,
+        "z": 293.3
+      },
+      "eq_size": {
+        "width": 430,
+        "depth": 25.6,
+        "height": 327.5
+      }
+    }
+  ],
+  "templeveeshan": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 1429.4,
+        "y": -1189.5,
+        "z": -127.4
+      },
+      "eq_min": {
+        "x": 1419.4,
+        "y": -1199.5,
+        "z": -154.9
+      },
+      "eq_max": {
+        "x": 1439.4,
+        "y": -1179.5,
+        "z": -100
+      },
+      "eq_size": {
+        "width": 20,
+        "depth": 20,
+        "height": 55
+      }
+    },
+    {
+      "referenceIndex": 3,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -1699.3,
+        "y": -589.8,
+        "z": 1
+      },
+      "eq_min": {
+        "x": -1709.3,
+        "y": -599.8,
+        "z": -18
+      },
+      "eq_max": {
+        "x": -1689.3,
+        "y": -579.8,
+        "z": 20
+      },
+      "eq_size": {
+        "width": 20,
+        "depth": 20,
+        "height": 38
+      }
+    },
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -1859.3,
+        "y": 1227,
+        "z": 211.9
+      },
+      "eq_min": {
+        "x": -1869.3,
+        "y": 1214.5,
+        "z": 183.9
+      },
+      "eq_max": {
+        "x": -1849.3,
+        "y": 1239.5,
+        "z": 239.9
+      },
+      "eq_size": {
+        "width": 20,
+        "depth": 25,
+        "height": 56
+      }
+    }
+  ],
+  "tenebrous": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -1136.8,
+        "y": -1779.3,
+        "z": 16.9
+      },
+      "eq_min": {
+        "x": -1191,
+        "y": -1804.5,
+        "z": -41.9
+      },
+      "eq_max": {
+        "x": -1082.7,
+        "y": -1754.2,
+        "z": 75.7
+      },
+      "eq_size": {
+        "width": 108.2,
+        "depth": 50.3,
+        "height": 117.5
+      }
+    },
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 1882.2,
+        "y": -59.2,
+        "z": 1.7
+      },
+      "eq_min": {
+        "x": 1839,
+        "y": -110.7,
+        "z": -51.9
+      },
+      "eq_max": {
+        "x": 1925.4,
+        "y": -7.7,
+        "z": 55.4
+      },
+      "eq_size": {
+        "width": 86.5,
+        "depth": 103,
+        "height": 107.4
+      }
+    }
+  ],
+  "thegrey": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 352.5,
+        "y": -2138,
+        "z": -52
+      },
+      "eq_min": {
+        "x": 306.8,
+        "y": -2155.6,
+        "z": -83.1
+      },
+      "eq_max": {
+        "x": 398.2,
+        "y": -2120.4,
+        "z": -20.9
+      },
+      "eq_size": {
+        "width": 91.4,
+        "depth": 35.3,
+        "height": 62.2
+      }
+    },
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -35.2,
+        "y": 53.7,
+        "z": -32.3
+      },
+      "eq_min": {
+        "x": -64.1,
+        "y": 18.5,
+        "z": -62.3
+      },
+      "eq_max": {
+        "x": -6.2,
+        "y": 88.8,
+        "z": -2.3
+      },
+      "eq_size": {
+        "width": 57.9,
+        "depth": 70.3,
+        "height": 60.1
+      }
+    },
+    {
+      "referenceIndex": 3,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -2086.1,
+        "y": 616.5,
+        "z": 19.9
+      },
+      "eq_min": {
+        "x": -2117.3,
+        "y": 565.8,
+        "z": -35
+      },
+      "eq_max": {
+        "x": -2054.9,
+        "y": 667.1,
+        "z": 74.8
+      },
+      "eq_size": {
+        "width": 62.3,
+        "depth": 101.3,
+        "height": 109.8
+      }
+    }
+  ],
+  "thurgadina": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -22.5,
+        "y": -1237,
+        "z": 2.5
+      },
+      "eq_min": {
+        "x": -30,
+        "y": -1239.5,
+        "z": -5
+      },
+      "eq_max": {
+        "x": -15,
+        "y": -1234.5,
+        "z": 10
+      },
+      "eq_size": {
+        "width": 15,
+        "depth": 5,
+        "height": 15
+      }
+    },
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -87.5,
+        "y": -657.2,
+        "z": -90
+      },
+      "eq_min": {
+        "x": -95,
+        "y": -659.7,
+        "z": -100
+      },
+      "eq_max": {
+        "x": -80,
+        "y": -654.7,
+        "z": -80
+      },
+      "eq_size": {
+        "width": 15,
+        "depth": 5,
+        "height": 20
+      }
+    },
+    {
+      "referenceIndex": 3,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 35,
+        "y": 252.4,
+        "z": 6.5
+      },
+      "eq_min": {
+        "x": 25,
+        "y": 249.9,
+        "z": -2
+      },
+      "eq_max": {
+        "x": 45,
+        "y": 254.9,
+        "z": 15
+      },
+      "eq_size": {
+        "width": 20,
+        "depth": 5,
+        "height": 17
+      }
+    }
+  ],
+  "thurgadinb": [
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 869.7,
+        "y": -97.5,
+        "z": -37.5
+      },
+      "eq_min": {
+        "x": 854.7,
+        "y": -115,
+        "z": -45
+      },
+      "eq_max": {
+        "x": 884.6,
+        "y": -80,
+        "z": -30
+      },
+      "eq_size": {
+        "width": 30,
+        "depth": 35,
+        "height": 15
+      }
+    },
+    {
+      "referenceIndex": 3,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -77.5,
+        "y": -767.2,
+        "z": -90
+      },
+      "eq_min": {
+        "x": -85,
+        "y": -769.7,
+        "z": -100
+      },
+      "eq_max": {
+        "x": -70,
+        "y": -764.7,
+        "z": -80
+      },
+      "eq_size": {
+        "width": 15,
+        "depth": 5,
+        "height": 20
+      }
+    },
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 45,
+        "y": 97.5,
+        "z": 6.5
+      },
+      "eq_min": {
+        "x": 35,
+        "y": 95,
+        "z": -2
+      },
+      "eq_max": {
+        "x": 55,
+        "y": 100,
+        "z": 15
+      },
+      "eq_size": {
+        "width": 20,
+        "depth": 5,
+        "height": 17
+      }
+    }
+  ],
+  "tipt": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -613.5,
+        "y": -2644.5,
+        "z": -229.6
+      },
+      "eq_min": {
+        "x": -845,
+        "y": -2659,
+        "z": -601.2
+      },
+      "eq_max": {
+        "x": -382,
+        "y": -2630,
+        "z": 142
+      },
+      "eq_size": {
+        "width": 463,
+        "depth": 29,
+        "height": 743.2
+      }
+    },
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 1652,
+        "y": 2047.5,
+        "z": 514.7
+      },
+      "eq_min": {
+        "x": 1462,
+        "y": 2033,
+        "z": 175.5
+      },
+      "eq_max": {
+        "x": 1842,
+        "y": 2062,
+        "z": 854
+      },
+      "eq_size": {
+        "width": 380,
+        "depth": 29,
+        "height": 678.5
+      }
+    }
+  ],
+  "torgiran": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -166.2,
+        "y": 1266,
+        "z": 54
+      },
+      "eq_min": {
+        "x": -368.5,
+        "y": 1204,
+        "z": -32
+      },
+      "eq_max": {
+        "x": 36,
+        "y": 1328,
+        "z": 140
+      },
+      "eq_size": {
+        "width": 404.5,
+        "depth": 124,
+        "height": 172
+      }
+    }
+  ],
+  "trakanon": [
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 1492.8,
+        "y": 4001.5,
+        "z": -315.8
+      },
+      "eq_min": {
+        "x": 1407.2,
+        "y": 3987,
+        "z": -365.8
+      },
+      "eq_max": {
+        "x": 1578.3,
+        "y": 4016,
+        "z": -265.8
+      },
+      "eq_size": {
+        "width": 171,
+        "depth": 28.9,
+        "height": 100
+      }
+    },
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 4455.9,
+        "y": 1533.8,
+        "z": -256.8
+      },
+      "eq_min": {
+        "x": 4243.4,
+        "y": 1521.3,
+        "z": -419.5
+      },
+      "eq_max": {
+        "x": 4668.4,
+        "y": 1546.3,
+        "z": -94.1
+      },
+      "eq_size": {
+        "width": 425.1,
+        "depth": 25,
+        "height": 325.5
+      }
+    }
+  ],
+  "tutorial": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 0,
+        "y": 335.9,
+        "z": -202.9
+      },
+      "eq_min": {
+        "x": -21,
+        "y": 314.9,
+        "z": -328.9
+      },
+      "eq_max": {
+        "x": 21,
+        "y": 356.9,
+        "z": -77
+      },
+      "eq_size": {
+        "width": 42,
+        "depth": 42,
+        "height": 251.9
+      }
+    }
+  ],
+  "twilight": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -2025.7,
+        "y": -102.1,
+        "z": 90.4
+      },
+      "eq_min": {
+        "x": -2063.3,
+        "y": -224.1,
+        "z": 52.9
+      },
+      "eq_max": {
+        "x": -1988.1,
+        "y": 19.8,
+        "z": 127.9
+      },
+      "eq_size": {
+        "width": 75.2,
+        "depth": 243.9,
+        "height": 75
+      }
+    },
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 1992.6,
+        "y": -1231,
+        "z": 66.2
+      },
+      "eq_min": {
+        "x": 1843.7,
+        "y": -1454.1,
+        "z": -42.3
+      },
+      "eq_max": {
+        "x": 2141.4,
+        "y": -1007.9,
+        "z": 174.6
+      },
+      "eq_size": {
+        "width": 297.8,
+        "depth": 446.3,
+        "height": 216.9
+      }
+    }
+  ],
+  "umbral": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -404.1,
+        "y": -2353.2,
+        "z": 228.4
+      },
+      "eq_min": {
+        "x": -469.1,
+        "y": -2470.2,
+        "z": 134.5
+      },
+      "eq_max": {
+        "x": -339,
+        "y": -2236.2,
+        "z": 322.4
+      },
+      "eq_size": {
+        "width": 130.1,
+        "depth": 234,
+        "height": 187.9
+      }
+    },
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 2115.7,
+        "y": -504.5,
+        "z": 88.5
+      },
+      "eq_min": {
+        "x": 2058.8,
+        "y": -541.2,
+        "z": 0
+      },
+      "eq_max": {
+        "x": 2172.6,
+        "y": -467.8,
+        "z": 177.1
+      },
+      "eq_size": {
+        "width": 113.8,
+        "depth": 73.4,
+        "height": 177.1
+      }
+    },
+    {
+      "referenceIndex": 3,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 147.3,
+        "y": 2764.6,
+        "z": 392.4
+      },
+      "eq_min": {
+        "x": 122.9,
+        "y": 2747.3,
+        "z": 357.7
+      },
+      "eq_max": {
+        "x": 171.7,
+        "y": 2782,
+        "z": 427.1
+      },
+      "eq_size": {
+        "width": 48.8,
+        "depth": 34.7,
+        "height": 69.3
+      }
+    },
+    {
+      "referenceIndex": 4,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -2053.1,
+        "y": -617,
+        "z": -29.9
+      },
+      "eq_min": {
+        "x": -2071,
+        "y": -642,
+        "z": -66.6
+      },
+      "eq_max": {
+        "x": -2035.1,
+        "y": -592,
+        "z": 6.7
+      },
+      "eq_size": {
+        "width": 35.9,
+        "depth": 49.9,
+        "height": 73.3
+      }
+    }
+  ],
+  "unrest": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 329.9,
+        "y": 85,
+        "z": 10
+      },
+      "eq_min": {
+        "x": 319.9,
+        "y": 80,
+        "z": 0
+      },
+      "eq_max": {
+        "x": 339.9,
+        "y": 90,
+        "z": 20
+      },
+      "eq_size": {
+        "width": 20,
+        "depth": 10,
+        "height": 20
+      }
+    }
+  ],
+  "veksar": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -20,
+        "y": -640,
+        "z": -23
+      },
+      "eq_min": {
+        "x": -24,
+        "y": -652,
+        "z": -36
+      },
+      "eq_max": {
+        "x": -16,
+        "y": -628,
+        "z": -10
+      },
+      "eq_size": {
+        "width": 8,
+        "depth": 24,
+        "height": 26
+      }
+    },
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 20,
+        "y": -640,
+        "z": -23
+      },
+      "eq_min": {
+        "x": 16,
+        "y": -652,
+        "z": -36
+      },
+      "eq_max": {
+        "x": 24,
+        "y": -628,
+        "z": -10
+      },
+      "eq_size": {
+        "width": 8,
+        "depth": 24,
+        "height": 26
+      }
+    }
+  ],
+  "velketor": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -70.5,
+        "y": 610.3,
+        "z": -135.9
+      },
+      "eq_min": {
+        "x": -85,
+        "y": 608.8,
+        "z": -155.9
+      },
+      "eq_max": {
+        "x": -56,
+        "y": 611.8,
+        "z": -116
+      },
+      "eq_size": {
+        "width": 29,
+        "depth": 3,
+        "height": 40
+      }
+    }
+  ],
+  "vexthal": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -1529.5,
+        "y": 362.5,
+        "z": 37.5
+      },
+      "eq_min": {
+        "x": -1640,
+        "y": 295,
+        "z": -45
+      },
+      "eq_max": {
+        "x": -1419,
+        "y": 430,
+        "z": 120
+      },
+      "eq_size": {
+        "width": 221,
+        "depth": 135,
+        "height": 165
+      }
+    }
+  ],
+  "wakening": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 4779.5,
+        "y": 1546.1,
+        "z": -51.2
+      },
+      "eq_min": {
+        "x": 4773.2,
+        "y": 1529.6,
+        "z": -66.2
+      },
+      "eq_max": {
+        "x": 4785.9,
+        "y": 1562.5,
+        "z": -36.2
+      },
+      "eq_size": {
+        "width": 12.7,
+        "depth": 32.9,
+        "height": 30
+      }
+    },
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -5087,
+        "y": -563,
+        "z": -143.3
+      },
+      "eq_min": {
+        "x": -5100.1,
+        "y": -608.4,
+        "z": -218.3
+      },
+      "eq_max": {
+        "x": -5073.9,
+        "y": -517.7,
+        "z": -68.3
+      },
+      "eq_size": {
+        "width": 26.1,
+        "depth": 90.7,
+        "height": 150
+      }
+    }
+  ],
+  "warrens": [
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 1147.5,
+        "y": -112,
+        "z": -101.5
+      },
+      "eq_min": {
+        "x": 1135.5,
+        "y": -124,
+        "z": -111
+      },
+      "eq_max": {
+        "x": 1159.5,
+        "y": -100,
+        "z": -92
+      },
+      "eq_size": {
+        "width": 24,
+        "depth": 24,
+        "height": 19
+      }
+    },
+    {
+      "referenceIndex": 3,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -881.6,
+        "y": 745.2,
+        "z": -31
+      },
+      "eq_min": {
+        "x": -888.6,
+        "y": 734.7,
+        "z": -37
+      },
+      "eq_max": {
+        "x": -874.7,
+        "y": 755.7,
+        "z": -25
+      },
+      "eq_size": {
+        "width": 14,
+        "depth": 21,
+        "height": 12
+      }
+    }
+  ],
+  "warslikswood": [
+    {
+      "referenceIndex": 3,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -1127.2,
+        "y": -2252.1,
+        "z": 338.4
+      },
+      "eq_min": {
+        "x": -1134.8,
+        "y": -2275.5,
+        "z": 244.1
+      },
+      "eq_max": {
+        "x": -1119.7,
+        "y": -2228.7,
+        "z": 432.8
+      },
+      "eq_size": {
+        "width": 15.1,
+        "depth": 46.8,
+        "height": 188.7
+      }
+    },
+    {
+      "referenceIndex": 4,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -928.3,
+        "y": -2422.6,
+        "z": 338.4
+      },
+      "eq_min": {
+        "x": -951.7,
+        "y": -2430.1,
+        "z": 244.1
+      },
+      "eq_max": {
+        "x": -904.9,
+        "y": -2415,
+        "z": 432.8
+      },
+      "eq_size": {
+        "width": 46.8,
+        "depth": 15.1,
+        "height": 188.7
+      }
+    },
+    {
+      "referenceIndex": 5,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 4541.3,
+        "y": 2568,
+        "z": -237.5
+      },
+      "eq_min": {
+        "x": 4538.5,
+        "y": 2558.9,
+        "z": -246.2
+      },
+      "eq_max": {
+        "x": 4544.1,
+        "y": 2577,
+        "z": -228.9
+      },
+      "eq_size": {
+        "width": 5.6,
+        "depth": 18.1,
+        "height": 17.3
+      }
+    },
+    {
+      "referenceIndex": 6,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 1175.1,
+        "y": -3652.5,
+        "z": 66
+      },
+      "eq_min": {
+        "x": 1169.3,
+        "y": -3679.2,
+        "z": 36.6
+      },
+      "eq_max": {
+        "x": 1181,
+        "y": -3625.8,
+        "z": 95.3
+      },
+      "eq_size": {
+        "width": 11.7,
+        "depth": 53.4,
+        "height": 58.6
+      }
+    },
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -3970.6,
+        "y": 1417.1,
+        "z": 54.5
+      },
+      "eq_min": {
+        "x": -3987.1,
+        "y": 1076.5,
+        "z": -70
+      },
+      "eq_max": {
+        "x": -3954,
+        "y": 1757.7,
+        "z": 179
+      },
+      "eq_size": {
+        "width": 33,
+        "depth": 681.2,
+        "height": 249
+      }
+    },
+    {
+      "referenceIndex": 2,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 4096.5,
+        "y": -219.6,
+        "z": 355.4
+      },
+      "eq_min": {
+        "x": 4080,
+        "y": -560.5,
+        "z": 230.9
+      },
+      "eq_max": {
+        "x": 4112.9,
+        "y": 121.4,
+        "z": 479.9
+      },
+      "eq_size": {
+        "width": 32.9,
+        "depth": 681.8,
+        "height": 248.9
+      }
+    }
+  ],
+  "westwastes": [
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -3878.8,
+        "y": -5181.7,
+        "z": -237.5
+      },
+      "eq_min": {
+        "x": -3897.5,
+        "y": -5186.6,
+        "z": -265.6
+      },
+      "eq_max": {
+        "x": -3860.2,
+        "y": -5176.9,
+        "z": -209.4
+      },
+      "eq_size": {
+        "width": 37.3,
+        "depth": 9.6,
+        "height": 56.2
+      }
+    }
+  ],
+  "yxtta": [
+    {
+      "referenceIndex": 3,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": 2684,
+        "y": 525.5,
+        "z": -314
+      },
+      "eq_min": {
+        "x": 2679,
+        "y": 371,
+        "z": -451
+      },
+      "eq_max": {
+        "x": 2689,
+        "y": 680,
+        "z": -177
+      },
+      "eq_size": {
+        "width": 10,
+        "depth": 309,
+        "height": 274
+      }
+    },
+    {
+      "referenceIndex": 1,
+      "referenceType": "Reference",
+      "eq_center": {
+        "x": -914,
+        "y": 1289.6,
+        "z": -314
+      },
+      "eq_min": {
+        "x": -919,
+        "y": 901.1,
+        "z": -451
+      },
+      "eq_max": {
+        "x": -909,
+        "y": 1678,
+        "z": -177
+      },
+      "eq_size": {
+        "width": 10,
+        "depth": 776.9,
+        "height": 274
+      }
+    }
+  ]
+}

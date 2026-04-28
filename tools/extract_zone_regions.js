@@ -121,7 +121,9 @@ function parseWLD(data) {
       fo += 12;
     }
 
-    bspRegions.push({ name: frag.name, vertices, flags, numWalls, numObstacles });
+    const bspData = { name: frag.name, vertices, flags, numWalls, numObstacles };
+    frag.bspData = bspData;
+    bspRegions.push(bspData);
   }
 
   console.log(`Parsed ${bspRegions.length} BSP regions`);
@@ -184,11 +186,18 @@ function parseWLD(data) {
         }
       }
 
-      // Collect all vertices from linked BSP regions
+      // Collect all vertices from linked fragments
       const allVerts = [];
       for (const ri of regionIndices) {
-        if (ri >= 0 && ri < bspRegions.length) {
-          allVerts.push(...bspRegions[ri].vertices);
+        // ri is often a fragment index (1-indexed)
+        const targetFrag = frags.find(f => f.idx === ri);
+        if (targetFrag) {
+          console.log(`    Target fragment ${ri}: type=0x${targetFrag.type.toString(16)} name="${targetFrag.name}"`);
+          if (targetFrag.type === 0x22 && targetFrag.bspData) {
+            allVerts.push(...targetFrag.bspData.vertices);
+          }
+        } else {
+          console.log(`    Target fragment ${ri} NOT FOUND`);
         }
       }
 

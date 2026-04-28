@@ -1,0 +1,61 @@
+{
+  "spellbook": [
+    {
+      "bookSlot": 0,
+      "spell_key": "flare",
+      "id": 310
+    },
+    {
+      "bookSlot": 1,
+      "spell_key": "minor_shielding",
+      "id": 288
+    },
+    {
+      "bookSlot": 2,
+      "spell_key": "summon_food",
+      "id": 50
+    },
+    {
+      "bookSlot": 3,
+      "spell_key": "burst_of_flame",
+      "id": 93
+    },
+    {
+      "bookSlot": 4,
+      "spell_key": "true_north",
+      "id": 205
+    },
+    {
+      "bookSlot": 5,
+      "spell_key": "summon_drink",
+      "id": 211
+    },
+    {
+      "bookSlot": 6,
+      "spell_key": "summon_dagger",
+      "id": 311
+    },
+    {
+      "bookSlot": 7,
+      "spell_key": "fire_flux",
+      "id": 313
+    },
+    {
+      "bookSlot": 8,
+      "spell_key": "reclaim_energy",
+      "id": 331
+    }
+  ],
+  "memorized": [
+    {
+      "slot": 0,
+      "spell_key": "flare",
+      "id": 310
+    },
+    {
+      "slot": 1,
+      "spell_key": "minor_shielding",
+      "id": 288
+    }
+  ]
+}

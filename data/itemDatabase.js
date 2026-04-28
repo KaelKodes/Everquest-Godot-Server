@@ -64,6 +64,15 @@ class ItemDatabase {
           cha: rawItem.acha || 0,
           hp: rawItem.hp || 0,
           mana: rawItem.mana || 0,
+          classes: rawItem.classes || 0,
+          races: rawItem.races || 0,
+          itemtype: rawItem.itemtype || 0,
+          material: rawItem.material || 0,
+          idfile: rawItem.idfile || '',
+          reclevel: rawItem.reclevel || 0,
+          scrolllevel: rawItem.scrolllevel || 0,
+          scrolleffect: rawItem.scrolleffect || 0,
+          light: rawItem.light || 0,
         };
 
         const legacyKey = this.generateKey(rawItem.name);

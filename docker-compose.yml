@@ -1,0 +1,12 @@
+version: '3.8'
+services:
+  eqmud-server:
+    build: .
+    ports:
+      - "3005:3005"
+    volumes:
+      # Mount the local database inside the container to persist player data
+      - ./eqmud.db:/usr/src/app/eqmud.db
+      # Optionally mount .env to apply the same configuration
+      - ./.env:/usr/src/app/.env
+    restart: unless-stopped

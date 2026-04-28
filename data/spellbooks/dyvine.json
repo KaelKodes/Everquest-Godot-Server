@@ -1,0 +1,71 @@
+{
+  "spellbook": [
+    {
+      "bookSlot": 0,
+      "spell_key": "minor_healing",
+      "id": 200
+    },
+    {
+      "bookSlot": 1,
+      "spell_key": "strike",
+      "id": 14
+    },
+    {
+      "bookSlot": 2,
+      "spell_key": "holy_armor",
+      "id": 11
+    },
+    {
+      "bookSlot": 3,
+      "spell_key": "flash_of_light",
+      "id": 201
+    },
+    {
+      "bookSlot": 4,
+      "spell_key": "courage",
+      "id": 202
+    },
+    {
+      "bookSlot": 5,
+      "spell_key": "cure_poison",
+      "id": 203
+    },
+    {
+      "bookSlot": 6,
+      "spell_key": "true_north",
+      "id": 205
+    },
+    {
+      "bookSlot": 7,
+      "spell_key": "divine_aura",
+      "id": 207
+    },
+    {
+      "bookSlot": 8,
+      "spell_key": "lull",
+      "id": 208
+    },
+    {
+      "bookSlot": 9,
+      "spell_key": "spook_the_dead",
+      "id": 209
+    },
+    {
+      "bookSlot": 10,
+      "spell_key": "yaulp",
+      "id": 210
+    }
+  ],
+  "memorized": [
+    {
+      "slot": 0,
+      "spell_key": "minor_healing",
+      "id": 200
+    },
+    {
+      "slot": 1,
+      "spell_key": "strike",
+      "id": 14
+    }
+  ]
+}

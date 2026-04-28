@@ -22,16 +22,13 @@ module.exports = {
   equipItem: eqemuDB.equipItem,
   unequipItem: eqemuDB.unequipItem,
   getSpells: eqemuDB.getSpells,
+  memorizeSpell: eqemuDB.memorizeSpell,
+  forgetSpell: eqemuDB.forgetSpell,
   getSkills: eqemuDB.getSkills,
   saveCharacterSkills: eqemuDB.saveCharacterSkills,
-  
-  // Stubs for legacy support
-  saveDb: () => {},
-  saveCharacterLocation: () => {},
-  unequipSlot: () => {},
-  deleteItem: () => {},
-  memorizeSpell: () => {},
-  updateSkill: () => {},
-  getAbilities: () => [],
-  unlockAbility: () => {}
+  unequipSlot: eqemuDB.unequipSlot,
+  deleteItem: eqemuDB.deleteItem,
+  moveItem: eqemuDB.moveItem,
+  saveCharacterLocation: eqemuDB.saveCharacterLocation,
 };
+

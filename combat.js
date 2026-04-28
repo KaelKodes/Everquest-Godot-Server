@@ -3,7 +3,7 @@
 //  EQ-Authentic Combat Math — based on classic EQ (Kunark/Velious era)
 // ═══════════════════════════════════════════════════════════════════
 
-const { Skills } = require('./data/skills');
+const { Skills, RACIAL_SKILLS } = require('./data/skills');
 
 function roll(min, max) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
@@ -17,17 +17,31 @@ function chance(pct) {
 
 // ── Skill System ────────────────────────────────────────────────────
 
-function getMaxSkill(charClass, skillName, level) {
+function getMaxSkill(charClass, skillName, level, charRace) {
+  let classCap = 0;
   const skillDef = Skills[skillName];
-  if (!skillDef || !skillDef.classes[charClass]) return 0;
-  const c = skillDef.classes[charClass];
-  if (level < c.levelGranted) return 0;
-  return Math.min(c.maxCap, c.capFormula(level));
+  if (skillDef && skillDef.classes[charClass]) {
+    const c = skillDef.classes[charClass];
+    if (level >= c.levelGranted) {
+      classCap = Math.min(c.maxCap, c.capFormula(level));
+    }
+  }
+
+  // Check racial innate skill (e.g., Halfling Hide/Sneak)
+  let racialCap = 0;
+  if (charRace && RACIAL_SKILLS[charRace] && RACIAL_SKILLS[charRace][skillName]) {
+    const r = RACIAL_SKILLS[charRace][skillName];
+    if (level >= r.levelGranted) {
+      racialCap = Math.min(r.maxCap, r.capFormula(level));
+    }
+  }
+
+  return Math.max(classCap, racialCap);
 }
 
 function getCharSkill(char, skillName) {
   let skill = (char.skills && char.skills[skillName]) || 0;
-  if (skill === 0 && getMaxSkill(char.class, skillName, char.level) > 0) {
+  if (skill === 0 && getMaxSkill(char.class, skillName, char.level, char.race) > 0) {
       skill = 1;
       if (char.skills) char.skills[skillName] = 1;
   }
@@ -181,10 +195,10 @@ function checkCripplingBlow(charLevel, mobLevel) {
 
 // ── Double Attack ───────────────────────────────────────────────────
 function checkDoubleAttack(session) {
-  const skill = getCharSkill(session.char, 'doubleAttack');
+  const skill = getCharSkill(session.char, 'double_attack');
   if (skill <= 0) return false;
   if (chance(skill / 3.0)) {
-    trySkillUp(session, 'doubleAttack');
+    trySkillUp(session, 'double_attack');
     return true;
   }
   return false;
@@ -192,10 +206,10 @@ function checkDoubleAttack(session) {
 
 // ── Dual Wield ──────────────────────────────────────────────────────
 function checkDualWield(session) {
-  const skill = getCharSkill(session.char, 'dualWield');
+  const skill = getCharSkill(session.char, 'dual_wield');
   if (skill <= 0) return false;
   if (chance(skill / 4.0)) {
-    trySkillUp(session, 'dualWield');
+    trySkillUp(session, 'dual_wield');
     return true;
   }
   return false;

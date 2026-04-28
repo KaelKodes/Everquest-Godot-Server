@@ -106,7 +106,7 @@ async function getCharactersByAccount(accountId) {
     if (!pool) return [];
     try {
         const [rows] = await pool.query(
-            'SELECT id, name, class, race, level, zone_id FROM character_data WHERE account_id = ? ORDER BY name',
+            'SELECT id, name, class, race, level, zone_id, gender, face FROM character_data WHERE account_id = ? ORDER BY name',
             [accountId]
         );
         return rows.map(c => ({
@@ -114,6 +114,9 @@ async function getCharactersByAccount(accountId) {
             name: c.name,
             className: INV_CLASSES[c.class] || 'warrior',
             race: INV_RACES[c.race] || 'human',
+            raceId: c.race,
+            gender: c.gender || 0,
+            face: c.face || 0,
             level: c.level,
             zone: INV_ZONES[c.zone_id] || 'unknown'
         }));
@@ -212,11 +215,20 @@ async function getCharacter(name) {
         if (rows.length === 0) return null;
         
         const char = rows[0];
-        return {
+        const result = {
             id: char.id,
             name: char.name,
             class: INV_CLASSES[char.class] || 'warrior',
             race: INV_RACES[char.race] || 'human',
+            raceId: char.race || 1,
+            gender: char.gender || 0,
+            face: char.face || 0,
+            hairStyle: char.hair_style || 0,
+            hairColor: char.hair_color || 0,
+            beard: char.beard || 0,
+            beardColor: char.beard_color || 0,
+            eyeColor1: char.eye_color_1 || 0,
+            eyeColor2: char.eye_color_2 || 0,
             level: char.level,
             experience: char.exp,
             hp: char.cur_hp,
@@ -232,18 +244,23 @@ async function getCharacter(name) {
             zoneId: INV_ZONES[char.zone_id] || 'qeynos_hills',
             roomId: null,
             state: 'standing',
+            practices: char.training_points != null ? char.training_points : (char.level * 5),
             x: char.x,
             y: char.y,
             z: char.z,
-            copper: 1000
+            copper: 0
         };
+
+        // Load currency from separate table
+        result.copper = await getCharacterCurrency(result.id);
+        return result;
     } catch (e) {
         console.error('[DB] getCharacter Error:', e);
         return null;
     }
 }
 
-async function createCharacter(accountId, name, className, raceName, deityId, str, sta, agi, dex, wis, intel, cha, hp, mana) {
+async function createCharacter(accountId, name, className, raceName, deityId, str, sta, agi, dex, wis, intel, cha, hp, mana, appearance = {}) {
     if (!pool) await init();
     
     const classId = CLASSES[className.toLowerCase()] || 1;
@@ -264,15 +281,28 @@ async function createCharacter(accountId, name, className, raceName, deityId, st
     const start = await getStartZone(raceId, classId, deityId || 396);
     console.log(`[DB] Start zone for race=${raceId} class=${classId} deity=${deityId}: zone_id=${start.zone_id} (${start.zone_short}) at ${start.x},${start.y},${start.z}`);
 
+    // Appearance defaults
+    const gender    = appearance.gender    || 0;
+    const face      = appearance.face      || 0;
+    const hairStyle = appearance.hairStyle || 0;
+    const hairColor = appearance.hairColor || 0;
+    const beard     = appearance.beard     || 0;
+    const beardColor= appearance.beardColor|| 0;
+    const eyeColor1 = appearance.eyeColor  || 0;
+    const eyeColor2 = appearance.eyeColor  || 0;
+
     const query = `
         INSERT INTO character_data 
-        (account_id, name, class, race, deity, level, exp, cur_hp, mana, str, sta, agi, dex, wis, \`int\`, cha, zone_id, x, y, z) 
+        (account_id, name, class, race, deity, level, exp, cur_hp, mana, str, sta, agi, dex, wis, \`int\`, cha, zone_id, x, y, z,
+         gender, face, hair_style, hair_color, beard, beard_color, eye_color_1, eye_color_2) 
         VALUES 
-        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+         ?, ?, ?, ?, ?, ?, ?, ?)
     `;
     
     const params = [
-        accountId, formattedName, classId, raceId, deityId || 396, 1, 0, hp, mana, str, sta, agi, dex, wis, intel, cha, start.zone_id, start.x, start.y, start.z
+        accountId, formattedName, classId, raceId, deityId || 396, 1, 0, hp, mana, str, sta, agi, dex, wis, intel, cha, start.zone_id, start.x, start.y, start.z,
+        gender, face, hairStyle, hairColor, beard, beardColor, eyeColor1, eyeColor2
     ];
 
     try {
@@ -284,6 +314,9 @@ async function createCharacter(accountId, name, className, raceName, deityId, st
             name: formattedName,
             class: className.toLowerCase(),
             race: raceName.toLowerCase(),
+            raceId: raceId,
+            gender: gender,
+            face: face,
             level: 1,
             experience: 0,
             hp: hp,
@@ -302,7 +335,7 @@ async function createCharacter(accountId, name, className, raceName, deityId, st
             x: start.x,
             y: start.y,
             z: start.z,
-            copper: 1000
+            copper: 1000  // Starter money
         };
     } catch (e) {
         console.error('[DB] createCharacter Error:', e.message);
@@ -325,15 +358,37 @@ async function deleteCharacter(charId) {
 
 async function updateCharacterState(char) {
     if (!pool) return;
-    // Look up zone number from the DB cache
+    // Look up zone number from the DB cache (char.zoneId is the engine's key, which for
+    // dynamically loaded zones IS the EQEmu short_name)
     let zoneId = getZoneIdByShortName(char.zoneId);
-    if (!zoneId) zoneId = 4; // Ultimate fallback
+
+    // If direct lookup failed, try reverse-mapping through ZONES definitions
+    // (e.g., 'qeynos_hills' has shortName 'qeytoqrg')
+    if (!zoneId) {
+        const ZONES = require('./data/zones');
+        const def = ZONES[char.zoneId];
+        if (def && def.shortName) {
+            zoneId = getZoneIdByShortName(def.shortName);
+        }
+    }
+
+    if (!zoneId) {
+        // Last resort: read the current zone_id from the DB so we don't corrupt it
+        console.warn(`[DB] updateCharacterState: Can't resolve zone '${char.zoneId}' to numeric ID. Preserving existing zone_id.`);
+        try {
+            const [rows] = await pool.query('SELECT zone_id FROM character_data WHERE id = ?', [char.id]);
+            if (rows.length > 0) zoneId = rows[0].zone_id;
+        } catch(e) { /* fall through */ }
+        if (!zoneId) zoneId = 4; // Absolute last fallback
+    }
 
     try {
         await pool.query(
-            'UPDATE character_data SET x = ?, y = ?, z = ?, zone_id = ?, cur_hp = ?, mana = ?, exp = ? WHERE id = ?',
-            [char.x, char.y, char.z || 0, zoneId, char.hp, char.mana, char.experience, char.id]
+            'UPDATE character_data SET x = ?, y = ?, z = ?, zone_id = ?, cur_hp = ?, mana = ?, exp = ?, level = ?, training_points = ? WHERE id = ?',
+            [char.x, char.y, char.z || 0, zoneId, char.hp, char.mana, char.experience, char.level, char.practices || 0, char.id]
         );
+        // Save currency to the separate table
+        await saveCharacterCurrency(char.id, char.copper || 0);
     } catch (e) {
         console.error('[DB] updateCharacterState Error:', e.message);
     }
@@ -363,7 +418,8 @@ async function getAllItems() {
         SELECT id as item_key, Name as name, 
                aagi, acha, adex, aint, asta, astr, awis, 
                ac, hp, mana, damage, delay, price, 
-               itemtype, slots, classes, races, weight, icon
+               itemtype, slots, classes, races, weight, icon, material, idfile,
+               reclevel, scrolllevel, scrolleffect, light
         FROM items
     `;
 
@@ -431,39 +487,284 @@ async function equipItem(itemId, charId, slot) {
 async function unequipItem(itemId, charId) {
     if (!pool) return;
     try {
-        // Find an empty main inventory slot (22-29)
-        const [rows] = await pool.query('SELECT slot_id FROM inventory WHERE character_id = ? AND slot_id >= 22 AND slot_id <= 29', [charId]);
+        // Find an empty main inventory slot (22-31, 10 slots)
+        const [rows] = await pool.query('SELECT slot_id FROM inventory WHERE character_id = ? AND slot_id >= 22 AND slot_id <= 31', [charId]);
         const occupied = rows.map(r => r.slot_id);
         let freeSlot = 22;
-        while(occupied.includes(freeSlot) && freeSlot <= 29) { freeSlot++; }
+        while(occupied.includes(freeSlot) && freeSlot <= 31) { freeSlot++; }
         
         await pool.query('UPDATE inventory SET slot_id = ? WHERE character_id = ? AND item_id = ? LIMIT 1', [freeSlot, charId, itemId]);
     } catch(e) { console.error('[DB] unequipItem error:', e.message); }
 }
 
-// ── Skills & Spells ───────────────────────────────────────────────────
+async function unequipSlot(charId, slotId) {
+    if (!pool) return;
+    try {
+        // Find an empty main inventory slot (22-31, 10 slots)
+        const [rows] = await pool.query('SELECT slot_id FROM inventory WHERE character_id = ? AND slot_id >= 22 AND slot_id <= 31', [charId]);
+        const occupied = rows.map(r => r.slot_id);
+        let freeSlot = 22;
+        while(occupied.includes(freeSlot) && freeSlot <= 31) { freeSlot++; }
+        
+        await pool.query('UPDATE inventory SET slot_id = ? WHERE character_id = ? AND slot_id = ? LIMIT 1', [freeSlot, charId, slotId]);
+    } catch(e) { console.error('[DB] unequipSlot error:', e.message); }
+}
+
+async function deleteItem(charId, itemId, slotId) {
+    if (!pool) return;
+    try {
+        if (slotId != null) {
+            await pool.query('DELETE FROM inventory WHERE character_id = ? AND item_id = ? AND slot_id = ? LIMIT 1', [charId, itemId, slotId]);
+        } else {
+            await pool.query('DELETE FROM inventory WHERE character_id = ? AND item_id = ? LIMIT 1', [charId, itemId]);
+        }
+    } catch(e) { console.error('[DB] deleteItem error:', e.message); }
+}
+
+async function moveItem(charId, fromSlot, toSlot) {
+    if (!pool || fromSlot === toSlot) return;
+    try {
+        // Check if toSlot is occupied
+        const [toRows] = await pool.query('SELECT slot_id FROM inventory WHERE character_id = ? AND slot_id = ?', [charId, toSlot]);
+        if (toRows.length > 0) {
+            // Swap: use temp slot -999
+            await pool.query('UPDATE inventory SET slot_id = -999 WHERE character_id = ? AND slot_id = ? LIMIT 1', [charId, toSlot]);
+            await pool.query('UPDATE inventory SET slot_id = ? WHERE character_id = ? AND slot_id = ? LIMIT 1', [toSlot, charId, fromSlot]);
+            await pool.query('UPDATE inventory SET slot_id = ? WHERE character_id = ? AND slot_id = -999 LIMIT 1', [fromSlot, charId]);
+        } else {
+            await pool.query('UPDATE inventory SET slot_id = ? WHERE character_id = ? AND slot_id = ? LIMIT 1', [toSlot, charId, fromSlot]);
+        }
+    } catch(e) { console.error('[DB] moveItem error:', e.message); }
+}
+
+// ── EQEmu Canonical Skill ID Mapping ────────────────────────────────
+// Maps our string skill keys to the numeric IDs used by character_skills table
+const SKILL_NAME_TO_ID = {
+    '1h_blunt': 0, '1h_slashing': 1, '2h_blunt': 2, '2h_slashing': 3,
+    'abjuration': 4, 'alteration': 5, 'apply_poison': 6, 'archery': 7,
+    'backstab': 8, 'bind_wound': 9, 'bash': 10, 'block': 11,
+    'brass_instruments': 12, 'channeling': 13, 'conjuration': 14, 'defense': 15,
+    'disarm': 16, 'disarm_traps': 17, 'divination': 18, 'dodge': 19,
+    'double_attack': 20, 'dragon_punch': 21, 'dual_wield': 22, 'eagle_strike': 23,
+    'evocation': 24, 'feign_death': 25, 'flying_kick': 26, 'foraging': 27,
+    'hand_to_hand': 28, 'hide': 29, 'kick': 30, 'meditate': 31,
+    'mend': 32, 'offense': 33, 'parry': 34, 'pick_lock': 35,
+    'piercing': 36, 'riposte': 37, 'round_kick': 38, 'safe_fall': 39,
+    'sense_heading': 40, 'singing': 41, 'sneak': 42, 'specialize_abjure': 43,
+    'specialize_alteration': 44, 'specialize_conjuration': 45, 'specialize_divination': 46,
+    'specialize_evocation': 47, 'stringed_instruments': 48, 'swimming': 49,
+    'throwing': 50, 'tiger_claw': 51, 'tracking': 52, 'wind_instruments': 53,
+    'fishing': 54, 'poison_making': 55, 'tinkering': 56, 'research': 57,
+    'alchemy': 58, 'baking': 59, 'tailoring': 60, 'sense_traps': 61,
+    'blacksmithing': 62, 'fletching': 63, 'brewing_ts': 64, 'alcohol_tolerance': 65,
+    'begging': 66, 'jewelcrafting': 67, 'pottery_ts': 68, 'percussion': 69,
+    'intimidation': 70, 'berserking': 71, 'taunt': 72,
+    'pick_pocket': 53, // shares slot with wind_instruments in classic
+    // Custom EQMUD skills (IDs 100+ to avoid conflicts with EQ's 0-72)
+    'mining': 100,
+    'normal_vision': 101,
+    'weak_normal_vision': 102,
+    'infravision': 103,
+    'ultravision': 104,
+    'cat_eye': 105,
+    'serpent_sight': 106,
+};
+const SKILL_ID_TO_NAME = Object.fromEntries(Object.entries(SKILL_NAME_TO_ID).map(([k, v]) => [v, k]));
 
 async function getSkills(charId) {
     if (!pool) return [];
     try {
         const [rows] = await pool.query('SELECT skill_id, value FROM character_skills WHERE id = ?', [charId]);
-        return rows;
+        // Convert numeric IDs back to string keys for the engine
+        return rows.map(r => ({
+            skill_id: SKILL_ID_TO_NAME[r.skill_id] || `skill_${r.skill_id}`,
+            value: r.value
+        }));
     } catch(e) { return []; }
 }
 
 async function getSpells(charId) {
     if (!pool) return [];
-    return []; // Spells mapping deferred
+    try {
+        const [rows] = await pool.query(
+            'SELECT slot_id, spell_id FROM character_memmed_spells WHERE id = ? ORDER BY slot_id',
+            [charId]
+        );
+        // Convert numeric spell_id back to string key via SpellDB
+        const SpellDB = require('./data/spellDatabase');
+        return rows.map(r => {
+            const spellDef = SpellDB.getById(r.spell_id);
+            return {
+                slot: r.slot_id,
+                spell_key: spellDef ? spellDef._key : `spell_${r.spell_id}`,
+                id: r.spell_id
+            };
+        });
+    } catch (e) {
+        console.error('[DB] getSpells Error:', e.message);
+        return [];
+    }
+}
+
+async function memorizeSpell(charId, spellKey, slot) {
+    if (!pool) return;
+    try {
+        // Resolve string key to numeric spell ID
+        const SpellDB = require('./data/spellDatabase');
+        const spellDef = SpellDB.getByKey(spellKey);
+        const spellId = spellDef ? (spellDef._spellId || spellDef.id) : 0;
+        if (!spellId) {
+            console.warn(`[DB] memorizeSpell: Can't resolve spell key '${spellKey}' to numeric ID`);
+            return;
+        }
+        await pool.query(
+            'INSERT INTO character_memmed_spells (id, slot_id, spell_id) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE spell_id = ?',
+            [charId, slot, spellId, spellId]
+        );
+    } catch (e) {
+        console.error('[DB] memorizeSpell Error:', e.message);
+    }
+}
+
+async function forgetSpell(charId, slot) {
+    if (!pool) return;
+    try {
+        await pool.query('DELETE FROM character_memmed_spells WHERE id = ? AND slot_id = ?', [charId, slot]);
+    } catch (e) {
+        console.error('[DB] forgetSpell Error:', e.message);
+    }
 }
 
 async function saveCharacterSkills(charId, skillsObj) {
     if (!pool || !skillsObj) return;
-    // update character_skills... skipped for brevity as we just need basic function for now
+    try {
+        for (const [skillName, value] of Object.entries(skillsObj)) {
+            const numericId = SKILL_NAME_TO_ID[skillName];
+            if (numericId === undefined) continue; // Skip unknown skills
+            await pool.query(
+                'INSERT INTO character_skills (id, skill_id, value) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE value = ?',
+                [charId, numericId, value, value]
+            );
+        }
+    } catch (e) {
+        console.error('[DB] saveCharacterSkills Error:', e.message);
+    }
+}
+
+// ── Currency Persistence ────────────────────────────────────────────
+// EQEmu stores money in the `character_currency` table, not character_data
+
+async function getCharacterCurrency(charId) {
+    if (!pool) return 0;
+    try {
+        const [rows] = await pool.query('SELECT platinum, gold, silver, copper FROM character_currency WHERE id = ?', [charId]);
+        if (rows.length === 0) return 0;
+        const r = rows[0];
+        return (r.platinum || 0) * 1000 + (r.gold || 0) * 100 + (r.silver || 0) * 10 + (r.copper || 0);
+    } catch(e) {
+        console.error('[DB] getCharacterCurrency Error:', e.message);
+        return 0;
+    }
+}
+
+async function saveCharacterCurrency(charId, totalCopper) {
+    if (!pool) return;
+    const pp = Math.floor(totalCopper / 1000);
+    const gp = Math.floor((totalCopper % 1000) / 100);
+    const sp = Math.floor((totalCopper % 100) / 10);
+    const cp = totalCopper % 10;
+    try {
+        await pool.query(
+            'INSERT INTO character_currency (id, platinum, gold, silver, copper) VALUES (?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE platinum = ?, gold = ?, silver = ?, copper = ?',
+            [charId, pp, gp, sp, cp, pp, gp, sp, cp]
+        );
+    } catch(e) {
+        console.error('[DB] saveCharacterCurrency Error:', e.message);
+    }
+}
+
+// ── Location Persistence ────────────────────────────────────────────
+
+async function saveCharacterLocation(charId, zoneShortName, roomId) {
+    if (!pool) return;
+    let zoneId = getZoneIdByShortName(zoneShortName);
+
+    // If direct lookup failed, try reverse-mapping through ZONES definitions
+    if (!zoneId) {
+        const ZONES = require('./data/zones');
+        const def = ZONES[zoneShortName];
+        if (def && def.shortName) {
+            zoneId = getZoneIdByShortName(def.shortName);
+        }
+    }
+
+    if (!zoneId) {
+        console.warn(`[DB] saveCharacterLocation: Unknown zone '${zoneShortName}', skipping.`);
+        return;
+    }
+    try {
+        await pool.query('UPDATE character_data SET zone_id = ? WHERE id = ?', [zoneId, charId]);
+    } catch (e) {
+        console.error('[DB] saveCharacterLocation Error:', e.message);
+    }
 }
 
 // ── Zone Metadata Helpers ───────────────────────────────────────────
 
 /** Get zone metadata from the DB cache. Returns { long_name, zone_type, zoneidnumber } or null. */
+// ── Merchant Inventory (from merchantlist table) ─────────────────────
+
+// Cache merchantlist results so we don't re-query every hail
+const _merchantCache = {};
+
+async function getMerchantItems(npcId) {
+    if (_merchantCache[npcId]) return _merchantCache[npcId];
+    if (!pool) return [];
+    try {
+        // The merchant_id in npc_types matches merchantid in merchantlist
+        const [npcRow] = await pool.query('SELECT merchant_id FROM npc_types WHERE id = ?', [npcId]);
+        if (!npcRow.length || !npcRow[0].merchant_id) return [];
+        const merchantId = npcRow[0].merchant_id;
+
+        const [rows] = await pool.query(`
+            SELECT ml.slot, ml.item as item_id, i.Name as name, i.price, 
+                   i.ac, i.damage, i.delay, i.hp, i.mana, i.weight,
+                   i.astr, i.asta, i.aagi, i.adex, i.awis, i.aint, i.acha,
+                   i.classes, i.reclevel, i.scrolleffect, i.scrolllevel, i.itemtype
+            FROM merchantlist ml
+            JOIN items i ON ml.item = i.id
+            WHERE ml.merchantid = ?
+            ORDER BY ml.slot
+        `, [merchantId]);
+
+        const items = rows.map(r => ({
+            itemKey: r.item_id,
+            name: r.name,
+            price: r.price || 1,
+            ac: r.ac || 0,
+            damage: r.damage || 0,
+            delay: r.delay || 0,
+            hp: r.hp || 0,
+            mana: r.mana || 0,
+            weight: (r.weight || 0) / 10,
+            str: r.astr || 0,
+            sta: r.asta || 0,
+            classes: r.classes || 65535,
+            reclevel: r.reclevel || 0,
+            scrolllevel: r.scrolllevel || 0,
+            scrolleffect: r.scrolleffect || 0,
+            itemtype: r.itemtype || 0,
+        }));
+
+        _merchantCache[npcId] = items;
+        console.log(`[DB] Loaded ${items.length} merchant items for NPC ${npcId}`);
+        return items;
+    } catch(e) {
+        console.error('[DB] getMerchantItems error:', e.message);
+        return [];
+    }
+}
+
 function getZoneMetadata(shortName) {
     return ZONE_CACHE[shortName] || null;
 }
@@ -555,9 +856,18 @@ module.exports = {
     updateItemQuantity,
     equipItem,
     unequipItem,
+    unequipSlot,
+    deleteItem,
+    moveItem,
     getSkills,
     getSpells,
+    memorizeSpell,
+    forgetSpell,
     saveCharacterSkills,
+    getCharacterCurrency,
+    saveCharacterCurrency,
     getZoneMetadata,
-    getZoneIdByShortName
+    getZoneIdByShortName,
+    getMerchantItems,
+    saveCharacterLocation
 };

@@ -9,6 +9,7 @@ const ZONES = {
   qeynos_hills: {
     name: 'Qeynos Hills',
     environment: 'outdoor',
+    climate: 'temperate',
     shortName: 'qeytoqrg',
     levelRange: [1, 5],
     mapSize: { width: 3500, length: 5600 },
@@ -34,6 +35,7 @@ const ZONES = {
   west_karana: {
     name: 'West Karana',
     environment: 'outdoor',
+    climate: 'temperate',
     shortName: 'qey2hh1',
     levelRange: [5, 15],
     mapSize: { width: 2000, length: 2000 },
@@ -48,6 +50,7 @@ const ZONES = {
   qeynos_city: {
     name: 'South Qeynos',
     environment: 'outdoor',
+    climate: 'temperate',
     shortName: 'qeynos2', // Using South Qeynos
     levelRange: [1, 60],
     mapSize: { width: 1000, length: 1000 },
@@ -64,6 +67,7 @@ const ZONES = {
   north_karana: {
     name: 'North Karana',
     environment: 'outdoor',
+    climate: 'temperate',
     shortName: 'northkarana',
     levelRange: [10, 25],
     mapSize: { width: 1500, length: 1500 },
@@ -73,6 +77,18 @@ const ZONES = {
     ],
     mobs: NKARANA_MOBS,
   },
+
+  arena: {
+    name: 'Arena',
+    environment: 'indoor',
+    climate: 'temperate',
+    shortName: 'arena',
+    levelRange: [1, 65],
+    mapSize: { width: 3000, length: 3000 },
+    centerOffset: { x: 0, y: 0 },
+    mobs: [],
+  },
+
 };
 
 module.exports = ZONES;

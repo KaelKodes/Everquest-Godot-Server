@@ -4,7 +4,7 @@ const { WebSocketServer } = require('ws');
 const DB = require('./db');
 const engine = require('./gameEngine');
 
-const PORT = 3000;
+const PORT = process.env.PORT || 3005;
 
 async function main() {
   // ── Initialize Database ─────────────────────────────────────────

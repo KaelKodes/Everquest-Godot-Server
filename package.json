@@ -8,6 +8,8 @@
     "dev": "node --watch index.js"
   },
   "dependencies": {
+    "@gltf-transform/core": "^4.3.0",
+    "@gltf-transform/extensions": "^4.3.0",
     "dotenv": "^17.4.2",
     "express": "^4.21.0",
     "mysql2": "^3.22.0",

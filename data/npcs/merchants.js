@@ -297,6 +297,24 @@ const MERCHANT_INVENTORIES = {
       { itemKey: 'bandages', price: 12 },
     ],
   },
+
+  // ─── Mining Supply NPC (all starting zones) ────────────────────────
+
+  dougal_coalbeard: {
+    name: 'Dougal Coalbeard',
+    greeting: "Oi! Welcome, welcome! Dougal Coalbeard's the name, minin's me game! Browse me [wares] or ask me about [ore] — I know where t' find it all!",
+    sellBonus: 0.05,  // 5% bonus when selling mining/smithing items
+    sellBonusCategories: ['ore', 'velium', 'brick', 'block', 'piece of ore', 'blacksmithing'],
+    items: [
+      // T1 picks — starter gear, cheap
+      { itemKey: 'rusty_mining_pick',     price: 50 },
+      { itemKey: 'tarnished_mining_pick', price: 65 },
+      // T2 pick — mid-tier, requires some coin
+      { itemKey: 'forged_pick',           price: 350 },
+      // T3 pick — premium, serious miners only
+      { itemKey: 'silvered_pick',         price: 1200 },
+    ],
+  },
 };
 
 module.exports = MERCHANT_INVENTORIES;

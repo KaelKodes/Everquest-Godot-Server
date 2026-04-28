@@ -1,0 +1,4 @@
+node_modules
+tools
+.git
+.env

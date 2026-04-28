@@ -1,0 +1,86 @@
+{
+  "spellbook": [
+    {
+      "bookSlot": 0,
+      "spell_key": "minor_healing",
+      "id": 200
+    },
+    {
+      "bookSlot": 1,
+      "spell_key": "snare",
+      "id": 242
+    },
+    {
+      "bookSlot": 2,
+      "spell_key": "skin_like_wood",
+      "id": 26
+    },
+    {
+      "bookSlot": 3,
+      "spell_key": "burst_of_flame",
+      "id": 93
+    },
+    {
+      "bookSlot": 4,
+      "spell_key": "endure_fire",
+      "id": 224
+    },
+    {
+      "bookSlot": 5,
+      "spell_key": "dance_of_the_fireflies",
+      "id": 237
+    },
+    {
+      "bookSlot": 6,
+      "spell_key": "sense_animals",
+      "id": 238
+    },
+    {
+      "bookSlot": 7,
+      "spell_key": "flame_lick",
+      "id": 239
+    },
+    {
+      "bookSlot": 8,
+      "spell_key": "lull_animal",
+      "id": 240
+    },
+    {
+      "bookSlot": 9,
+      "spell_key": "panic_animal",
+      "id": 241
+    },
+    {
+      "bookSlot": 10,
+      "spell_key": "tangling_weeds",
+      "id": 2591
+    }
+  ],
+  "memorized": [
+    {
+      "slot": 0,
+      "spell_key": "minor_healing",
+      "id": 200
+    },
+    {
+      "slot": 1,
+      "spell_key": "snare",
+      "id": 242
+    },
+    {
+      "slot": 2,
+      "spell_key": "skin_like_wood",
+      "id": 26
+    },
+    {
+      "slot": 3,
+      "spell_key": "burst_of_flame",
+      "id": 93
+    },
+    {
+      "slot": 4,
+      "spell_key": "flame_lick",
+      "id": 239
+    }
+  ]
+}

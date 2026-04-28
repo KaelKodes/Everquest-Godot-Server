@@ -213,6 +213,29 @@ const NPC_DIALOGS = {
       'divine messenger': 'Legend says the Silver Griffon serves Karana himself, the Rainkeeper. To see it is an omen of great fortune.',
     },
   },
+
+  // ─── Mining Supply NPC (all starting zones) ────────────────────────
+
+  dougal_coalbeard: {
+    hail: "Oi there, {player}! Dougal Coalbeard at yer service! I sell the finest [picks] in all o' Norrath, and I know where every vein o' [ore] hides! What can I do fer ye?",
+    keywords: {
+      'picks': "I carry [Rusty Mining Picks] fer beginners, [Forged Picks] fer them what's gettin' serious, and [Silvered Picks] fer the dedicated miners. Ye want somethin' stronger than that? Ye'll have t' find it on yer own — or talk to the right [people]!",
+      'people': "There be smiths and enchanters out there who can forge ye somethin' truly special. But that's beyond me humble shop, {player}.",
+      'wares': "Take a look at me goods! I sell minin' picks of various qualities. And if ye've got [ore] or smithin' materials t' sell, I'll give ye a fair price — better than those general merchants, I guarantee it!",
+      'ore': "Oi, I know where ya should be look'n! Are ye after [Small Metal Veins], [Metal Veins], [Large Metal Veins], [Fine Metal Veins], [Precious Metal Veins], or [Velium Crystals]?",
+      'small metal veins': "Small Metal Veins? Aye, that's starter stuff! Ye'll find 'em scattered through Qeynos Hills, Butcherblock Mountains, and Steamfont Mountains. Any T1 pick'll do the job. Perfect fer learnin' the trade! Want to know about [other] ore?",
+      'metal veins': "Metal Veins are a step up! Ye'll need at least a [Forged Pick] t' crack those properly. Head to the deeper parts of Butcherblock Mountains — the dwarves have been minin' there fer ages. Want to know about [other] ore?",
+      'large metal veins': "Large Metal Veins, eh? Now yer talkin'! Those hide deep in Steamfont Mountains, near the minotaur caves. Ye'll want a [Silvered Pick] at minimum. Want to know about [other] ore?",
+      'fine metal veins': "Fine Metal Veins... now that's proper minin'! I hear tell they can be found in the mountain passes and deep caverns. Ye'll need a Miner's Pick or better — can't buy those from me, I'm afraid. Want to know about [other] ore?",
+      'precious metal veins': "Precious Metal Veins! Gold, platinum, the works! Only the most skilled miners can extract from those. I've heard rumors of veins deep in the mountains of Kunark and Velious. Want to know about [other] ore?",
+      'velium crystals': "Velium! By Brell's beard, that's the rarest stuff in all o' Norrath! Only found in the frozen wastes of Velious. Ye'll need a Coldain Velium-Pick and master-level minin' skill. That's the pinnacle o' the craft, {player}!",
+      'other': "I know about all kinds o' ore! Ask me about [Small Metal Veins], [Metal Veins], [Large Metal Veins], [Fine Metal Veins], [Precious Metal Veins], or [Velium Crystals]!",
+      'mining': "So ye want to learn the trade, eh? First, ye need a [pick]. Equip it in yer primary hand, find a minin' node, target it, and use yer Mining skill. Every swing has a chance t' strike true — the better yer skill, the more often ye'll connect! Keep at it and yer skill will improve over time.",
+      'rusty mining pick': "A Rusty Mining Pick is where every miner starts. Cheap, a bit slow, but it gets the job done on Small Metal Veins. I've got 'em right here in me shop!",
+      'forged pick': "Now a Forged Pick — that's a proper tool! Faster swing, harder hit, and it can handle Metal Veins without breakin' a sweat. Worth every copper!",
+      'silvered pick': "The Silvered Pick is me finest wares. Silver-tipped fer extra bite against tougher ore. Handles Large Metal Veins beautifully. A serious miner's best friend!",
+    },
+  },
 };
 
 // ── Dialog Engine Utilities ─────────────────────────────────────────

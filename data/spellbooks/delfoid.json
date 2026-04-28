@@ -1,0 +1,66 @@
+{
+  "spellbook": [
+    {
+      "bookSlot": 0,
+      "spell_key": "lifetap",
+      "id": 341
+    },
+    {
+      "bookSlot": 1,
+      "spell_key": "minor_shielding",
+      "id": 288
+    },
+    {
+      "bookSlot": 2,
+      "spell_key": "sense_the_dead",
+      "id": 221
+    },
+    {
+      "bookSlot": 3,
+      "spell_key": "invisibility_versus_undead",
+      "id": 235
+    },
+    {
+      "bookSlot": 4,
+      "spell_key": "reclaim_energy",
+      "id": 331
+    },
+    {
+      "bookSlot": 5,
+      "spell_key": "cavorting_bones",
+      "id": 338
+    },
+    {
+      "bookSlot": 6,
+      "spell_key": "coldlight",
+      "id": 339
+    },
+    {
+      "bookSlot": 7,
+      "spell_key": "disease_cloud",
+      "id": 340
+    },
+    {
+      "bookSlot": 8,
+      "spell_key": "locate_corpse",
+      "id": 342
+    },
+    {
+      "bookSlot": 9,
+      "spell_key": "siphon_strength",
+      "id": 343
+    }
+  ],
+  "memorized": [
+    {
+      "slot": 0,
+      "spell_key": "lifetap",
+      "id": 341
+    },
+    {
+      "slot": 1,
+      "spell_key": "minor_shielding",
+      "id": 288
+    }
+  ]
+}

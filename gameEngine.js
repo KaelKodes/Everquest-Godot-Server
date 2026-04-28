@@ -6187,6 +6187,7 @@ function handleLook(session, skipText = false) {
     weatherIntensity: vision.weatherIntensity,
     weatherRenderEffect: vision.weatherRenderEffect,
     worldHour: vision.worldHour,
+    isOutdoor: vision.isOutdoor,
     hasLightSource: vision.hasLightSource,
     availableModes: vision.availableModes,
     season: vision.season,

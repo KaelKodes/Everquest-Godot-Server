@@ -32,9 +32,12 @@ let ZONE_CACHE = {};
 let ZONE_ID_TO_SHORT = {};
 
 let pool;
+let initPromise = null;
 
 async function init() {
-    pool = mysql.createPool({
+    if (initPromise) return initPromise;
+    initPromise = (async () => {
+        pool = mysql.createPool({
         host: process.env.EQEMU_HOST || '127.0.0.1',
         port: process.env.EQEMU_PORT || 3307,
         user: process.env.EQEMU_USER || 'eqemu',
@@ -67,12 +70,14 @@ async function init() {
     } catch (e) {
         console.error('[DB] Failed to load zone cache, using hardcoded fallback:', e.message);
     }
+    })();
+    return initPromise;
 }
 
 // ── Account Queries ─────────────────────────────────────────────────
 
 async function loginAccount(username, password) {
-    if (!pool) await init();
+    await init();
     try {
         const [rows] = await pool.query('SELECT id, name, password, status FROM account WHERE name = ?', [username]);
         if (rows.length === 0) return null;
@@ -85,7 +90,7 @@ async function loginAccount(username, password) {
 }
 
 async function createAccount(username, password) {
-    if (!pool) await init();
+    await init();
     try {
         // Check if name is taken
         const [existing] = await pool.query('SELECT id FROM account WHERE name = ?', [username]);
@@ -129,7 +134,7 @@ async function getCharactersByAccount(accountId) {
 // ── Start Zone & Deity Lookups ──────────────────────────────────────
 
 async function getStartZone(raceId, classId, deityId) {
-    if (!pool) await init();
+    await init();
     try {
         // Try exact race + class + deity match
         let [rows] = await pool.query(
@@ -176,7 +181,7 @@ async function getStartZone(raceId, classId, deityId) {
 }
 
 async function getValidDeities(raceId, classId) {
-    if (!pool) await init();
+    await init();
     try {
         const [rows] = await pool.query(
             'SELECT DISTINCT player_deity FROM start_zones WHERE player_race = ? AND player_class = ? ORDER BY player_deity',
@@ -190,7 +195,7 @@ async function getValidDeities(raceId, classId) {
 }
 
 async function getZonePoints(zoneShortName) {
-    if (!pool) await init();
+    await init();
     try {
         const [rows] = await pool.query(
             `SELECT zp.number, zp.x, zp.y, zp.z, zp.target_x, zp.target_y, zp.target_z, 
@@ -209,7 +214,7 @@ async function getZonePoints(zoneShortName) {
 }
 
 async function getCharacter(name) {
-    if (!pool) await init();
+    await init();
     try {
         const [rows] = await pool.query(`SELECT * FROM character_data WHERE name = ?`, [name]);
         if (rows.length === 0) return null;
@@ -261,7 +266,7 @@ async function getCharacter(name) {
 }
 
 async function createCharacter(accountId, name, className, raceName, deityId, str, sta, agi, dex, wis, intel, cha, hp, mana, appearance = {}) {
-    if (!pool) await init();
+    await init();
     
     const classId = CLASSES[className.toLowerCase()] || 1;
     const raceId = RACES[raceName.toLowerCase()] || 1;
@@ -400,10 +405,10 @@ async function updateCharacterState(char) {
 }
 
 async function getZoneSpawns(shortName) {
-    if (!pool) await init();
+    await init();
 
     const query = `
-        SELECT s.id as spawn2_id, s.x, s.y, s.z, s.heading, s.respawntime, 
+        SELECT s.id as spawn2_id, s.x, s.y, s.z, s.heading, s.respawntime, s.pathgrid,
                se.chance, 
                n.id as npc_id, n.name, n.level, n.hp, n.mindmg, n.maxdmg, n.race, n.gender, n.class 
         FROM spawn2 s 
@@ -416,8 +421,43 @@ async function getZoneSpawns(shortName) {
     return rows;
 }
 
+async function getZoneDoors(shortName) {
+    await init();
+
+    const query = `
+        SELECT id, doorid, name, pos_x, pos_y, pos_z, heading, opentype, 
+               dest_zone, dest_instance, dest_x, dest_y, dest_z, dest_heading, invert_state, size
+        FROM doors 
+        WHERE zone = ?
+    `;
+
+    const [rows] = await pool.query(query, [shortName]);
+    return rows;
+}
+
+async function getZoneGrids(zoneIdNumber) {
+    await init();
+
+    const query = `
+        SELECT gridid, number, x, y, z, heading, pause 
+        FROM grid_entries 
+        WHERE zoneid = ? 
+        ORDER BY gridid, number
+    `;
+
+    const [rows] = await pool.query(query, [zoneIdNumber]);
+    
+    // Group waypoints by gridid
+    const grids = {};
+    for (const row of rows) {
+        if (!grids[row.gridid]) grids[row.gridid] = [];
+        grids[row.gridid].push(row);
+    }
+    return grids;
+}
+
 async function getAllItems() {
-    if (!pool) await init();
+    await init();
 
     const query = `
         SELECT id as item_key, Name as name, 
@@ -789,7 +829,7 @@ function getZoneIdByShortName(shortName) {
  * Returns: { classes: [{ classId, deities: [deityId, ...], allocations: { allocationId, base_*, alloc_* } }] }
  */
 async function getCharCreateData(raceId) {
-    if (!pool) await init();
+    await init();
     try {
         // Get all combos for this race with their stat allocation data
         const [rows] = await pool.query(`
@@ -874,5 +914,9 @@ module.exports = {
     getZoneMetadata,
     getZoneIdByShortName,
     getMerchantItems,
-    saveCharacterLocation
+    saveCharacterLocation,
+    getZoneGrids,
+    getZoneDoors
 };
+
+

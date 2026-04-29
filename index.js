@@ -10,6 +10,10 @@ async function main() {
   // ── Initialize Database ─────────────────────────────────────────
   await DB.initDatabase();
 
+  // ── Initialize Game Engine (zones, spells, items) BEFORE accepting connections ──
+  await engine.initZones();
+  engine.startGameLoop();
+
   // ── Express Setup ───────────────────────────────────────────────
   const app = express();
   const server = http.createServer(app);
@@ -53,10 +57,7 @@ async function main() {
     }));
   });
 
-  // ── Start Everything ──────────────────────────────────────────────
-  await engine.initZones();
-  engine.startGameLoop();
-
+  // ── Start Listening (only after everything is initialized) ──────
   server.listen(PORT, () => {
     console.log(`\n========================================`);
     console.log(`  EQMUD Server running on port ${PORT}`);

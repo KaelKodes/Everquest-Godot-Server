@@ -463,97 +463,21 @@ async function initZones() {
   await ItemDB.loadItems();
   ITEMS = ItemDB.createLegacyProxy();
   
+  // Pre-initialize hardcoded zones (only cshome — all real zones load dynamically)
   for (const [zoneId, zoneDef] of Object.entries(ZONES)) {
     zoneInstances[zoneId] = {
       def: zoneDef,
       liveMobs: [],
-      spawnPointState: [], // Tracks individual authentic spawn points
-      liveNodes: [],       // Mining nodes currently in the world
-      nodeSpawnState: [],  // Tracks mining node spawn points
+      spawnPointState: [],
+      liveNodes: [],
+      nodeSpawnState: [],
       weather: Calendar.createZoneWeather(zoneDef.climate || 'temperate'),
+      grids: {},
+      doors: []
     };
-    // Load spawns from EQEmu MySQL
-    const eqemuDB = require('./eqemu_db');
-    try {
-        const rawSpawns = await eqemuDB.getZoneSpawns(zoneDef.shortName);
-        
-        // Group rows by spawn2_id to build spawn pools
-        const spawnPoints = new Map();
-        for (const row of rawSpawns) {
-            if (!spawnPoints.has(row.spawn2_id)) {
-                spawnPoints.set(row.spawn2_id, {
-                    x: row.x,
-                    y: row.y,
-                    z: row.z,
-                    heading: row.heading || 0,
-                    respawntime: row.respawntime || 420,
-                    pool: [] // NPC candidates for this point
-                });
-            }
-            spawnPoints.get(row.spawn2_id).pool.push({
-                npc_id: row.npc_id,
-                name: row.name ? row.name.replace(/_/g, ' ').replace(/[0-9]/g, '').trim() : "Unknown",
-                level: row.level,
-                hp: row.hp,
-                mindmg: row.mindmg,
-                maxdmg: row.maxdmg,
-                race: row.race || 1,
-                gender: row.gender || 0,
-                npcClass: row.class || 1,
-                chance: row.chance || 0
-            });
-        }
-
-        // For each spawn point, pick ONE NPC from the pool using weighted chance
-        for (const [spawnId, point] of spawnPoints) {
-            const picked = pickFromPool(point.pool);
-            if (!picked) continue;
-
-            const mobDef = {
-                key: picked.npc_id.toString(),
-                name: picked.name,
-                level: picked.level,
-                type: mapEqemuClassToNpcType(picked.npcClass),
-                eqClass: picked.npcClass || 0,
-                race: picked.race || 1,
-                gender: picked.gender || 0,
-                maxHp: picked.hp > 0 ? picked.hp : picked.level * 20,
-                minDmg: picked.mindmg || Math.max(1, Math.floor(picked.level / 2)),
-                maxDmg: picked.maxdmg || Math.max(4, picked.level * 2),
-                attackDelay: 3, 
-                xpBase: picked.level * picked.level * 15,
-                respawnTime: point.respawntime
-            };
-
-            const mobState = {
-                spawnId: spawnId,
-                mobKey: mobDef.key,
-                x: point.x,
-                y: point.y,
-                z: point.z,
-                currentMobId: null,
-                respawnTimer: 0,
-                mobDef: mobDef,
-                pool: point.pool,         // Keep the full pool for respawn re-rolls
-                respawnTime: point.respawntime
-            };
-
-            const newMob = spawnMob(zoneId, mobDef, point.x, point.y, point.z, point.heading);
-            if (newMob) mobState.currentMobId = newMob.id;
-            
-            zoneInstances[zoneId].spawnPointState.push(mobState);
-        }
-        console.log(`[ENGINE] Loaded ${spawnPoints.size} spawn points (from ${rawSpawns.length} pool entries) for ${zoneId}.`);
-    } catch (e) {
-        console.log(`[ENGINE] Failed to load MySQL spawns for ${zoneId}:`, e.message);
-    }
-
-    // ── Mining Node Spawning ──
-    spawnMiningNodes(zoneId);
-    // ── Mining NPC Spawning ──
-    spawnMiningNPCs(zoneId);
+    console.log(`[ZONE] ${zoneId} (${zoneDef.name}) pre-initialized.`);
   }
-  console.log(`[ENGINE] Initialized ${Object.keys(zoneInstances).length} zones.`);
+  console.log(`[ENGINE] Initialized ${Object.keys(zoneInstances).length} zone(s). All other zones load dynamically.`);
 }
 
 // Dynamically load a zone from MySQL if it isn't already running
@@ -599,6 +523,8 @@ async function ensureZoneLoaded(zoneKey) {
     liveNodes: [],
     nodeSpawnState: [],
     weather: Calendar.createZoneWeather(zoneClimate),
+    grids: {},
+    doors: []
   };
 
   // Track bounding box from all coordinates
@@ -644,6 +570,7 @@ async function ensureZoneLoaded(zoneKey) {
         gender: picked.gender || 0,
         type: mapEqemuClassToNpcType(picked.npcClass),
         eqClass: picked.npcClass || 0,
+        pathgrid: point.pathgrid,
         maxHp: picked.hp > 0 ? picked.hp : picked.level * 20,
         minDmg: picked.mindmg || Math.max(1, Math.floor(picked.level / 2)),
         maxDmg: picked.maxdmg || Math.max(4, picked.level * 2),
@@ -667,6 +594,24 @@ async function ensureZoneLoaded(zoneKey) {
     console.log(`[ENGINE] Dynamically loaded ${spawnPoints.size} spawn points (from ${rawSpawns.length} pool entries) for '${zoneKey}'.`);
   } catch (e) {
     console.log(`[ENGINE] No spawn data found for '${zoneKey}':`, e.message);
+  }
+
+  // ── Load Doors ──
+  try {
+    zoneInstances[zoneKey].doors = await eqemuDB.getZoneDoors(zoneDef.shortName || zoneKey);
+    console.log(`[ENGINE] Loaded ${zoneInstances[zoneKey].doors.length} doors for '${zoneKey}'.`);
+  } catch (e) {
+    console.log(`[ENGINE] No door data found for '${zoneKey}':`, e.message);
+  }
+
+  // ── Load Grids ──
+  try {
+    const zoneIdNumber = eqemuDB.getZoneIdByShortName(zoneDef.shortName || zoneKey);
+    if (zoneIdNumber) {
+      zoneInstances[zoneKey].grids = await eqemuDB.getZoneGrids(zoneIdNumber);
+    }
+  } catch (e) {
+    console.log(`[ENGINE] No grid data found for '${zoneKey}':`, e.message);
   }
 
   // ── Mining Node Spawning ──
@@ -864,6 +809,15 @@ function spawnMob(zoneId, mobDef, forcedX = null, forcedY = null, forcedZ = null
     loot: mobDef.loot || [],
     target: null,
   };
+
+  // Initialize roaming logic if pathgrid is present
+  if (mobDef.pathgrid > 0 && zone.grids && zone.grids[mobDef.pathgrid]) {
+    newMob.gridId = mobDef.pathgrid;
+    newMob.gridEntries = zone.grids[mobDef.pathgrid];
+    newMob.gridIndex = 0;
+    newMob.gridPauseTimer = 0;
+    newMob.isRoaming = true;
+  }
   
   zone.liveMobs.push(newMob);
   return newMob;
@@ -3019,6 +2973,21 @@ async function handleHail(session, msg) {
     return;
   }
 
+  // Turn NPC to face player (0-512 scale)
+  let dx = char.x - target.x;
+  let dy = char.y - target.y;
+  let newHeading = (Math.atan2(dx, dy) / (2 * Math.PI)) * 512;
+  if (newHeading < 0) newHeading += 512;
+  target.heading = newHeading;
+
+  // All non-KOS NPCs will wave back (currently all are indifferent)
+  send(session.ws, {
+    type: 'EMOTE',
+    charName: target.name,
+    emote: 'wave',
+    heading: target.heading
+  });
+
   // If it's a regular mob, just shout at it
   if (!target.npcType || target.npcType === NPC_TYPES.MOB) {
     sendCombatLog(session, [{ event: 'MESSAGE', text: `You say, 'Hail, ${target.name}!'` }]);
@@ -4000,6 +3969,22 @@ function broadcastEntityState(session, msgType, extraFields) {
   }
 }
 
+/** Broadcast mob movement to all players in the zone */
+function broadcastMobMove(mob, zoneId) {
+  const payload = JSON.stringify({
+    type: 'MOB_MOVE',
+    id: mob.id,
+    x: mob.x,
+    y: mob.y,
+    z: mob.z || 0,
+    heading: mob.heading || 0
+  });
+  for (const [ws, other] of sessions) {
+    if (other.char && other.char.zoneId === zoneId) {
+      try { ws.send(payload); } catch(e) {}
+    }
+  }
+}
 
 /** Flush pending skill-up messages */
 function flushSkillUps(session) {
@@ -5158,6 +5143,7 @@ function sendLoginOk(session) {
       copper: char.copper,
       x: char.x,
       y: char.y,
+      z: char.z || 0,
       stats: {
         str: effective.str, sta: effective.sta, agi: effective.agi,
         dex: effective.dex, wis: effective.wis, intel: effective.intel,
@@ -5787,6 +5773,71 @@ function startGameLoop() {
   console.log(`[ENGINE] Game loop started (${TICK_RATE}ms tick rate).`);
 }
 
+function processMobRoaming(mob, dt, zoneId) {
+  if (mob.gridPauseTimer > 0) {
+    mob.gridPauseTimer -= dt;
+    if (mob.gridPauseTimer <= 0) {
+      mob.gridPauseTimer = 0;
+      mob.gridIndex++;
+      if (mob.gridIndex >= mob.gridEntries.length) {
+        mob.gridIndex = 0; // loop back
+      }
+    }
+    return;
+  }
+
+  const targetNode = mob.gridEntries[mob.gridIndex];
+  if (!targetNode) return;
+
+  const dx = targetNode.x - mob.x;
+  const dy = targetNode.y - mob.y;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+
+  let moved = false;
+
+  if (dist < 1.0) {
+    // Reached waypoint
+    mob.x = targetNode.x;
+    mob.y = targetNode.y;
+    mob.z = targetNode.z || mob.z;
+    if (targetNode.heading > 0) mob.heading = targetNode.heading;
+    
+    // Authentic pause logic
+    mob.gridPauseTimer = targetNode.pause || 0;
+    
+    // If no pause, instantly advance to next node
+    if (mob.gridPauseTimer <= 0) {
+      mob.gridIndex++;
+      if (mob.gridIndex >= mob.gridEntries.length) mob.gridIndex = 0;
+    }
+    moved = true;
+  } else {
+    // Walk towards waypoint
+    const roamSpeed = 6.0; // Gentle walking pace
+    const moveAmount = roamSpeed * dt;
+
+    if (dist <= moveAmount) {
+      mob.x = targetNode.x;
+      mob.y = targetNode.y;
+    } else {
+      const dirX = dx / dist;
+      const dirY = dy / dist;
+      mob.x += dirX * moveAmount;
+      mob.y += dirY * moveAmount;
+      
+      // Update heading to face walking direction
+      let newHeading = (Math.atan2(dirX, dirY) / (2 * Math.PI)) * 512;
+      if (newHeading < 0) newHeading += 512;
+      mob.heading = newHeading;
+    }
+    moved = true;
+  }
+
+  if (moved) {
+    broadcastMobMove(mob, zoneId);
+  }
+}
+
 function processMobAI(zone, zoneId, dt) {
   if (!zone || !zone.liveMobs) return;
   for (const mob of zone.liveMobs) {
@@ -6022,6 +6073,9 @@ function processMobAI(zone, zoneId, dt) {
         }
 
         if (events.length > 0 && !targetIsPet) sendCombatLog(mob.target, events);
+      } else if (mob.hp > 0 && !mob.target && mob.isRoaming) {
+        // Roaming logic when not in combat
+        processMobRoaming(mob, dt, zoneId);
       }
     }
   }
@@ -6175,7 +6229,7 @@ function handleLook(session, skipText = false) {
       }
   }
 
-  const payload = { type: 'ZONE_STATE', entities, vision: {
+  const payload = { type: 'ZONE_STATE', entities, doors: instance ? (instance.doors || []) : [], vision: {
     mode: vision.mode,
     renderStyle: vision.renderStyle,
     effectiveness: vision.effectiveness,

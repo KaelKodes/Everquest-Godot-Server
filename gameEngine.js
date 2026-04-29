@@ -540,6 +540,7 @@ async function ensureZoneLoaded(zoneKey) {
         spawnPoints.set(row.spawn2_id, {
           x: row.x, y: row.y, z: row.z, heading: row.heading || 0,
           respawntime: row.respawntime || 420,
+          pathgrid: row.pathgrid || 0,
           pool: []
         });
         allCoords.push({ x: row.x, y: row.y });
@@ -583,7 +584,7 @@ async function ensureZoneLoaded(zoneKey) {
         spawnId, mobKey: mobDef.key,
         x: point.x, y: point.y, z: point.z,
         currentMobId: null, respawnTimer: 0,
-        mobDef, pool: point.pool, respawnTime: point.respawntime
+        mobDef, pool: point.pool, respawnTime: point.respawntime, pathgrid: point.pathgrid
       };
 
       const newMob = spawnMob(zoneKey, mobDef, point.x, point.y, point.z, point.heading);
@@ -1141,6 +1142,7 @@ function processRespawns(zoneId) {
               name: picked.name,
               level: picked.level,
               type: NPC_TYPES.MOB,
+              pathgrid: spawn.pathgrid || 0,
               maxHp: picked.hp > 0 ? picked.hp : picked.level * 20,
               minDmg: picked.mindmg || Math.max(1, Math.floor(picked.level / 2)),
               maxDmg: picked.maxdmg || Math.max(4, picked.level * 2),
@@ -3742,46 +3744,7 @@ async function handleZone(session, msg) {
   if (spawnY > 900000) spawnY = session.char.y || 0;
   if (spawnZ > 900000) spawnZ = session.char.z || 0;
 
-  // ── Anti-bounce: push spawn AWAY from the reciprocal zoneline ──
-  // Find the zoneline in the TARGET zone that leads BACK to the zone we just left.
-  // If we spawned on top of it, we'd immediately trigger it and loop forever.
-  const SAFE_OFFSET = 100; // Must exceed default trigger radius (75) to avoid spawning inside
-  if (newZoneDef && newZoneDef.zoneLines) {
-    const reciprocal = newZoneDef.zoneLines.find(zl => zl.target === currentZone);
-    if (reciprocal) {
-      const dx = spawnX - reciprocal.x;
-      const dy = spawnY - reciprocal.y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
 
-      if (dist < SAFE_OFFSET + (reciprocal.length || 100)) {
-        // We're dangerously close to (or inside) the return trigger.
-        // Push the spawn point away from the reciprocal zoneline center.
-        if (dist > 1) {
-          // Use the vector from the reciprocal toward the spawn and extend it
-          const nx = dx / dist;
-          const ny = dy / dist;
-          spawnX = reciprocal.x + nx * SAFE_OFFSET;
-          spawnY = reciprocal.y + ny * SAFE_OFFSET;
-        } else {
-          // Spawn is exactly on the reciprocal — nudge based on orientation
-          if (reciprocal.orientation === 'ew') {
-            // Wall runs east-west: push north/south (along Y axis)
-            const centerY = (newZoneDef.centerOffset && newZoneDef.centerOffset.y) || 0;
-            spawnY = reciprocal.y + (reciprocal.y < centerY ? SAFE_OFFSET : -SAFE_OFFSET);
-          } else {
-            // Wall runs north-south: push east/west (along X axis)
-            const centerX = (newZoneDef.centerOffset && newZoneDef.centerOffset.x) || 0;
-            spawnX = reciprocal.x + (reciprocal.x < centerX ? SAFE_OFFSET : -SAFE_OFFSET);
-          }
-        }
-        console.log(`[ENGINE] Anti-bounce: pushed spawn away from reciprocal zoneline '${currentZone}' at (${reciprocal.x},${reciprocal.y}) → spawn now (${Math.round(spawnX)},${Math.round(spawnY)})`);
-      }
-    }
-  }
-
-  // Small jitter so players don't stack
-  spawnX += (Math.random() * 10 - 5);
-  spawnY += (Math.random() * 10 - 5);
 
   session.char.x = spawnX;
   session.char.y = spawnY;

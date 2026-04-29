@@ -19,7 +19,9 @@ const ZONES_NUM_FALLBACK = {
     'qeynos_city': 2,
     'qeynos_hills': 4,
     'west_karana': 12,
-    'north_karana': 13
+    'north_karana': 13,
+    'gfaydark': 54,
+    'lfaydark': 57
 };
 
 const INV_CLASSES = Object.fromEntries(Object.entries(CLASSES).map(([k, v]) => [v, k]));
@@ -733,6 +735,11 @@ async function saveCharacterCurrency(charId, totalCopper) {
 async function saveCharacterLocation(charId, zoneShortName, roomId) {
     if (!pool) return;
     let zoneId = getZoneIdByShortName(zoneShortName);
+
+    // FALLBACK: If zoneShortName is already numeric, use it directly!
+    if (!zoneId && !isNaN(parseInt(zoneShortName))) {
+        zoneId = parseInt(zoneShortName);
+    }
 
     // If direct lookup failed, try reverse-mapping through ZONES definitions
     if (!zoneId) {

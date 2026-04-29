@@ -18,6 +18,8 @@ const { VISION_MODES, RACE_VISION, SPELL_VISION_MODES, AMBIENT_LIGHT } = require
 const Calendar = require('./data/calendar');
 const WorldAtlas = require('./data/worldAtlas');
 const { send } = require('./utils');
+const VisionSystem = require('./systems/vision');
+const AISystem = require('./systems/ai');
 
 // Precise zone line trigger data extracted from EQ S3D client files (BSP regions)
 let ZONE_TRIGGERS = {};
@@ -92,10 +94,14 @@ let worldCalendar = State.worldCalendar;
 
 // See combat.js for math helpers
 
-function getDistance(x1, y1, x2, y2) {
+function getDistanceSq(x1, y1, x2, y2) {
     const dx = (x1 || 0) - (x2 || 0);
     const dy = (y1 || 0) - (y2 || 0);
-    return Math.sqrt(dx * dx + dy * dy);
+    return dx * dx + dy * dy;
+}
+
+function getDistance(x1, y1, x2, y2) {
+    return Math.sqrt(getDistanceSq(x1, y1, x2, y2));
 }
 
 // ── Vision System ───────────────────────────────────────────────────
@@ -111,187 +117,7 @@ function getDistance(x1, y1, x2, y2) {
 // and sending to the Godot client for rendering.
 // ────────────────────────────────────────────────────────────────────
 
-/**
- * Build the list of vision modes available to a player.
- * Always includes 'normal' + their racial mode. Spell buffs add extra modes.
- */
-function getAvailableVisionModes(session) {
-  const raceVisions = RACE_VISION[session.char.race] || ['normal'];
-  const modes = new Set(raceVisions);
-
-  // Add any modes granted by active spell buffs
-  if (Array.isArray(session.buffs)) {
-    for (const buff of session.buffs) {
-      if (!Array.isArray(buff.effects)) continue;
-      for (const eff of buff.effects) {
-        const spellVision = SPELL_VISION_MODES[eff.spa];
-        if (spellVision) modes.add(spellVision.mode);
-      }
-    }
-  }
-
-  return Array.from(modes);
-}
-
-function getVisionState(session) {
-  const char = session.char;
-  const zoneDef = getZoneDef(char.zoneId);
-  const isOutdoor = zoneDef && zoneDef.environment === 'outdoor';
-  const season = Calendar.getSeason(worldCalendar.month);
-  const isDay = Calendar.isDaytime(worldCalendar.hour, worldCalendar.month);
-
-  // ── 1. Base ambient light from environment ──
-  let ambientLight;
-  if (isOutdoor) {
-    ambientLight = isDay ? AMBIENT_LIGHT.outdoor_day : AMBIENT_LIGHT.outdoor_night;
-  } else {
-    ambientLight = (zoneDef && zoneDef.baseLightLevel != null)
-      ? zoneDef.baseLightLevel
-      : AMBIENT_LIGHT.indoor_dark;
-  }
-
-  // ── 1b. Apply weather light modifier ──
-  const zoneInst = zoneInstances[char.zoneId];
-  const zoneWeatherKey = (zoneInst && zoneInst.weather) ? zoneInst.weather.current : 'clear';
-  const weatherDef = Calendar.getWeatherDef(zoneWeatherKey);
-  ambientLight += weatherDef.lightModifier;
-
-  // ── 1c. Moonlight bonus (outdoor night only) ──
-  const moonState = Calendar.getMoonPhases(worldCalendar.totalDays);
-  let moonlightBonus = 0;
-  if (isOutdoor && !isDay) {
-    moonlightBonus = moonState.totalMoonlight; // 0 to +3 based on phases
-    ambientLight += moonlightBonus;
-  }
-
-  ambientLight = Math.max(0, ambientLight);
-
-  // ── 2. Determine active vision mode ──
-  const raceVisions = RACE_VISION[char.race] || ['normal'];
-  const racialModeKey = raceVisions[0];
-  const availableModes = getAvailableVisionModes(session);
-
-  let spellModeKey = null;
-  let spellBonus = 0;
-  if (Array.isArray(session.buffs)) {
-    for (const buff of session.buffs) {
-      if (!Array.isArray(buff.effects)) continue;
-      for (const eff of buff.effects) {
-        const spellVision = SPELL_VISION_MODES[eff.spa];
-        if (spellVision && spellVision.bonus > spellBonus) {
-          spellBonus = spellVision.bonus;
-          spellModeKey = spellVision.mode;
-        }
-      }
-    }
-  }
-
-  let activeModeKey;
-  if (session.activeVisionMode && availableModes.includes(session.activeVisionMode)) {
-    activeModeKey = session.activeVisionMode;
-  } else if (spellModeKey) {
-    activeModeKey = spellModeKey;
-  } else {
-    activeModeKey = racialModeKey;
-  }
-
-  const mode = VISION_MODES[activeModeKey] || VISION_MODES.normal;
-
-  // ── 3. Calculate base effectiveness ──
-  let effectiveness = ambientLight;
-
-  if (activeModeKey === 'normal') {
-    // Normal vision gets no bonus
-  } else if (!isOutdoor) {
-    effectiveness += mode.indoorBonus;
-  } else if (!isDay) {
-    effectiveness += mode.nightBonus;
-  }
-
-  // ── 4. Equipped light sources ──
-  let lightSourceBonus = 0;
-  let hasLightSource = false;
-  if (session.inventory) {
-    for (const item of session.inventory) {
-      if (item.equipped !== 1) continue;
-      const def = ItemDB.getById(item.item_key);
-      if (!def) continue;
-      if (def.light && def.light > 0) {
-        hasLightSource = true;
-        const bonus = def.light >= 10 ? 8 : def.light >= 7 ? 5 : 3;
-        lightSourceBonus = Math.max(lightSourceBonus, bonus);
-      } else {
-        const name = (def.name || '').toLowerCase();
-        if (name.includes('torch') || name.includes('lantern') || name.includes('lightstone')) {
-          hasLightSource = true;
-          lightSourceBonus = Math.max(lightSourceBonus, 5);
-        }
-      }
-    }
-  }
-  effectiveness += lightSourceBonus;
-
-  // ── 5. Light sensitivity penalties ──
-  let sensitivityPenalty = 0;
-  if (ambientLight >= 8 && mode.brightPenalty) {
-    sensitivityPenalty += mode.brightPenalty;
-  }
-  if (hasLightSource && mode.torchPenalty) {
-    sensitivityPenalty += mode.torchPenalty;
-  }
-  effectiveness += sensitivityPenalty;
-
-  effectiveness = Math.max(0, Math.min(10, effectiveness));
-  const isBlind = effectiveness <= 2;
-
-  // ── 6. View distance calculation ──
-  let viewDistance = isDay ? mode.baseViewDist : mode.nightViewDist;
-  viewDistance = Math.round(viewDistance * (effectiveness / 10));
-
-  // Weather-based view cap from the weather definition
-  viewDistance = Math.min(viewDistance, weatherDef.viewDistCap);
-
-  if (!isOutdoor) {
-    viewDistance = Math.min(viewDistance, 3000);
-  }
-  viewDistance = Math.max(viewDistance, 200);
-
-  // Calendar data for the return payload
-  const daylight = Calendar.getDaylightHours(worldCalendar.month);
-
-  return {
-    mode: activeModeKey,
-    modeName: mode.name,
-    renderStyle: mode.renderStyle,
-    effectiveness,
-    isBlind,
-    viewDistance,
-    ambientLight,
-    sensitivityPenalty,
-    timeOfDay: isDay ? 'day' : 'night',
-    weather: zoneWeatherKey,
-    weatherName: weatherDef.name,
-    weatherIntensity: weatherDef.intensity,
-    weatherRenderEffect: weatherDef.renderEffect,
-    worldHour: worldCalendar.hour,
-    isOutdoor,
-    hasLightSource,
-    canSeeUnlit: mode.canSeeUnlit,
-    description: mode.description,
-    availableModes,
-    // Calendar data
-    season: season.name,
-    dawn: daylight.dawn,
-    dusk: daylight.dusk,
-    // Moon data
-    moons: {
-      drinal: moonState.drinal,
-      luclin: moonState.luclin,
-      totalMoonlight: moonState.totalMoonlight,
-      isTwinFull: moonState.isTwinFull,
-    },
-  };
-}
+// ── Vision System moved to systems/vision.js ──────────────────────
 
 function calcEffectiveStats(char, inventory, buffs = []) {
   const stats = {
@@ -530,6 +356,16 @@ async function ensureZoneLoaded(zoneKey) {
   // Track bounding box from all coordinates
   let allCoords = [];
 
+  // ── Load Grids ──
+  try {
+    const zoneIdNumber = eqemuDB.getZoneIdByShortName(zoneDef.shortName || zoneKey);
+    if (zoneIdNumber) {
+      zoneInstances[zoneKey].grids = await eqemuDB.getZoneGrids(zoneIdNumber);
+    }
+  } catch (e) {
+    console.log(`[ENGINE] No grid data found for '${zoneKey}':`, e.message);
+  }
+
   // Load spawns from EQEmu MySQL
   try {
     const rawSpawns = await eqemuDB.getZoneSpawns(zoneDef.shortName || zoneKey);
@@ -541,6 +377,7 @@ async function ensureZoneLoaded(zoneKey) {
           x: row.x, y: row.y, z: row.z, heading: row.heading || 0,
           respawntime: row.respawntime || 420,
           pathgrid: row.pathgrid || 0,
+          wanderDist: row.wander_dist || 0,
           pool: []
         });
         allCoords.push({ x: row.x, y: row.y });
@@ -572,6 +409,7 @@ async function ensureZoneLoaded(zoneKey) {
         type: mapEqemuClassToNpcType(picked.npcClass),
         eqClass: picked.npcClass || 0,
         pathgrid: point.pathgrid,
+        wanderDist: point.wanderDist,
         maxHp: picked.hp > 0 ? picked.hp : picked.level * 20,
         minDmg: picked.mindmg || Math.max(1, Math.floor(picked.level / 2)),
         maxDmg: picked.maxdmg || Math.max(4, picked.level * 2),
@@ -603,16 +441,6 @@ async function ensureZoneLoaded(zoneKey) {
     console.log(`[ENGINE] Loaded ${zoneInstances[zoneKey].doors.length} doors for '${zoneKey}'.`);
   } catch (e) {
     console.log(`[ENGINE] No door data found for '${zoneKey}':`, e.message);
-  }
-
-  // ── Load Grids ──
-  try {
-    const zoneIdNumber = eqemuDB.getZoneIdByShortName(zoneDef.shortName || zoneKey);
-    if (zoneIdNumber) {
-      zoneInstances[zoneKey].grids = await eqemuDB.getZoneGrids(zoneIdNumber);
-    }
-  } catch (e) {
-    console.log(`[ENGINE] No grid data found for '${zoneKey}':`, e.message);
   }
 
   // ── Mining Node Spawning ──
@@ -818,6 +646,10 @@ function spawnMob(zoneId, mobDef, forcedX = null, forcedY = null, forcedZ = null
     newMob.gridIndex = 0;
     newMob.gridPauseTimer = 0;
     newMob.isRoaming = true;
+  } else if (mobDef.wanderDist > 0) {
+    newMob.wanderDist = mobDef.wanderDist;
+    newMob.isRoaming = true;
+    newMob.gridPauseTimer = 0; // Use the same pause timer for wander delays
   }
   
   zone.liveMobs.push(newMob);
@@ -1022,8 +854,8 @@ function handleMine(session, msg) {
   // ── 4. Proximity check ──
   const dx = (char.x || 0) - node.x;
   const dy = (char.y || 0) - node.y;
-  const dist = Math.sqrt(dx * dx + dy * dy);
-  if (dist > 25) { // Mining range
+  const distSq = dx * dx + dy * dy;
+  if (distSq > 625) { // Mining range
     sendCombatLog(session, [{ event: 'MESSAGE', text: 'You are too far away to mine that.' }]);
     session.miningCooldown = 0;
     return;
@@ -1907,8 +1739,8 @@ async function handleCastSpell(session, msg) {
     if (mob.x != null && session.char.x != null) {
       const dx = session.char.x - mob.x;
       const dy = session.char.y - mob.y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist > spellRange) {
+      const distSq = dx * dx + dy * dy;
+      if (distSq > spellRange * spellRange) {
         return sendCombatLog(session, [{ event: 'MESSAGE', text: 'Your target is out of range.' }]);
       }
     }
@@ -2969,8 +2801,8 @@ async function handleHail(session, msg) {
   const target = session.combatTarget;
 
   // Proximity check — must be within HAIL_RANGE
-  const dist = getDistance(char.x, char.y, target.x, target.y);
-  if (dist > HAIL_RANGE) {
+  const distSq = getDistanceSq(char.x, char.y, target.x, target.y);
+  if (distSq > HAIL_RANGE * HAIL_RANGE) {
     sendCombatLog(session, [{ event: 'MESSAGE', text: `You are too far away to speak with ${target.name}.` }]);
     return;
   }
@@ -3190,8 +3022,8 @@ function handleSay(session, msg) {
     const target = session.combatTarget;
 
     // Proximity check
-    const dist = getDistance(char.x, char.y, target.x, target.y);
-    if (dist > HAIL_RANGE) {
+    const distSq = getDistanceSq(char.x, char.y, target.x, target.y);
+  if (distSq > HAIL_RANGE * HAIL_RANGE) {
       // Still broadcast to other players even if NPC is too far
       broadcastChat(session, 'say', text, 200);
       return;
@@ -3235,8 +3067,8 @@ function broadcastChat(session, channel, text, radius) {
   const char = session.char;
   for (const [ws, other] of sessions) {
     if (other !== session && other.char.zoneId === char.zoneId) {
-      const pDist = getDistance(other.char.x, other.char.y, char.x, char.y);
-      if (pDist <= radius) {
+      const pDistSq = getDistanceSq(other.char.x, other.char.y, char.x, char.y);
+      if (pDistSq <= radius * radius) {
         send(other.ws, { type: 'CHAT', channel: channel, sender: char.name, text: text });
       }
     }
@@ -3278,8 +3110,8 @@ function handleYell(session, msg) {
     const isGuard = mob.key && (mob.key.startsWith('guard_') || mob.key.startsWith('watchman_'));
     if (!isGuard) continue;
 
-    const guardDist = getDistance(mob.x, mob.y, char.x, char.y);
-    if (guardDist > 400) continue; // Guard must hear the yell
+    const guardDistSq = getDistanceSq(mob.x, mob.y, char.x, char.y);
+    if (guardDistSq > 160000) continue; // Guard must hear the yell
 
     // Check if the player is being attacked by a mob
     // Find mobs that are targeting this player
@@ -3407,8 +3239,8 @@ async function handleBuy(session, msg) {
   }
 
   // Proximity check
-  const dist = getDistance(char.x, char.y, merchant.x, merchant.y);
-  if (dist > HAIL_RANGE) {
+  const distSq = getDistanceSq(char.x, char.y, merchant.x, merchant.y);
+  if (distSq > HAIL_RANGE * HAIL_RANGE) {
     sendCombatLog(session, [{ event: 'MESSAGE', text: 'You are too far away to trade.' }]);
     return;
   }
@@ -3474,8 +3306,8 @@ async function handleSell(session, msg) {
     sendCombatLog(session, [{ event: 'MESSAGE', text: 'That merchant is no longer available.' }]);
     return;
   }
-  const dist = getDistance(char.x, char.y, merchant.x, merchant.y);
-  if (dist > HAIL_RANGE) {
+  const distSq = getDistanceSq(char.x, char.y, merchant.x, merchant.y);
+  if (distSq > HAIL_RANGE * HAIL_RANGE) {
     sendCombatLog(session, [{ event: 'MESSAGE', text: 'You are too far away to trade.' }]);
     return;
   }
@@ -3765,8 +3597,8 @@ function handleUpdatePos(session, msg) {
     if (session.casting && session.casting.startPos) {
       const dx = session.char.x - session.casting.startPos.x;
       const dy = session.char.y - session.casting.startPos.y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist > 5) { // Small threshold to avoid jitter false-positives
+      const distSq = dx * dx + dy * dy;
+      if (distSq > 25) { // Small threshold to avoid jitter false-positives
         interruptCasting(session, 'Your spell is interrupted!');
       }
     }
@@ -4350,9 +4182,9 @@ function processPetAI(pet, zone, zoneId, dt) {
     // Combat chase — move toward target
     const dx = pet.target.x - pet.x;
     const dy = pet.target.y - pet.y;
-    const dist = Math.sqrt(dx * dx + dy * dy);
+    const distSq = dx * dx + dy * dy;
 
-    if (dist > MELEE_RANGE) {
+    if (distSq > MELEE_RANGE * MELEE_RANGE) {
       const moveAmt = PET_SPEED * dt;
       pet.x += (dx / dist) * Math.min(moveAmt, dist);
       pet.y += (dy / dist) * Math.min(moveAmt, dist);
@@ -4470,8 +4302,9 @@ function processPetAI(pet, zone, zoneId, dt) {
     if (pet.state === 'follow') {
       const dx = owner.char.x - pet.x;
       const dy = owner.char.y - pet.y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist > FOLLOW_DISTANCE) {
+      const distSq = dx * dx + dy * dy;
+      if (distSq > FOLLOW_DISTANCE * FOLLOW_DISTANCE) {
+        const dist = Math.sqrt(distSq);
         const moveAmt = PET_SPEED * dt;
         pet.x += (dx / dist) * Math.min(moveAmt, dist - FOLLOW_DISTANCE + 1);
         pet.y += (dy / dist) * Math.min(moveAmt, dist - FOLLOW_DISTANCE + 1);
@@ -4480,8 +4313,9 @@ function processPetAI(pet, zone, zoneId, dt) {
       // Return to guard position if displaced by combat
       const dx = pet.guardX - pet.x;
       const dy = pet.guardY - pet.y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist > 3) {
+      const distSq = dx * dx + dy * dy;
+      if (distSq > 9) {
+        const dist = Math.sqrt(distSq);
         const moveAmt = PET_SPEED * dt;
         pet.x += (dx / dist) * Math.min(moveAmt, dist);
         pet.y += (dy / dist) * Math.min(moveAmt, dist);
@@ -5233,7 +5067,8 @@ function sendStatus(session) {
         maxHp: session.combatTarget.maxHp
       } : null,
       vision: (() => {
-        const v = getVisionState(session);
+        const zoneInst = zoneInstances[session.char.zoneId];
+        const v = VisionSystem.getVisionState(session, zoneInst ? zoneInst.def : null);
         return {
           mode: v.mode,
           modeName: v.modeName,
@@ -5707,8 +5542,14 @@ function startGameLoop() {
       }
     }
 
+    const aiApi = {
+      broadcastMobMove, processPetAI, handlePetDeath, sendCombatLog,
+      sessions, handleMobDeath, getWeaponStats, tryInterruptCasting,
+      breakSneak, breakHide, despawnPet
+    };
+
     for (const zoneId of Object.keys(zoneInstances)) {
-      processMobAI(zoneInstances[zoneId], zoneId, dt);
+      AISystem.processMobAI(zoneInstances[zoneId], zoneId, dt, aiApi);
       processRespawns(zoneId);
       processMiningRespawns(zoneId, dt);
     }
@@ -5736,314 +5577,7 @@ function startGameLoop() {
   console.log(`[ENGINE] Game loop started (${TICK_RATE}ms tick rate).`);
 }
 
-function processMobRoaming(mob, dt, zoneId) {
-  if (mob.gridPauseTimer > 0) {
-    mob.gridPauseTimer -= dt;
-    if (mob.gridPauseTimer <= 0) {
-      mob.gridPauseTimer = 0;
-      mob.gridIndex++;
-      if (mob.gridIndex >= mob.gridEntries.length) {
-        mob.gridIndex = 0; // loop back
-      }
-    }
-    return;
-  }
-
-  const targetNode = mob.gridEntries[mob.gridIndex];
-  if (!targetNode) return;
-
-  const dx = targetNode.x - mob.x;
-  const dy = targetNode.y - mob.y;
-  const dist = Math.sqrt(dx * dx + dy * dy);
-
-  let moved = false;
-
-  if (dist < 1.0) {
-    // Reached waypoint
-    mob.x = targetNode.x;
-    mob.y = targetNode.y;
-    mob.z = targetNode.z || mob.z;
-    if (targetNode.heading > 0) mob.heading = targetNode.heading;
-    
-    // Authentic pause logic
-    mob.gridPauseTimer = targetNode.pause || 0;
-    
-    // If no pause, instantly advance to next node
-    if (mob.gridPauseTimer <= 0) {
-      mob.gridIndex++;
-      if (mob.gridIndex >= mob.gridEntries.length) mob.gridIndex = 0;
-    }
-    moved = true;
-  } else {
-    // Walk towards waypoint
-    const roamSpeed = 6.0; // Gentle walking pace
-    const moveAmount = roamSpeed * dt;
-
-    if (dist <= moveAmount) {
-      mob.x = targetNode.x;
-      mob.y = targetNode.y;
-    } else {
-      const dirX = dx / dist;
-      const dirY = dy / dist;
-      mob.x += dirX * moveAmount;
-      mob.y += dirY * moveAmount;
-      
-      // Update heading to face walking direction
-      let newHeading = (Math.atan2(dirX, dirY) / (2 * Math.PI)) * 512;
-      if (newHeading < 0) newHeading += 512;
-      mob.heading = newHeading;
-    }
-    moved = true;
-  }
-
-  if (moved) {
-    broadcastMobMove(mob, zoneId);
-  }
-}
-
-function processMobAI(zone, zoneId, dt) {
-  if (!zone || !zone.liveMobs) return;
-  for (const mob of zone.liveMobs) {
-    // Skip pets — they use separate pet AI
-    if (mob.isPet) {
-      processPetAI(mob, zone, zoneId, dt);
-      // Check if pet died (from DOTs, etc.)
-      if (mob.hp <= 0 && mob.alive !== false) {
-        mob.alive = false;
-        handlePetDeath(mob, zone);
-      }
-      continue;
-    }
-    // Process mob debuffs (DOTs, snares, etc.)
-    if (Array.isArray(mob.buffs)) {
-      for (let i = mob.buffs.length - 1; i >= 0; i--) {
-        const debuff = mob.buffs[i];
-        debuff.duration -= dt;
-
-        // DOT tick damage
-        if (debuff.tickDamage && debuff.tickDamage > 0) {
-          if (!debuff.tickTimer) debuff.tickTimer = 6;
-          debuff.tickTimer -= dt;
-          if (debuff.tickTimer <= 0) {
-            debuff.tickTimer = 6; // 6-second EQ tick
-            mob.hp -= debuff.tickDamage;
-            // Notify the caster if they're still in this zone
-            for (const [, s] of sessions) {
-              if (s.char && s.char.name === debuff.casterSession && s.char.zoneId === zoneId) {
-                sendCombatLog(s, [{ event: 'SPELL_DAMAGE', source: debuff.name, target: mob.name, spell: debuff.name, damage: debuff.tickDamage }]);
-              }
-            }
-          }
-        }
-
-        if (debuff.duration <= 0) {
-          mob.buffs.splice(i, 1);
-        }
-      }
-      // Check if DOT killed the mob
-      if (mob.hp <= 0) {
-        // Find caster session for XP/loot
-        for (const [, s] of sessions) {
-          if (s.combatTarget === mob) {
-            handleMobDeath(s, mob, []);
-            break;
-          }
-        }
-        continue;
-      }
-    }
-
-    if (mob.hp > 0 && mob.target) {
-      // Check if mob is CC'd (mez/stun/fear) — skip attack if so
-      if (Array.isArray(mob.buffs)) {
-        const isCCd = mob.buffs.some(b => b.isMez || b.isStun || b.isFear);
-        if (isCCd) continue; // Mob can't act while CC'd
-      }
-
-      // Determine if target is a pet or a player session
-      const targetIsPet = mob.target.isPet === true;
-      const targetIsSession = !targetIsPet && mob.target.char;
-
-      // If target is dead or invalid, reset aggro
-      if (targetIsPet) {
-        if (!mob.target.alive || mob.target.hp <= 0) {
-          mob.target = null;
-          continue;
-        }
-      } else if (targetIsSession) {
-        const session = mob.target;
-        if (!session.char || session.char.hp <= 0 || session.char.zoneId !== zoneId) {
-          mob.target = null;
-          continue;
-        }
-      } else {
-        mob.target = null;
-        continue;
-      }
-
-      // Get target position and HP reference
-      let targetX, targetY;
-      if (targetIsPet) {
-        targetX = mob.target.x;
-        targetY = mob.target.y;
-      } else {
-        targetX = mob.target.char.x;
-        targetY = mob.target.char.y;
-      }
-
-      // Check for slow debuffs on mob (SPA 11 with negative base)
-      let mobSlowMod = 1.0;
-      if (Array.isArray(mob.buffs)) {
-        for (const debuff of mob.buffs) {
-          if (Array.isArray(debuff.effects)) {
-            const slowEff = debuff.effects.find(e => e.spa === 11 && e.base < 0);
-            if (slowEff) mobSlowMod = Math.max(0.3, 1.0 + (slowEff.base / 100));
-          }
-        }
-      }
-
-      // ── Range check & mob movement ──
-      const MELEE_RANGE = 15;
-
-      let dist = 0;
-      let inMeleeRange = true;
-      if (mob.x != null && targetX != null) {
-        const dx = targetX - mob.x;
-        const dy = targetY - mob.y;
-        dist = Math.sqrt(dx * dx + dy * dy);
-        inMeleeRange = dist <= MELEE_RANGE;
-      }
-
-      // Leash: if target is > 1300 units away, drop aggro and return to spawn
-      const LEASH_RANGE = 1300;
-      if (dist > LEASH_RANGE) {
-        mob.target = null;
-        mob.x = mob.spawnX ?? mob.x;
-        mob.y = mob.spawnY ?? mob.y;
-        continue;
-      }
-
-      // If out of range, chase
-      if (!inMeleeRange) {
-        const mobSpeed = 5 + (mob.level || 1) * 0.5;
-        const moveAmount = mobSpeed * mobSlowMod * dt;
-        if (dist > 0) {
-          const dx = targetX - mob.x;
-          const dy = targetY - mob.y;
-          mob.x += (dx / dist) * Math.min(moveAmount, dist);
-          mob.y += (dy / dist) * Math.min(moveAmount, dist);
-        }
-        continue;
-      }
-
-      mob.attackTimer -= dt;
-      if (mob.attackTimer <= 0) {
-        mob.attackTimer = mob.attackDelay * (1 / mobSlowMod);
-
-        const events = [];
-
-        if (targetIsPet) {
-          // ── Mob attacks pet ──
-          const pet = mob.target;
-          const hitChance = Math.min(90, Math.max(20, 60 + (mob.level - pet.level) * 3));
-          if (Math.random() * 100 < hitChance) {
-            const petAC = pet.ac || 0;
-            let dmgRoll = combat.calcMobDamage(mob, petAC);
-
-            // Pet dodge/parry
-            if (pet.skills && pet.skills.dodge && Math.random() < 0.15) {
-              // Dodged
-            } else if (pet.skills && pet.skills.parry && Math.random() < 0.10) {
-              // Parried
-            } else {
-              pet.hp -= dmgRoll;
-
-              // Add hate for the pet's owner
-              if (pet.ownerSession) {
-                sendCombatLog(pet.ownerSession, [{ event: 'MELEE_HIT', source: mob.name, target: pet.name, damage: dmgRoll }]);
-              }
-            }
-          }
-          // Check if pet died
-          if (pet.hp <= 0 && pet.alive !== false) {
-            pet.alive = false;
-            handlePetDeath(pet, zone);
-            mob.target = null;
-          }
-        } else {
-          // ── Mob attacks player session (existing code) ──
-          const session = mob.target;
-          combat.trySkillUp(session, 'defense');
-
-          const avoidance = combat.checkAvoidance(session);
-          if (avoidance) {
-            events.push({ event: 'MESSAGE', text: `You ${avoidance.toLowerCase()} ${mob.name}'s attack!` });
-            if (avoidance === 'RIPOSTE') {
-              const { damage, delay } = getWeaponStats(session.inventory);
-              let ripoDmg = combat.calcPlayerDamage(session, damage, delay);
-              mob.hp -= ripoDmg;
-              events.push({ event: 'MELEE_HIT', source: 'You', target: mob.name, damage: ripoDmg, text: 'Riposte' });
-            }
-          } else {
-            const mobHitChance = combat.calcMobHitChance(mob, session);
-            if (combat.chance(mobHitChance)) {
-              let dmgRoll = combat.calcMobDamage(mob, session.effectiveStats.ac);
-              session.char.hp -= dmgRoll;
-              events.push({ event: 'MELEE_HIT', source: mob.name, target: 'You', damage: dmgRoll });
-
-              // Damage Shield reflection (SPA 59 = DS)
-              if (Array.isArray(session.buffs)) {
-                for (const buff of session.buffs) {
-                  if (Array.isArray(buff.effects)) {
-                    const dsEffect = buff.effects.find(e => e.spa === 59);
-                    if (dsEffect && dsEffect.base !== 0) {
-                      const dsDmg = Math.abs(dsEffect.base);
-                      mob.hp -= dsDmg;
-                      events.push({ event: 'SPELL_DAMAGE', source: buff.name, target: mob.name, spell: 'Damage Shield', damage: dsDmg });
-                    }
-                  }
-                }
-              }
-              tryInterruptCasting(session, mob.name);
-              breakSneak(session);
-              breakHide(session);
-            } else {
-              events.push({ event: 'MELEE_MISS', source: mob.name, target: 'You' });
-            }
-          }
-        
-          // Check player death from async mob logic
-          if (session.char.hp <= 0) {
-              session.char.hp = 0;
-              events.push({ event: 'DEATH', who: 'YOU' });
-              events.push({ event: 'MESSAGE', text: 'You have been slain! You return to your bind point.' });
-              
-              session.char.hp = Math.floor(session.effectiveStats.hp * 0.5);
-              session.char.mana = Math.floor(session.effectiveStats.mana * 0.5);
-              session.char.state = 'standing';
-              session.inCombat = false;
-              session.combatTarget = null;
-              // Despawn pet on owner death
-              if (session.pet) {
-                despawnPet(session, 'Your pet has lost its master and fades away.');
-              }
-              
-              const xpPenalty = Math.floor(combat.xpForLevel(session.char.level) * 0.05);
-              session.char.experience = Math.max(0, session.char.experience - xpPenalty);
-              events.push({ event: 'MESSAGE', text: `You lost ${xpPenalty} experience.` });
-              mob.target = null;
-          }
-        }
-
-        if (events.length > 0 && !targetIsPet) sendCombatLog(mob.target, events);
-      } else if (mob.hp > 0 && !mob.target && mob.isRoaming) {
-        // Roaming logic when not in combat
-        processMobRoaming(mob, dt, zoneId);
-      }
-    }
-  }
-}
-
+// ── AI System moved to systems/ai.js ────────────────────────────────
 function processEnvironment() {
   State.envTickCounter++;
   // Every 45 ticks (90 seconds at 2s tick) = 1 in-game hour
@@ -6123,7 +5657,7 @@ function handleLook(session, skipText = false) {
   if (!zoneDef) { console.log('[ENGINE] handleLook: no zoneDef for', char.zoneId); return; }
 
   // Vision Calculation (uses extracted getVisionState)
-  const vision = getVisionState(session);
+  const vision = VisionSystem.getVisionState(session, zoneDef);
 
   // Mobs
   const instance = zoneInstances[char.zoneId];
@@ -6136,38 +5670,51 @@ function handleLook(session, skipText = false) {
       // Send ALL zone mobs to the 3D client — the 3D world is open space, not rooms
       for (const mob of instance.liveMobs) {
           // Distance Check: loadRadius (Robust)
-          const dist = getDistance(mob.x, mob.y, char.x, char.y);
-          if (dist > VIEW_DISTANCE) continue;
+          const distSq = getDistanceSq(mob.x, mob.y, char.x, char.y);
+          if (distSq > VIEW_DISTANCE * VIEW_DISTANCE) continue;
 
-          if (!mob.appearance) {
-              mob.appearance = {
-                  hat: rHex(), skin: rHex(), torso: rHex(), legs: rHex(), feet: rHex()
+          if (!mob.networkData) {
+              if (!mob.appearance) {
+                  mob.appearance = {
+                      hat: rHex(), skin: rHex(), torso: rHex(), legs: rHex(), feet: rHex()
+                  };
+              }
+              // Map npcType to client-side entity type for rendering
+              let clientType = 'enemy';
+              if (mob.isPet) {
+                clientType = 'pet';
+              } else if (mob.npcType && mob.npcType !== NPC_TYPES.MOB) {
+                clientType = 'npc'; // All non-mob NPCs render as friendly
+              }
+              mob.networkData = {
+                  id: mob.id, name: mob.name, type: clientType, npcType: mob.npcType || NPC_TYPES.MOB,
+                  race: mob.race || 1, gender: mob.gender || 0, appearance: mob.appearance,
+                  isPet: mob.isPet || false, ownerName: mob.ownerSession ? mob.ownerSession.char.name : null
               };
           }
-          // Map npcType to client-side entity type for rendering
-          let clientType = 'enemy';
-          if (mob.isPet) {
-            clientType = 'pet';
-          } else if (mob.npcType && mob.npcType !== NPC_TYPES.MOB) {
-            clientType = 'npc'; // All non-mob NPCs render as friendly
-          }
-          entities.push({ id: mob.id, name: mob.name, type: clientType, npcType: mob.npcType || NPC_TYPES.MOB, race: mob.race || 1, gender: mob.gender || 0, appearance: mob.appearance, x: mob.x, y: mob.y, z: mob.z || 0, heading: mob.heading || 0, isPet: mob.isPet || false, ownerName: mob.ownerSession ? mob.ownerSession.char.name : null });
+          entities.push({ ...mob.networkData, x: mob.x, y: mob.y, z: mob.z || 0, heading: mob.heading || 0 });
       }
 
       // ── Mining Nodes ──
       if (instance.liveNodes) {
         for (const node of instance.liveNodes) {
           if (!node.alive) continue;
-          const nodeDist = getDistance(node.x, node.y, char.x, char.y);
-          if (nodeDist > VIEW_DISTANCE) continue;
+          const nodeDistSq = getDistanceSq(node.x, node.y, char.x, char.y);
+          if (nodeDistSq > VIEW_DISTANCE * VIEW_DISTANCE) continue;
+
+          if (!node.networkData) {
+            node.networkData = {
+              id: node.id,
+              name: node.name,
+              type: 'mining_node',
+              nodeType: node.nodeType,
+              tier: node.tier,
+              maxHp: node.maxHp
+            };
+          }
           entities.push({
-            id: node.id,
-            name: node.name,
-            type: 'mining_node',
-            nodeType: node.nodeType,
-            tier: node.tier,
+            ...node.networkData,
             hp: node.hp,
-            maxHp: node.maxHp,
             x: node.x,
             y: node.y,
             z: node.z || 0,
@@ -6180,15 +5727,27 @@ function handleLook(session, skipText = false) {
   for (const [ws, other] of sessions) {
       if (other.char.zoneId === char.zoneId && other.char.id !== char.id) {
           // Distance check for other players (Robust)
-          const pDist = getDistance(other.char.x, other.char.y, char.x, char.y);
-          if (pDist > VIEW_DISTANCE) continue;
+          const pDistSq = getDistanceSq(other.char.x, other.char.y, char.x, char.y);
+          if (pDistSq > VIEW_DISTANCE * VIEW_DISTANCE) continue;
 
           if (!other.char.appearance) {
               other.char.appearance = {
                   hat: rHex(), skin: rHex(), torso: rHex(), legs: rHex(), feet: rHex()
               };
           }
-          entities.push({ id: `player_${other.char.id}`, name: other.char.name, type: 'player', race: other.char.raceId || 1, gender: other.char.gender || 0, face: other.char.face || 0, appearance: other.char.appearance, sneaking: other.char.isSneaking, hidden: other.char.isHidden, equipVisuals: getEquipVisuals(other) });
+          if (!other.char.networkData) {
+              other.char.networkData = {
+                  id: `player_${other.char.id}`, name: other.char.name, type: 'player',
+                  race: other.char.raceId || 1, gender: other.char.gender || 0,
+                  face: other.char.face || 0, appearance: other.char.appearance
+              };
+          }
+          entities.push({
+              ...other.char.networkData,
+              sneaking: other.char.isSneaking, hidden: other.char.isHidden,
+              equipVisuals: getEquipVisuals(other),
+              x: other.char.x, y: other.char.y, z: other.char.z || 0, heading: other.char.heading || 0
+          });
       }
   }
 
@@ -6228,7 +5787,8 @@ function handleSetVisionMode(session, msg) {
   // 'auto' resets to automatic mode selection (racial/spell)
   if (requestedMode === 'auto' || requestedMode === null) {
     session.activeVisionMode = null;
-    const vision = getVisionState(session);
+    const zoneDef = getZoneDef(session.char.zoneId);
+    const vision = VisionSystem.getVisionState(session, zoneDef);
     sendCombatLog(session, [{
       event: 'MESSAGE',
       text: `[color=cyan]Vision mode set to automatic. Currently using ${vision.modeName}.[/color]`
@@ -6247,7 +5807,7 @@ function handleSetVisionMode(session, msg) {
   }
 
   // Validate the player has access to this mode
-  const available = getAvailableVisionModes(session);
+  const available = VisionSystem.getAvailableVisionModes(session);
   if (!available.includes(requestedMode)) {
     const modeObj = VISION_MODES[requestedMode];
     sendCombatLog(session, [{
@@ -6259,7 +5819,8 @@ function handleSetVisionMode(session, msg) {
 
   // Set the mode
   session.activeVisionMode = requestedMode;
-  const vision = getVisionState(session);
+  const zoneDef = getZoneDef(session.char.zoneId);
+  const vision = VisionSystem.getVisionState(session, zoneDef);
   const modeObj = VISION_MODES[requestedMode];
 
   // Send flavor text + status update

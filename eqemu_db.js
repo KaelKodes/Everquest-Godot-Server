@@ -412,10 +412,12 @@ async function getZoneSpawns(shortName) {
     const query = `
         SELECT s.id as spawn2_id, s.x, s.y, s.z, s.heading, s.respawntime, s.pathgrid,
                se.chance, 
-               n.id as npc_id, n.name, n.level, n.hp, n.mindmg, n.maxdmg, n.race, n.gender, n.class 
+               n.id as npc_id, n.name, n.level, n.hp, n.mindmg, n.maxdmg, n.race, n.gender, n.class,
+               sg.dist as wander_dist
         FROM spawn2 s 
         JOIN spawnentry se ON s.spawngroupID = se.spawngroupID 
         JOIN npc_types n ON se.npcID = n.id 
+        JOIN spawngroup sg ON s.spawngroupID = sg.id
         WHERE s.zone = ?
     `;
 

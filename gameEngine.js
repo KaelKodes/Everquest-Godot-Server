@@ -485,6 +485,7 @@ async function initZones() {
                     x: row.x,
                     y: row.y,
                     z: row.z,
+                    heading: row.heading || 0,
                     respawntime: row.respawntime || 420,
                     pool: [] // NPC candidates for this point
                 });
@@ -537,7 +538,7 @@ async function initZones() {
                 respawnTime: point.respawntime
             };
 
-            const newMob = spawnMob(zoneId, mobDef, point.x, point.y);
+            const newMob = spawnMob(zoneId, mobDef, point.x, point.y, point.z, point.heading);
             if (newMob) mobState.currentMobId = newMob.id;
             
             zoneInstances[zoneId].spawnPointState.push(mobState);
@@ -611,7 +612,7 @@ async function ensureZoneLoaded(zoneKey) {
     for (const row of rawSpawns) {
       if (!spawnPoints.has(row.spawn2_id)) {
         spawnPoints.set(row.spawn2_id, {
-          x: row.x, y: row.y, z: row.z,
+          x: row.x, y: row.y, z: row.z, heading: row.heading || 0,
           respawntime: row.respawntime || 420,
           pool: []
         });
@@ -658,7 +659,7 @@ async function ensureZoneLoaded(zoneKey) {
         mobDef, pool: point.pool, respawnTime: point.respawntime
       };
 
-      const newMob = spawnMob(zoneKey, mobDef, point.x, point.y, point.z);
+      const newMob = spawnMob(zoneKey, mobDef, point.x, point.y, point.z, point.heading);
       if (newMob) mobState.currentMobId = newMob.id;
       zoneInstances[zoneKey].spawnPointState.push(mobState);
     }
@@ -801,7 +802,7 @@ async function ensureZoneLoaded(zoneKey) {
   }
 }
 
-function spawnMob(zoneId, mobDef, forcedX = null, forcedY = null, forcedZ = null) {
+function spawnMob(zoneId, mobDef, forcedX = null, forcedY = null, forcedZ = null, forcedHeading = null) {
   const zone = zoneInstances[zoneId];
   if (!zone) return;
 
@@ -850,6 +851,7 @@ function spawnMob(zoneId, mobDef, forcedX = null, forcedY = null, forcedZ = null
     x: spawnX,
     y: spawnY,
     z: (forcedZ !== null) ? forcedZ : 0,
+    heading: (forcedHeading !== null) ? forcedHeading : 0,
     spawnX: spawnX,    // Remember spawn position for leash reset
     spawnY: spawnY,
     hp: mobDef.maxHp,
@@ -6132,7 +6134,7 @@ function handleLook(session, skipText = false) {
           } else if (mob.npcType && mob.npcType !== NPC_TYPES.MOB) {
             clientType = 'npc'; // All non-mob NPCs render as friendly
           }
-          entities.push({ id: mob.id, name: mob.name, type: clientType, npcType: mob.npcType || NPC_TYPES.MOB, race: mob.race || 1, gender: mob.gender || 0, appearance: mob.appearance, x: mob.x, y: mob.y, z: mob.z || 0, isPet: mob.isPet || false, ownerName: mob.ownerSession ? mob.ownerSession.char.name : null });
+          entities.push({ id: mob.id, name: mob.name, type: clientType, npcType: mob.npcType || NPC_TYPES.MOB, race: mob.race || 1, gender: mob.gender || 0, appearance: mob.appearance, x: mob.x, y: mob.y, z: mob.z || 0, heading: mob.heading || 0, isPet: mob.isPet || false, ownerName: mob.ownerSession ? mob.ownerSession.char.name : null });
       }
 
       // ── Mining Nodes ──

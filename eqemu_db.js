@@ -241,7 +241,7 @@ async function getCharacter(name) {
             wis: char.wis,
             intel: char.int,
             cha: char.cha,
-            zoneId: INV_ZONES[char.zone_id] || 'qeynos_hills',
+            zoneId: INV_ZONES[char.zone_id] || ZONE_ID_TO_SHORT[char.zone_id] || `zone_${char.zone_id}`,
             roomId: null,
             state: 'standing',
             practices: char.training_points != null ? char.training_points : (char.level * 5),
@@ -329,7 +329,7 @@ async function createCharacter(accountId, name, className, raceName, deityId, st
             wis: wis,
             intel: intel,
             cha: cha,
-            zoneId: start.zone_short || INV_ZONES[start.zone_id] || 'qeynos_hills',
+            zoneId: start.zone_short || INV_ZONES[start.zone_id] || `zone_${start.zone_id}`,
             roomId: null,
             state: 'standing',
             x: start.x,
@@ -373,13 +373,18 @@ async function updateCharacterState(char) {
     }
 
     if (!zoneId) {
-        // Last resort: read the current zone_id from the DB so we don't corrupt it
-        console.warn(`[DB] updateCharacterState: Can't resolve zone '${char.zoneId}' to numeric ID. Preserving existing zone_id.`);
+        // Cannot resolve zone — preserve existing DB value, do NOT overwrite with a default
+        console.warn(`[DB] updateCharacterState: Can't resolve zone '${char.zoneId}' to numeric ID. Skipping zone_id update to preserve character location.`);
         try {
-            const [rows] = await pool.query('SELECT zone_id FROM character_data WHERE id = ?', [char.id]);
-            if (rows.length > 0) zoneId = rows[0].zone_id;
-        } catch(e) { /* fall through */ }
-        if (!zoneId) zoneId = 4; // Absolute last fallback
+            await pool.query(
+                'UPDATE character_data SET x = ?, y = ?, z = ?, cur_hp = ?, mana = ?, exp = ?, level = ?, training_points = ? WHERE id = ?',
+                [char.x, char.y, char.z || 0, char.hp, char.mana, char.experience, char.level, char.practices || 0, char.id]
+            );
+            await saveCharacterCurrency(char.id, char.copper || 0);
+        } catch (e) {
+            console.error('[DB] updateCharacterState (no-zone) Error:', e.message);
+        }
+        return;
     }
 
     try {
@@ -398,7 +403,7 @@ async function getZoneSpawns(shortName) {
     if (!pool) await init();
 
     const query = `
-        SELECT s.id as spawn2_id, s.x, s.y, s.z, s.respawntime, 
+        SELECT s.id as spawn2_id, s.x, s.y, s.z, s.heading, s.respawntime, 
                se.chance, 
                n.id as npc_id, n.name, n.level, n.hp, n.mindmg, n.maxdmg, n.race, n.gender, n.class 
         FROM spawn2 s 

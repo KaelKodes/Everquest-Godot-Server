@@ -20,6 +20,7 @@ const WorldAtlas = require('./data/worldAtlas');
 const { send } = require('./utils');
 const VisionSystem = require('./systems/vision');
 const AISystem = require('./systems/ai');
+const QuestManager = require('./questManager');
 
 // Precise zone line trigger data extracted from EQ S3D client files (BSP regions)
 let ZONE_TRIGGERS = {};
@@ -1142,6 +1143,10 @@ async function handleMessage(ws, msg) {
     case 'SAY': return handleSay(session, msg);
     case 'BUY': return handleBuy(session, msg);
     case 'SELL': return handleSell(session, msg);
+    case 'NPC_GIVE_ITEMS': return handleNPCGiveItems(session, msg);
+    case 'NPC_GIVE_CANCEL': 
+      sendInventory(session);
+      return;
     case 'DESTROY_ITEM': return handleDestroyItem(session, msg);
     case 'MOVE_ITEM': return handleMoveItem(session, msg);
     case 'AUTO_EQUIP': return handleAutoEquip(session, msg);
@@ -2898,15 +2903,26 @@ async function handleHail(session, msg) {
     heading: target.heading
   });
 
-  // If it's a regular mob, just shout at it
-  if (!target.npcType || target.npcType === NPC_TYPES.MOB) {
-    sendCombatLog(session, [{ event: 'MESSAGE', text: `You say, 'Hail, ${target.name}!'` }]);
-    sendCombatLog(session, [{ event: 'MESSAGE', text: `${target.name} regards you indifferently.` }]);
-    return;
-  }
-
   const events = [];
   events.push({ event: 'MESSAGE', text: `You say, 'Hail, ${target.name}!'` });
+
+  // Fire Quest Engine for 'Hail' text
+  const zoneShortName = char.zoneId;
+  const eData = { message: 'hail', joined: false, trade: {} };
+  const actions = await QuestManager.triggerEvent(zoneShortName, target, char, 'EVENT_SAY', eData);
+  
+  let questHijackedDialog = false;
+  if (actions && actions.length > 0) {
+    processQuestActions(session, target, actions);
+    questHijackedDialog = true;
+  }
+
+  // If it's a regular mob and no quest triggered, just regard indifferently
+  if (!questHijackedDialog && (!target.npcType || target.npcType === NPC_TYPES.MOB)) {
+    events.push({ event: 'MESSAGE', text: `${target.name} regards you indifferently.` });
+    sendCombatLog(session, events);
+    return;
+  }
 
   switch (target.npcType) {
     case NPC_TYPES.MERCHANT: {
@@ -3085,7 +3101,41 @@ async function handleHail(session, msg) {
   if (events.length > 0) sendCombatLog(session, events);
 }
 
-function handleSay(session, msg) {
+function processQuestActions(session, npc, actions) {
+  const events = [];
+  for (const act of actions) {
+    switch (act.action) {
+      case 'say':
+      case 'shout':
+      case 'emote':
+        // Send to the triggering player's UI
+        events.push({ event: 'NPC_SAY', npcName: npc.name, text: act.msg || act.text, keywords: [] });
+        // Broadcast to spatial channel
+        const mockSession = { char: { name: npc.name, zoneId: npc.zoneId, x: npc.x, y: npc.y }, ws: null };
+        broadcastChat(mockSession, act.action === 'shout' ? 'shout' : 'say', act.msg || act.text, act.action === 'shout' ? 600 : 200);
+        break;
+      case 'message':
+        events.push({ event: 'MESSAGE', text: act.text });
+        break;
+      case 'summonitem':
+      case 'reward':
+        if (act.item_id && act.item_id > 0) {
+            events.push({ event: 'MESSAGE', text: `You receive an item!` });
+        }
+        if (act.exp && act.exp > 0) {
+            events.push({ event: 'MESSAGE', text: `You gain experience!!` });
+        }
+        break;
+      case 'anim':
+        // Broadcast animation to zone
+        broadcastToZone(npc.zoneId, { type: 'NPC_ANIM', id: npc.id, anim: act.anim });
+        break;
+    }
+  }
+  if (events.length > 0) sendCombatLog(session, events);
+}
+
+async function handleSay(session, msg) {
   const char = session.char;
   const text = (msg.text || '').trim();
   if (!text) return;
@@ -3099,13 +3149,23 @@ function handleSay(session, msg) {
 
     // Proximity check
     const distSq = getDistanceSq(char.x, char.y, target.x, target.y);
-  if (distSq > HAIL_RANGE * HAIL_RANGE) {
+    if (distSq > HAIL_RANGE * HAIL_RANGE) {
       // Still broadcast to other players even if NPC is too far
       broadcastChat(session, 'say', text, 200);
       return;
     }
 
-    // Quest NPCs and merchants with dialog respond to keywords
+    // Process new Dual-Engine Quest Scripts
+    const zoneShortName = char.zoneId;
+    const eData = { message: text, joined: false, trade: {} };
+    const actions = await QuestManager.triggerEvent(zoneShortName, target, char, 'EVENT_SAY', eData);
+    
+    if (actions && actions.length > 0) {
+      processQuestActions(session, target, actions);
+      return; // Handled by quest engine
+    }
+
+    // Quest NPCs and merchants with dialog respond to keywords (Legacy Fallback)
     if (target.npcType === NPC_TYPES.QUEST || target.npcType === NPC_TYPES.MERCHANT) {
       const response = QuestDialogs.getKeywordResponse(target.key, text, char);
       if (response) {
@@ -3429,6 +3489,68 @@ async function handleSell(session, msg) {
   sendInventory(session);
   sendCombatLog(session, [{ event: 'LOOT', text: `You sold ${itemName} to ${merchant.name} for ${formatCurrency(sellPrice)}.` }]);
   sendStatus(session);
+}
+
+async function handleNPCGiveItems(session, msg) {
+  const char = session.char;
+  const targetId = msg.npcId;
+  const items = msg.items || [];
+  
+  if (items.length === 0) {
+    sendInventory(session);
+    return;
+  }
+
+  let target = null;
+  const zoneKey = char.zoneId;
+  const zoneDef = ZONES[zoneKey] || (zoneInstances[zoneKey] && zoneInstances[zoneKey].def);
+  if (zoneDef && zoneDef.mobs) {
+    target = zoneDef.mobs.find(m => String(m.id) === String(targetId));
+  }
+
+  if (!target) {
+    sendCombatLog(session, [{ event: 'ERROR', text: "That NPC is no longer there." }]);
+    sendInventory(session);
+    return;
+  }
+
+  // Trigger Event
+  const zoneShortName = char.zoneId;
+  const trade = {};
+  for (const it of items) {
+    trade[`item${it.slot}`] = it.item_id;
+  }
+  
+  const eData = { trade: trade, rawItems: items };
+  const actions = await QuestManager.triggerEvent(zoneShortName, target, char, 'EVENT_TRADE', eData);
+  
+  let itemsToConsume = [...items];
+
+  if (actions && actions.length > 0) {
+    for (const act of actions) {
+      if (act.action === 'return_items') {
+        if (Array.isArray(act.returned)) {
+          for (const r_id of act.returned) {
+            const idx = itemsToConsume.findIndex(i => i.item_id === r_id);
+            if (idx !== -1) itemsToConsume.splice(idx, 1);
+          }
+        }
+      }
+    }
+    processQuestActions(session, target, actions);
+  }
+
+  // Delete only the consumed items from inventory
+  for (const it of itemsToConsume) {
+    if (it.inst_id) {
+      await DB.pool.query('DELETE FROM inventory WHERE id = ? AND char_id = ?', [it.inst_id, char.id]);
+    }
+  }
+  
+  // Refresh inventory
+  session.inventory = await DB.getInventory(char.id);
+  session.effectiveStats = calcEffectiveStats(char, session.inventory, session.buffs);
+  sendInventory(session);
 }
 
 async function handleDestroyItem(session, msg) {
@@ -5212,6 +5334,7 @@ function sendInventory(session) {
     const legacyKey = ItemDB.generateKey(itemName);
     return {
       item_id: row.id,
+      eq_item_id: row.item_key,
       itemKey: legacyKey,
       itemName: itemName,
       equipped: row.equipped,

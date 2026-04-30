@@ -430,7 +430,8 @@ async function getZoneDoors(shortName) {
 
     const query = `
         SELECT id, doorid, name, pos_x, pos_y, pos_z, heading, opentype, 
-               dest_zone, dest_instance, dest_x, dest_y, dest_z, dest_heading, invert_state, size
+               dest_zone, dest_instance, dest_x, dest_y, dest_z, dest_heading, invert_state, size,
+               triggerdoor, door_param
         FROM doors 
         WHERE zone = ?
     `;

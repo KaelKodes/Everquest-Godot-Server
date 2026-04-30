@@ -438,6 +438,7 @@ async function ensureZoneLoaded(zoneKey) {
   // ── Load Doors ──
   try {
     zoneInstances[zoneKey].doors = await eqemuDB.getZoneDoors(zoneDef.shortName || zoneKey);
+    zoneInstances[zoneKey].doorStates = {}; // Map of doorid -> { isOpen: boolean, closeTimer: NodeJS.Timeout }
     console.log(`[ENGINE] Loaded ${zoneInstances[zoneKey].doors.length} doors for '${zoneKey}'.`);
   } catch (e) {
     console.log(`[ENGINE] No door data found for '${zoneKey}':`, e.message);
@@ -1157,6 +1158,7 @@ async function handleMessage(ws, msg) {
     case 'SET_VISION_MODE': return handleSetVisionMode(session, msg);
     case 'SUCCOR': return await handleSuccor(session);
     case 'PET_COMMAND': return handlePetCommand(session, msg);
+    case 'DOOR_CLICK': return handleDoorClick(session, msg);
     // ── Chat Channels ──
     case 'SHOUT': return handleShout(session, msg);
     case 'OOC': return handleOOC(session, msg);
@@ -1543,6 +1545,80 @@ async function handleCreateCharacter(ws, msg) {
   // Send updated character list back to character select
   const characters = await DB.getCharactersByAccount(auth.accountId);
   send(ws, { type: 'CHARACTER_CREATED', name: char.name, characters });
+}
+
+function handleDoorClick(session, msg) {
+  const doorId = msg.door_id;
+  console.log(`[ENGINE] ${session.char.name} interacted with door ${doorId} in ${session.char.zoneId}`);
+
+  const zone = zoneInstances[session.char.zoneId];
+  if (!zone || !zone.doors) return;
+
+  // Find the clicked door using its primary key 'id'
+  console.log(`[ENGINE] Searching for door with id ${doorId} (type: ${typeof doorId})`);
+  const clickedDoor = zone.doors.find(d => d.id === doorId);
+  if (!clickedDoor) {
+    console.log(`[ENGINE] Failed to find door with id ${doorId}! Available ids: ${zone.doors.map(d => d.id).slice(0, 10).join(', ')}...`);
+    return;
+  }
+
+  // Check if it triggers another door (like an elevator button)
+  // triggerdoor links to the target's local zone 'doorid', NOT the primary key 'id'
+  let targetDoor = clickedDoor;
+  if (clickedDoor.triggerdoor && clickedDoor.triggerdoor > 0) {
+    targetDoor = zone.doors.find(d => d.doorid === clickedDoor.triggerdoor) || clickedDoor;
+  }
+
+  // Toggle state using the primary key 'id'
+  let doorState = zone.doorStates[targetDoor.id];
+  if (!doorState) {
+    doorState = { isOpen: false, closeTimer: null };
+    zone.doorStates[targetDoor.id] = doorState;
+  }
+
+  // If it's already in motion/open and we don't want to interrupt, we just return.
+  // Actually, EQ elevators don't respond while moving, but if they are static and open, they stay open or auto close.
+  // We'll toggle it.
+  doorState.isOpen = !doorState.isOpen;
+
+  console.log(`[ENGINE] Door ${targetDoor.id} (${targetDoor.name}) state changed to ${doorState.isOpen}`);
+
+  // Broadcast to all players in the zone using the primary key 'id'
+  const payload = JSON.stringify({
+    type: 'DOOR_STATE_CHANGE',
+    doorId: targetDoor.id,
+    isOpen: doorState.isOpen
+  });
+
+  for (const [, client] of sessions) {
+    if (client.char && client.char.zoneId === session.char.zoneId && client.ws.readyState === 1) {
+      client.ws.send(payload);
+    }
+  }
+
+  // Auto-close elevators after 10 seconds (standard EQ logic)
+  if (targetDoor.opentype === 59 || targetDoor.opentype === 54 || targetDoor.name.includes("LEVATOR")) {
+    if (doorState.closeTimer) clearTimeout(doorState.closeTimer);
+    
+    // Only auto-close if it just opened
+    if (doorState.isOpen) {
+      doorState.closeTimer = setTimeout(() => {
+        if (zone.doorStates[targetDoor.id]) {
+          zone.doorStates[targetDoor.id].isOpen = false;
+          const closePayload = JSON.stringify({
+            type: 'DOOR_STATE_CHANGE',
+            doorId: targetDoor.id,
+            isOpen: false
+          });
+          for (const [, client] of sessions) {
+            if (client.char && client.char.zoneId === session.char.zoneId && client.ws.readyState === 1) {
+              client.ws.send(closePayload);
+            }
+          }
+        }
+      }, 15000); // 15 seconds
+    }
+  }
 }
 
 function handleSit(session) {

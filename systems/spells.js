@@ -4,8 +4,7 @@ const SpellDB = require('../data/spellDatabase');
 const DB = require('../db');
 const { send } = require('../utils');
 
-// Reference to global SPELLS from gameEngine (or SpellDB)
-const SPELLS = SpellDB.SPELLS || {};
+const SPELLS = SpellDB.createLegacyProxy();
 
 function calcEffectiveStats(char, inventory, buffs) {
   // We'll need to pass this in from gameEngine context since it's defined there
@@ -360,7 +359,158 @@ function sendBuffs(session) {
 }
 
 
+let combat, handleMobDeath, sendStatus, sendCombatLog, handleStopCombat, handleSuccor, ensureZoneLoaded, resolveZoneKey, getZoneDef;
+function setDependencies(deps) {
+  combat = deps.combat;
+  handleMobDeath = deps.handleMobDeath;
+  sendStatus = deps.sendStatus;
+  sendCombatLog = deps.sendCombatLog;
+  handleStopCombat = deps.handleStopCombat;
+  handleSuccor = deps.handleSuccor;
+  ensureZoneLoaded = deps.ensureZoneLoaded;
+  resolveZoneKey = deps.resolveZoneKey;
+  getZoneDef = deps.getZoneDef;
+}
+
+async function applySpellEffect(session, spellDef, spellKey) {
+  const events = [];
+
+  switch (spellDef.effect) {
+    case 'heal': {
+      const healAmt = spellDef.amount || 10;
+      session.char.hp = Math.min(session.char.hp + healAmt, session.effectiveStats.hp);
+      events.push({ event: 'SPELL_HEAL', source: 'You', target: 'You', spell: spellDef.name, amount: healAmt });
+      break;
+    }
+    case 'dd': {
+      if (!session.combatTarget) {
+        events.push({ event: 'MESSAGE', text: 'You must have a target to cast that spell.' });
+        break;
+      }
+      const mob = session.combatTarget;
+      
+      const resistResult = combat.calcSpellResist(mob, session.char.level, spellDef.resistType, spellDef.resistAdjust);
+      if (resistResult === 'FULL_RESIST') {
+        events.push({ event: 'RESIST', target: mob.name, spell: spellDef.name });
+        break;
+      }
+      
+      if (!mob.target) mob.target = session;
+      let dmg = spellDef.damage || 10;
+      if (resistResult === 'PARTIAL_RESIST') dmg = Math.floor(dmg / 2);
+
+      mob.hp -= dmg;
+      events.push({ event: 'SPELL_DAMAGE', source: 'You', target: mob.name, spell: spellDef.name, damage: dmg });
+      if (mob.hp <= 0) {
+        await handleMobDeath(session, mob, events);
+      }
+      break;
+    }
+    case 'buff': {
+      session.buffs = session.buffs.filter(b => b.name !== spellDef.buffName);
+      session.buffs.push({
+        name: spellDef.buffName,
+        duration: spellDef.duration,
+        maxDuration: spellDef.duration,
+        beneficial: true,
+        effects: spellDef.effects || [],
+        ac: spellDef.ac || 0,
+      });
+      const buffMsg = spellDef.messages?.castOnYou || `You feel ${spellDef.buffName} take hold.`;
+      events.push({ event: 'MESSAGE', text: buffMsg });
+      session.effectiveStats = calcEffectiveStats(session.char, session.inventory, session.buffs);
+      session.char.maxHp = session.effectiveStats.hp;
+      session.char.maxMana = session.effectiveStats.mana;
+      sendBuffs(session);
+      sendStatus(session);
+      break;
+    }
+    case 'cure': {
+      const cureSpas = (spellDef.effects || []).map(e => e.spa);
+      const curesPoison = cureSpas.includes(35) || spellDef.name.toLowerCase().includes('poison') || spellDef.name.toLowerCase().includes('antidote');
+      const curesDisease = cureSpas.includes(36) || spellDef.name.toLowerCase().includes('disease');
+      const curesAll = spellDef.name.toLowerCase().includes('blood') || spellDef.name.toLowerCase().includes('aura');
+      
+      session.buffs = session.buffs.filter(b => {
+        if (b.beneficial) return true;
+        if (curesAll) return false;
+        if (Array.isArray(b.effects)) {
+          const hasPois = b.effects.some(e => e.spa === 35);
+          const hasDis = b.effects.some(e => e.spa === 36);
+          if (curesPoison && hasPois) return false;
+          if (curesDisease && hasDis) return false;
+        }
+        return true;
+      });
+      events.push({ event: 'MESSAGE', text: `You have been cured.` });
+      session.effectiveStats = calcEffectiveStats(session.char, session.inventory, session.buffs);
+      sendBuffs(session);
+      sendStatus(session);
+      break;
+    }
+    case 'gate': {
+      if (handleStopCombat) handleStopCombat(session);
+      const bindZone = session.char.startZoneId || session.char.zoneId;
+      if (bindZone !== session.char.zoneId) {
+        if (ensureZoneLoaded) await ensureZoneLoaded(bindZone);
+        session.char.zoneId = bindZone;
+        const targetDef = getZoneDef ? getZoneDef(bindZone) : null;
+        session.char.roomId = targetDef ? (targetDef.defaultRoom || '') : '';
+        session.char.x = 0;
+        session.char.y = 0;
+        session.char.z = 0;
+        session.pendingTeleport = { x: 0, y: 0, z: 0 };
+        const DB = require('../db');
+        DB.saveCharacterLocation(session.char.id, bindZone, session.char.roomId);
+        sendStatus(session);
+      }
+      events.push({ event: 'MESSAGE', text: 'You feel yourself drifting away...' });
+      break;
+    }
+  }
+
+  // Portal/Ring/Translocate/Evacuate spells (SPA 83, shadowStep, or changeAggro with teleportZone)
+  const spaIds = (spellDef.effects || []).map(e => e.spa);
+  const spaNames = (spellDef.effects || []).map(e => e.name || '');
+  const hasTeleportZone = spellDef.links && spellDef.links.teleportZone && spellDef.links.teleportZone.length > 0;
+  
+  if (hasTeleportZone && (spaIds.includes(83) || spaNames.includes('shadowStep') || spaNames.includes('changeAggro'))) {
+    const targetZone = spellDef.links.teleportZone;
+    const resolvedZone = resolveZoneKey ? resolveZoneKey(targetZone) : targetZone;
+    const targetDef = getZoneDef ? getZoneDef(resolvedZone) : null;
+    
+    if (!targetDef) {
+      events.push({ event: 'MESSAGE', text: `${spellDef.name} opens a portal, but the destination is beyond your reach.` });
+    } else {
+      if (handleStopCombat) handleStopCombat(session);
+      if (ensureZoneLoaded) await ensureZoneLoaded(resolvedZone);
+      
+      session.char.zoneId = resolvedZone;
+      session.char.roomId = targetDef.defaultRoom || '';
+      session.char.x = 0;
+      session.char.y = 0;
+      session.char.z = 0;
+      session.pendingTeleport = { x: 0, y: 0, z: 0 };
+      
+      const DB = require('../db');
+      DB.saveCharacterLocation(session.char.id, resolvedZone, session.char.roomId);
+      const tpName = targetDef.name || resolvedZone;
+      events.push({ event: 'MESSAGE', text: `You feel the world shift around you. You have entered ${tpName}.` });
+      sendStatus(session);
+    }
+  } else if (spaNames.includes('changeAggro') && !hasTeleportZone) {
+    // Evacuate/Succor without a specific teleportZone
+    if (handleStopCombat) handleStopCombat(session);
+    events.push({ event: 'MESSAGE', text: 'You invoke an evacuation! Your group flees from combat.' });
+    if (handleSuccor) await handleSuccor(session);
+  }
+
+  if (events.length > 0) sendCombatLog(session, events);
+}
+
 module.exports = {
+  setDependencies,
+  applySpellEffect,
   loadSpellbookFromFile,
   saveSpellbookToFile,
   loadBuffsFromFile,

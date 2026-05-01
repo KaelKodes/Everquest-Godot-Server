@@ -1,4 +1,5 @@
 const combat = require('../combat');
+const FactionSystem = require('./faction');
 
 function processMobRoaming(mob, dt, zoneId, api) {
   if (mob.gridPauseTimer > 0) {
@@ -136,6 +137,61 @@ function processMobAI(zone, zoneId, dt, api) {
           }
         }
         continue;
+      }
+    }
+
+    // Faction-based Proximity Aggro
+    if (mob.hp > 0 && !mob.target && !mob.isPet) {
+      let closestAggroTarget = null;
+      let closestDistSq = Infinity;
+      const BASE_AGGRO_DIST = 45; 
+      
+      for (const [, session] of api.sessions) {
+        if (!session.char || session.char.zoneId !== zoneId || session.char.hp <= 0 || session.char.state === 'dead') continue;
+        
+        const dx = session.char.x - mob.x;
+        const dy = session.char.y - mob.y;
+        const distSq = dx*dx + dy*dy;
+        
+        if (distSq > 150*150) continue;
+        
+        let aggroRadius = BASE_AGGRO_DIST;
+        const isSitting = session.char.state === 'sitting' || session.char.state === 'medding';
+        if (isSitting) aggroRadius *= 1.5;
+        
+        if (distSq <= aggroRadius*aggroRadius) {
+          const standing = FactionSystem.getStanding(session.char, mob);
+          
+          let shouldAggro = false;
+          // Undead races (Skeleton=60, Zombie=63, Spectre=85, Ghoul=154, Mummy=27 etc)
+          const UNDEAD_RACES = [27, 60, 63, 85, 126, 154, 161, 237, 240, 247]; 
+          if (UNDEAD_RACES.includes(mob.race)) {
+            shouldAggro = true;
+          } else if (standing.value <= -701) { // Threateningly and Scowls
+            shouldAggro = true;
+          }
+          
+          // Level Difference: Green mobs (>= 5 lvls below) ignore unless sitting
+          if (!isSitting && !UNDEAD_RACES.includes(mob.race) && (session.char.level > mob.level + 5)) {
+            shouldAggro = false;
+          }
+          
+          // Sneaking from behind
+          if (shouldAggro && session.char.isSneaking) {
+            // Very simplified behind check (In EQ sneak only works from behind)
+            shouldAggro = false; 
+          }
+          
+          if (shouldAggro && distSq < closestDistSq) {
+            closestDistSq = distSq;
+            closestAggroTarget = session;
+          }
+        }
+      }
+      
+      if (closestAggroTarget) {
+        mob.target = closestAggroTarget;
+        api.sendCombatLog(closestAggroTarget, [{ event: 'MESSAGE', text: `[color=red]${mob.name} glares at you threateningly![/color]` }]);
       }
     }
 
@@ -277,7 +333,7 @@ function processMobAI(zone, zoneId, dt, api) {
           } else {
             const mobHitChance = combat.calcMobHitChance(mob, session);
             if (combat.chance(mobHitChance)) {
-              let dmgRoll = combat.calcMobDamage(mob, session.effectiveStats.ac);
+              let dmgRoll = combat.calcMobDamage(mob, session.effectiveStats.mitigationAC);
               session.char.hp -= dmgRoll;
               events.push({ event: 'MELEE_HIT', source: mob.name, target: 'You', damage: dmgRoll });
 

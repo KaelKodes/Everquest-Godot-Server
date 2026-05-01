@@ -1,0 +1,16 @@
+{
+  "spellbook": [
+    {
+      "bookSlot": 0,
+      "spell_key": "throw_stone",
+      "id": 5225
+    }
+  ],
+  "memorized": [
+    {
+      "slot": 0,
+      "spell_key": "throw_stone",
+      "id": 5225
+    }
+  ]
+}

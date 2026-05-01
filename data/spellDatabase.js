@@ -193,12 +193,12 @@ function getByName(name) {
  * Also accepts numeric IDs as strings.
  */
 function getByKey(key) {
-    // Try as numeric ID first
-    const numId = parseInt(key, 10);
-    if (!isNaN(numId) && spellsById[numId]) {
-        return spellsById[numId];
+    if (typeof key === 'string' && /^\d+$/.test(key)) {
+        const numId = parseInt(key, 10);
+        if (spellsById[numId]) return spellsById[numId];
+    } else if (typeof key === 'number') {
+        if (spellsById[key]) return spellsById[key];
     }
-    // Then try as string key
     return spellsByKey[key] || null;
 }
 
@@ -257,34 +257,27 @@ function count() {
 // We create a Proxy that supports both patterns.
 
 function createLegacyProxy() {
-    return new Proxy(spellsByKey, {
-        get(target, prop) {
+    return new Proxy({}, {
+        get(_, prop) {
             if (prop === Symbol.iterator) return undefined;
             if (typeof prop === 'string') {
-                // Check numeric ID
-                const numId = parseInt(prop, 10);
-                if (!isNaN(numId) && spellsById[numId]) {
-                    return spellsById[numId];
-                }
-                // Check string key
-                if (target[prop]) return target[prop];
+                return getByKey(prop);
             }
             return undefined;
         },
-        has(target, prop) {
+        has(_, prop) {
             if (typeof prop === 'string') {
-                const numId = parseInt(prop, 10);
-                if (!isNaN(numId)) return !!spellsById[numId];
-                return prop in target;
+                return getByKey(prop) !== null;
             }
             return false;
         },
-        ownKeys(target) {
-            return Object.keys(target);
+        ownKeys(_) {
+            return Object.keys(spellsByKey);
         },
-        getOwnPropertyDescriptor(target, prop) {
-            if (prop in target) {
-                return { configurable: true, enumerable: true, value: target[prop] };
+        getOwnPropertyDescriptor(_, prop) {
+            const val = getByKey(prop);
+            if (val) {
+                return { configurable: true, enumerable: true, value: val };
             }
             return undefined;
         }

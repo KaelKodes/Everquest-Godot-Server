@@ -33,6 +33,13 @@ let ZONE_CACHE = {};
 // Reverse lookup: zoneidnumber → short_name (built from DB)
 let ZONE_ID_TO_SHORT = {};
 
+// Faction caches
+let FACTION_LIST = {};
+let FACTION_BASE_DATA = {};
+let NPC_FACTION = {};
+let FACTION_LIST_MOD = [];
+let NPC_FACTION_ENTRIES = {};
+
 let pool;
 let initPromise = null;
 
@@ -71,6 +78,35 @@ async function init() {
         console.log(`[DB] Loaded zone metadata cache (${zones.length} zones).`);
     } catch (e) {
         console.error('[DB] Failed to load zone cache, using hardcoded fallback:', e.message);
+    }
+
+    // Build Faction metadata cache
+    try {
+        const [listRows] = await pool.query('SELECT id, name, base FROM faction_list');
+        FACTION_LIST = {};
+        for (const r of listRows) FACTION_LIST[r.id] = r;
+
+        const [baseDataRows] = await pool.query('SELECT client_faction_id, min, max FROM faction_base_data');
+        FACTION_BASE_DATA = {};
+        for (const r of baseDataRows) FACTION_BASE_DATA[r.client_faction_id] = r;
+
+        const [npcFactionRows] = await pool.query('SELECT id, name, primaryfaction, ignore_primary_assist FROM npc_faction');
+        NPC_FACTION = {};
+        for (const r of npcFactionRows) NPC_FACTION[r.id] = r;
+
+        const [modRows] = await pool.query('SELECT faction_id, mod_name, `mod` FROM faction_list_mod');
+        FACTION_LIST_MOD = modRows;
+
+        const [entryRows] = await pool.query('SELECT npc_faction_id, faction_id, value, npc_value, temp FROM npc_faction_entries');
+        NPC_FACTION_ENTRIES = {};
+        for (const r of entryRows) {
+            if (!NPC_FACTION_ENTRIES[r.npc_faction_id]) NPC_FACTION_ENTRIES[r.npc_faction_id] = [];
+            NPC_FACTION_ENTRIES[r.npc_faction_id].push(r);
+        }
+
+        console.log(`[DB] Loaded faction metadata cache.`);
+    } catch (e) {
+        console.error('[DB] Failed to load faction cache:', e.message);
     }
     })();
     return initPromise;
@@ -412,7 +448,7 @@ async function getZoneSpawns(shortName) {
     const query = `
         SELECT s.id as spawn2_id, s.x, s.y, s.z, s.heading, s.respawntime, s.pathgrid,
                se.chance, 
-               n.id as npc_id, n.name, n.level, n.hp, n.mindmg, n.maxdmg, n.race, n.gender, n.class,
+               n.id as npc_id, n.name, n.level, n.hp, n.mindmg, n.maxdmg, n.race, n.gender, n.class, n.npc_faction_id,
                sg.dist as wander_dist
         FROM spawn2 s 
         JOIN spawnentry se ON s.spawngroupID = se.spawngroupID 
@@ -513,7 +549,7 @@ async function addItem(charId, itemKey, equipped, slot, qty = 1) {
     if (!pool) return;
     try {
         await pool.query(
-            'INSERT INTO inventory (id, slot_id, item_id, charges) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE item_id = ?, charges = charges + ?',
+            'INSERT INTO inventory (character_id, slot_id, item_id, charges) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE item_id = ?, charges = charges + ?',
             [charId, slot, itemKey, qty, itemKey, qty]
         );
     } catch(e) { console.error('[DB] addItem error:', e.message); }
@@ -791,7 +827,7 @@ async function getMerchantItems(npcId) {
         const merchantId = npcRow[0].merchant_id;
 
         const [rows] = await pool.query(`
-            SELECT ml.slot, ml.item as item_id, i.Name as name, i.price, 
+            SELECT ml.slot, ml.item as item_id, i.Name as name, i.price, i.icon,
                    i.ac, i.damage, i.delay, i.hp, i.mana, i.weight,
                    i.astr, i.asta, i.aagi, i.adex, i.awis, i.aint, i.acha,
                    i.classes, i.reclevel, i.scrolleffect, i.scrolllevel, i.itemtype
@@ -818,6 +854,7 @@ async function getMerchantItems(npcId) {
             scrolllevel: r.scrolllevel || 0,
             scrolleffect: r.scrolleffect || 0,
             itemtype: r.itemtype || 0,
+            icon: r.icon || 0,
         }));
 
         _merchantCache[npcId] = items;
@@ -839,6 +876,74 @@ function getZoneIdByShortName(shortName) {
     if (meta) return meta.zoneidnumber;
     // Fallback: check hardcoded map (pre-DB-init)
     return ZONES_NUM_FALLBACK[shortName] || null;
+}
+
+// ── Factions & Buyback ───────────────────────────────────────────────
+
+async function getCharacterFactionValues(charId) {
+    if (!pool) return {};
+    try {
+        const [rows] = await pool.query('SELECT faction_id, current_value FROM faction_values WHERE char_id = ?', [charId]);
+        const values = {};
+        for (const r of rows) values[r.faction_id] = r.current_value;
+        return values;
+    } catch(e) {
+        console.error('[DB] getCharacterFactionValues error:', e.message);
+        return {};
+    }
+}
+
+async function updateCharacterFactionValue(charId, factionId, newValue, temp) {
+    if (!pool) return;
+    try {
+        await pool.query(
+            'INSERT INTO faction_values (char_id, faction_id, current_value, temp) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE current_value = ?, temp = ?',
+            [charId, factionId, newValue, temp, newValue, temp]
+        );
+    } catch (e) {
+        console.error('[DB] updateCharacterFactionValue error:', e.message);
+    }
+}
+
+function getFactionCaches() {
+    return {
+        FACTION_LIST,
+        FACTION_BASE_DATA,
+        NPC_FACTION,
+        FACTION_LIST_MOD,
+        NPC_FACTION_ENTRIES
+    };
+}
+
+async function addBuybackItem(charId, npcId, itemId, charges, price) {
+    if (!pool) return;
+    try {
+        await pool.query(
+            'INSERT INTO merchant_buyback (char_id, npc_id, item_id, charges, price) VALUES (?, ?, ?, ?, ?)',
+            [charId, npcId, itemId, charges, price]
+        );
+    } catch(e) { console.error('[DB] addBuybackItem error:', e.message); }
+}
+
+async function getBuybackItems(charId, npcId) {
+    if (!pool) return [];
+    try {
+        const [rows] = await pool.query(
+            'SELECT id, item_id, charges, price FROM merchant_buyback WHERE char_id = ? AND npc_id = ? ORDER BY sold_at DESC',
+            [charId, npcId]
+        );
+        return rows;
+    } catch(e) {
+        console.error('[DB] getBuybackItems error:', e.message);
+        return [];
+    }
+}
+
+async function removeBuybackItem(buybackId) {
+    if (!pool) return;
+    try {
+        await pool.query('DELETE FROM merchant_buyback WHERE id = ? LIMIT 1', [buybackId]);
+    } catch(e) { console.error('[DB] removeBuybackItem error:', e.message); }
 }
 
 // ── Character Creation Data ──────────────────────────────────────────
@@ -935,7 +1040,13 @@ module.exports = {
     getMerchantItems,
     saveCharacterLocation,
     getZoneGrids,
-    getZoneDoors
+    getZoneDoors,
+    getCharacterFactionValues,
+    updateCharacterFactionValue,
+    getFactionCaches,
+    addBuybackItem,
+    getBuybackItems,
+    removeBuybackItem
 };
 
 

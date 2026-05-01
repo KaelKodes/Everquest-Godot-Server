@@ -122,7 +122,7 @@ class ItemDatabase {
   }
 
   getById(id) {
-    return this.itemsById.get(id);
+    return this.itemsById.get(parseInt(id, 10)) || this.itemsById.get(id);
   }
 
   getByName(name) {

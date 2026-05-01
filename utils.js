@@ -8,6 +8,18 @@ function send(ws, data) {
   }
 }
 
+function getDistanceSq(x1, y1, x2, y2) {
+    const dx = (x1 || 0) - (x2 || 0);
+    const dy = (y1 || 0) - (y2 || 0);
+    return dx * dx + dy * dy;
+}
+
+function getDistance(x1, y1, x2, y2) {
+    return Math.sqrt(getDistanceSq(x1, y1, x2, y2));
+}
+
 module.exports = {
-  send
+  send,
+  getDistanceSq,
+  getDistance
 };

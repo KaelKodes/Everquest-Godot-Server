@@ -31,7 +31,7 @@ class QuestManager {
     }
 
     async triggerEvent(zone, npc, player, eventType, eData) {
-        const scriptPath = this.getScriptPath(zone, npc.name, npc.id || 0);
+        const scriptPath = this.getScriptPath(zone, npc.name, npc.key || npc.id || 0);
         if (!scriptPath) return []; // No script found
 
         let actions = [];
@@ -103,6 +103,10 @@ class QuestManager {
                 GetName: () => player.name,
                 GetCleanName: () => player.name.replace(/_/g, ' '),
                 GetClass: () => player.class || 1,
+                Class: () => {
+                    const CLASS_NAMES = { 1: "Warrior", 2: "Cleric", 3: "Paladin", 4: "Ranger", 5: "Shadowknight", 6: "Druid", 7: "Monk", 8: "Bard", 9: "Rogue", 10: "Shaman", 11: "Necromancer", 12: "Wizard", 13: "Magician", 14: "Enchanter", 15: "Beastlord", 16: "Berserker" };
+                    return CLASS_NAMES[player.class || 1] || "Unknown";
+                },
                 GetLevel: () => player.level || 1,
                 Message: (color, text) => actions.push({ action: 'message', target: player.id, color, text }),
                 QuestReward: (self, cop, sil, gld, plat, item_id, exp) => 

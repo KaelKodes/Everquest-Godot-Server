@@ -1,9 +1,24 @@
 const { send } = require('../utils');
 const State = require('../state');
 const { zoneInstances, sessions, authSessions } = State;
+const { NPC_TYPES, HAIL_RANGE } = require('../data/npcTypes');
+const QuestDialogs = require('../data/npcs/quests');
+const QuestManager = require('../questManager');
+const FactionSystem = require('./faction');
 
 function getDistanceSq(x1, y1, x2, y2) {
   return (x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1);
+}
+
+// Proxy functions injected from gameEngine
+function sendCombatLog(session, events) {
+  if (module.exports.sendCombatLogFn) return module.exports.sendCombatLogFn(session, events);
+}
+function processQuestActions(session, target, actions) {
+  if (module.exports.processQuestActionsFn) return module.exports.processQuestActionsFn(session, target, actions);
+}
+function handleHail(session, msg) {
+  if (module.exports.handleHailFn) return module.exports.handleHailFn(session, msg);
 }
 
 async function handleSay(session, msg) {
@@ -28,6 +43,13 @@ async function handleSay(session, msg) {
 
     // Process new Dual-Engine Quest Scripts
     const zoneShortName = char.zoneId;
+
+    // Faction check for dialogue
+    const standing = FactionSystem.getStanding(char, target);
+    if (standing.value < -699) { // Dubious or worse
+      return; // NPCs don't talk to enemies
+    }
+
     const eData = { message: text, joined: false, trade: {} };
     const actions = await QuestManager.triggerEvent(zoneShortName, target, char, 'EVENT_SAY', eData);
     
@@ -242,5 +264,9 @@ module.exports = {
   handleGroup,
   handleGuild,
   handleRaid,
-  handleAnnouncement
+  handleAnnouncement,
+  broadcastChat,
+  setSendCombatLogFn: (fn) => { module.exports.sendCombatLogFn = fn; },
+  setProcessQuestActionsFn: (fn) => { module.exports.processQuestActionsFn = fn; },
+  setHandleHailFn: (fn) => { module.exports.handleHailFn = fn; }
 };

@@ -4,6 +4,9 @@
 // ═══════════════════════════════════════════════════════════════════
 
 const { Skills, RACIAL_SKILLS } = require('./data/skills');
+const ItemDB = require('./data/itemDatabase');
+let ITEMS;
+setTimeout(() => { ITEMS = ItemDB.createLegacyProxy(); }, 0);
 
 function roll(min, max) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
@@ -144,6 +147,112 @@ function checkAvoidance(session) {
   return null;
 }
 
+// ── AC System (Dzarn's Formula) ──────────────────────────────────────
+const SOFT_CAPS = {
+  enchanter: { cap: 408, mult: 0.25 }, magician: { cap: 408, mult: 0.25 },
+  necromancer: { cap: 408, mult: 0.25 }, wizard: { cap: 408, mult: 0.25 },
+  druid: { cap: 418, mult: 0.265 }, beastlord: { cap: 432, mult: 0.28 },
+  berserker: { cap: 432, mult: 0.28 }, rogue: { cap: 432, mult: 0.28 },
+  shaman: { cap: 432, mult: 0.28 }, bard: { cap: 448, mult: 0.3 },
+  cleric: { cap: 448, mult: 0.3 }, monk: { cap: 448, mult: 0.3 },
+  ranger: { cap: 468, mult: 0.315 }, paladin: { cap: 488, mult: 0.33 },
+  shadow_knight: { cap: 488, mult: 0.33 }, warrior: { cap: 510, mult: 0.35 }
+};
+
+function calcAvoidanceAC(char, effectiveStats) {
+  const defenseSkill = getCharSkill(char, 'defense');
+  const step1 = Math.floor((defenseSkill * 400) / 225);
+  
+  // Agility Bonus
+  const functionalAgi = effectiveStats.agi;
+  const stepAgi1 = Math.floor((8000 * (functionalAgi - 40)) / 36000);
+  const stepAgi2 = Math.floor((char.heroic_agi || 0) / 10);
+  const agiBonus = stepAgi1 + stepAgi2;
+  
+  const itemAvoidance = Math.min(100, char.avoidance || 0);
+  
+  const drunkenness = char.drunk || 0;
+  let reduction = 1.0;
+  const value = drunkenness / 2;
+  if (value > 20.0) {
+    reduction = (110 - value) / 100.0;
+  }
+  if (reduction > 1.0) reduction = 1.0;
+  
+  let computedDefense = Math.floor((step1 + agiBonus + itemAvoidance) * reduction);
+  return Math.max(1, computedDefense);
+}
+
+function calcACSum(char, inventory, effectiveStats, buffAC) {
+  let rawItemAC = 0;
+  let shieldAC = 0;
+  
+  for (const row of inventory) {
+    if (row.equipped !== 1) continue;
+    // Resolve item definition from key or stored def
+    const itemDef = row.item_def || ItemDB.getById(row.item_key) || ITEMS[row.item_key] || {};
+    if (itemDef.ac) {
+      rawItemAC += itemDef.ac;
+      if (row.slot === 14) { // Secondary slot
+        shieldAC = itemDef.ac + Math.floor((char.heroic_str || 0) / 10);
+      }
+    }
+  }
+  
+  // Step 7: EQ Math Multiplier (4/3)
+  let acSum = Math.floor((rawItemAC * 4) / 3);
+  
+  // Step 8: Anti-twink cap
+  if (char.level < 50) {
+    const cap = 25 + (6 * char.level);
+    if (acSum > cap) acSum = cap;
+  }
+  
+  // Step 9: Race/Class Bonuses
+  if (char.race === 'iksar') {
+    acSum += Math.max(10, Math.min(35, char.level));
+  }
+  
+  // Step 12-15: Buffs and Skills
+  const isSilk = ['enchanter', 'magician', 'necromancer', 'wizard'].includes(char.class);
+  const defenseSkill = getCharSkill(char, 'defense');
+  
+  if (isSilk) {
+    acSum += Math.floor(defenseSkill / 2);
+    acSum += Math.floor(buffAC / 3);
+  } else {
+    acSum += Math.floor(defenseSkill / 3);
+    acSum += Math.floor(buffAC / 4);
+  }
+  
+  // Agility Bonus (Step 17)
+  if (effectiveStats.agi > 70) {
+    acSum += Math.floor(effectiveStats.agi / 20);
+  }
+  
+  return { acSum, shieldAC };
+}
+
+function calcMitigationAC(char, acSum, shieldAC) {
+  const capData = SOFT_CAPS[char.class] || SOFT_CAPS.warrior;
+  
+  let acCap = capData.cap;
+  // Combat Stability AA (SPA 259)
+  const csRank = char.combat_stability || 0;
+  acCap = acCap + Math.floor((acCap * csRank) / 100);
+  
+  const totalCap = acCap + shieldAC;
+  
+  if (acSum > totalCap) {
+    return Math.floor(totalCap + (acSum - totalCap) * capData.mult);
+  }
+  return acSum;
+}
+
+function calcDisplayedAC(acSum, avoidanceAC) {
+  return Math.floor((1000 * (acSum + avoidanceAC)) / 847);
+}
+
 // ── Damage Calculation ──────────────────────────────────────────────
 
 const DAMAGE_BONUS_TABLE = [
@@ -173,9 +282,10 @@ function calcPlayerDamage(session, weaponDmg, weaponDelay) {
   return Math.max(1, baseDmg + strBonus + dmgBonus);
 }
 
-function calcMobDamage(mob, defenderAC) {
+function calcMobDamage(mob, defenderMitigationAC) {
   const baseDmg = roll(mob.minDmg, mob.maxDmg);
-  const mitigation = Math.floor(defenderAC * 0.33);
+  // Improved mitigation logic using the Real Mitigation AC
+  const mitigation = Math.floor(defenderMitigationAC * 0.15); // Adjusted multiplier for classic feel
   return Math.max(1, baseDmg - mitigation);
 }
 
@@ -466,4 +576,5 @@ module.exports = {
   calcSpellResist, RESIST_TYPES,
   getCon, xpForLevel, calcXPGain, getRegenRates, checkFizzle,
   calcMaxHP, calcMaxMana,
+  calcAvoidanceAC, calcACSum, calcMitigationAC, calcDisplayedAC,
 };

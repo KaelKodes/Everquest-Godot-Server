@@ -30,5 +30,10 @@ module.exports = {
   deleteItem: eqemuDB.deleteItem,
   moveItem: eqemuDB.moveItem,
   saveCharacterLocation: eqemuDB.saveCharacterLocation,
+  getCharacterFactionValues: eqemuDB.getCharacterFactionValues,
+  updateCharacterFactionValue: eqemuDB.updateCharacterFactionValue,
+  getFactionCaches: eqemuDB.getFactionCaches,
+  addBuybackItem: eqemuDB.addBuybackItem,
+  getBuybackItems: eqemuDB.getBuybackItems,
+  removeBuybackItem: eqemuDB.removeBuybackItem,
 };
-

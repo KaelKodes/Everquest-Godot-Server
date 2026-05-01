@@ -1,0 +1,316 @@
+{
+  "spellbook": [
+    {
+      "bookSlot": 0,
+      "spell_key": "lull",
+      "id": 208
+    },
+    {
+      "bookSlot": 1,
+      "spell_key": "minor_shielding",
+      "id": 288
+    },
+    {
+      "bookSlot": 2,
+      "spell_key": "strengthen",
+      "id": 40
+    },
+    {
+      "bookSlot": 3,
+      "spell_key": "weaken",
+      "id": 41
+    },
+    {
+      "bookSlot": 4,
+      "spell_key": "true_north",
+      "id": 205
+    },
+    {
+      "bookSlot": 5,
+      "spell_key": "pendrils_animation",
+      "id": 285
+    },
+    {
+      "bookSlot": 6,
+      "spell_key": "shallow_breath",
+      "id": 286
+    },
+    {
+      "bookSlot": 7,
+      "spell_key": "minor_illusion",
+      "id": 287
+    },
+    {
+      "bookSlot": 8,
+      "spell_key": "taper_enchantment",
+      "id": 289
+    },
+    {
+      "bookSlot": 9,
+      "spell_key": "reclaim_energy",
+      "id": 331
+    },
+    {
+      "bookSlot": 10,
+      "spell_key": "illusion_simple_gnomework",
+      "id": 12329
+    },
+    {
+      "bookSlot": 11,
+      "spell_key": "illusion_flame_telmira",
+      "id": 12330
+    },
+    {
+      "bookSlot": 12,
+      "spell_key": "illusion_shissar",
+      "id": 12492
+    },
+    {
+      "bookSlot": 13,
+      "spell_key": "illusion_evil_eye",
+      "id": 27701
+    },
+    {
+      "bookSlot": 14,
+      "spell_key": "illusion_spectre",
+      "id": 27702
+    },
+    {
+      "bookSlot": 15,
+      "spell_key": "illusion_fairy",
+      "id": 27704
+    },
+    {
+      "bookSlot": 16,
+      "spell_key": "illusion_kobold_serf",
+      "id": 27705
+    },
+    {
+      "bookSlot": 17,
+      "spell_key": "illusion_hideous_harpy",
+      "id": 27706
+    },
+    {
+      "bookSlot": 18,
+      "spell_key": "illusion_stone_gargoyle",
+      "id": 27707
+    },
+    {
+      "bookSlot": 19,
+      "spell_key": "illusion_hooded_scrykin",
+      "id": 27708
+    },
+    {
+      "bookSlot": 20,
+      "spell_key": "illusion_goblin_king",
+      "id": 27709
+    },
+    {
+      "bookSlot": 21,
+      "spell_key": "illusion_kobold_king",
+      "id": 27710
+    },
+    {
+      "bookSlot": 22,
+      "spell_key": "illusion_bixie_queen",
+      "id": 27711
+    },
+    {
+      "bookSlot": 23,
+      "spell_key": "illusion_bixie_drone",
+      "id": 27712
+    },
+    {
+      "bookSlot": 24,
+      "spell_key": "illusion_brownie",
+      "id": 27713
+    },
+    {
+      "bookSlot": 25,
+      "spell_key": "illusion_brownie_noble",
+      "id": 27714
+    },
+    {
+      "bookSlot": 26,
+      "spell_key": "illusion_pyrilen",
+      "id": 27715
+    },
+    {
+      "bookSlot": 27,
+      "spell_key": "illusion_gelidran",
+      "id": 27716
+    },
+    {
+      "bookSlot": 28,
+      "spell_key": "illusion_banshee",
+      "id": 27717
+    },
+    {
+      "bookSlot": 29,
+      "spell_key": "illusion_crystal_golem",
+      "id": 27718
+    },
+    {
+      "bookSlot": 30,
+      "spell_key": "illusion_arcane_scrykin",
+      "id": 27719
+    },
+    {
+      "bookSlot": 31,
+      "spell_key": "illusion_corrupted_shiliskin",
+      "id": 27720
+    },
+    {
+      "bookSlot": 32,
+      "spell_key": "illusion_ice_golem",
+      "id": 27721
+    },
+    {
+      "bookSlot": 33,
+      "spell_key": "illusion_aviak_rook",
+      "id": 27722
+    },
+    {
+      "bookSlot": 34,
+      "spell_key": "illusion_siren_enticer",
+      "id": 27723
+    },
+    {
+      "bookSlot": 35,
+      "spell_key": "illusion_frost_goblin",
+      "id": 27724
+    },
+    {
+      "bookSlot": 36,
+      "spell_key": "illusion_iksar_skeleton",
+      "id": 27725
+    },
+    {
+      "bookSlot": 37,
+      "spell_key": "illusion_raptor_predator",
+      "id": 27727
+    },
+    {
+      "bookSlot": 38,
+      "spell_key": "illusion_gnomish_pirate",
+      "id": 27728
+    },
+    {
+      "bookSlot": 39,
+      "spell_key": "illusion_embattled_minotaur",
+      "id": 27729
+    },
+    {
+      "bookSlot": 40,
+      "spell_key": "illusion_spirited_satyr",
+      "id": 27730
+    },
+    {
+      "bookSlot": 41,
+      "spell_key": "illusion_primal_kerran",
+      "id": 27731
+    },
+    {
+      "bookSlot": 42,
+      "spell_key": "illusion_barraki",
+      "id": 27732
+    },
+    {
+      "bookSlot": 43,
+      "spell_key": "illusion_centaur",
+      "id": 27734
+    },
+    {
+      "bookSlot": 44,
+      "spell_key": "illusion_blood_runed_gargoyle",
+      "id": 27736
+    },
+    {
+      "bookSlot": 45,
+      "spell_key": "illusion_eagle_aviak",
+      "id": 27737
+    },
+    {
+      "bookSlot": 46,
+      "spell_key": "illusion_snow_kobold",
+      "id": 27740
+    },
+    {
+      "bookSlot": 47,
+      "spell_key": "illusion_recluse_spider",
+      "id": 27742
+    },
+    {
+      "bookSlot": 48,
+      "spell_key": "illusion_drachnid",
+      "id": 27743
+    },
+    {
+      "bookSlot": 49,
+      "spell_key": "illusion_ogre_pirate",
+      "id": 27744
+    },
+    {
+      "bookSlot": 50,
+      "spell_key": "illusion_crystalline_trichordont",
+      "id": 27745
+    },
+    {
+      "bookSlot": 51,
+      "spell_key": "illusion_vitrik",
+      "id": 27746
+    },
+    {
+      "bookSlot": 52,
+      "spell_key": "illusion_crystalline_sessiloid",
+      "id": 27747
+    },
+    {
+      "bookSlot": 53,
+      "spell_key": "visage_of_the_daft_trickster",
+      "id": 32200
+    },
+    {
+      "bookSlot": 54,
+      "spell_key": "illusion_daft_trickster",
+      "id": 32201
+    },
+    {
+      "bookSlot": 55,
+      "spell_key": "illusion_gelatinous_cube",
+      "id": 33999
+    },
+    {
+      "bookSlot": 56,
+      "spell_key": "illusion_silver_gnomework",
+      "id": 37869
+    }
+  ],
+  "memorized": [
+    {
+      "slot": 0,
+      "spell_key": "lull",
+      "id": 208
+    },
+    {
+      "slot": 1,
+      "spell_key": "minor_shielding",
+      "id": 288
+    },
+    {
+      "slot": 2,
+      "spell_key": "shallow_breath",
+      "id": 286
+    },
+    {
+      "slot": 3,
+      "spell_key": "weaken",
+      "id": 41
+    },
+    {
+      "slot": 4,
+      "spell_key": "strengthen",
+      "id": 40
+    }
+  ]
+}

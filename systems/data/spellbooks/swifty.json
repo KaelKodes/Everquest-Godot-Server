@@ -1,0 +1,46 @@
+{
+  "spellbook": [
+    {
+      "bookSlot": 0,
+      "spell_key": "chant_of_battle",
+      "id": 700
+    },
+    {
+      "bookSlot": 1,
+      "spell_key": "chant_of_magic",
+      "id": 22486
+    },
+    {
+      "bookSlot": 2,
+      "spell_key": "chant_of_flame",
+      "id": 22487
+    },
+    {
+      "bookSlot": 3,
+      "spell_key": "chant_of_frost",
+      "id": 22488
+    },
+    {
+      "bookSlot": 4,
+      "spell_key": "chant_of_venom",
+      "id": 22489
+    },
+    {
+      "bookSlot": 5,
+      "spell_key": "chant_of_plague",
+      "id": 22490
+    },
+    {
+      "bookSlot": 6,
+      "spell_key": "chant_of_chaos",
+      "id": 22491
+    }
+  ],
+  "memorized": [
+    {
+      "slot": 0,
+      "spell_key": "chant_of_battle",
+      "id": 700
+    }
+  ]
+}

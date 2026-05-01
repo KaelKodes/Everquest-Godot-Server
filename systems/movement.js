@@ -1,6 +1,7 @@
 const { send } = require('../utils');
 const DB = require('../db');
 const State = require('../state');
+const combat = require('../combat');
 const { zoneInstances, sessions } = State;
 
 function getZoneDef(zoneId) {
@@ -12,11 +13,29 @@ function handleStopCombat(session) {
 function despawnPet(session, msg) {
   return module.exports.despawnPetFn ? module.exports.despawnPetFn(session, msg) : null;
 }
+function flushSkillUps(session) {
+  if (module.exports.flushSkillUpsFn) module.exports.flushSkillUpsFn(session);
+}
 function sendCombatLog(session, events) {
   return module.exports.sendCombatLogFn ? module.exports.sendCombatLogFn(session, events) : null;
 }
 function broadcastEntityState(session, type, payload) {
   return module.exports.broadcastEntityStateFn ? module.exports.broadcastEntityStateFn(session, type, payload) : null;
+}
+async function ensureZoneLoaded(zoneKey) {
+  if (module.exports.ensureZoneLoadedFn) return module.exports.ensureZoneLoadedFn(zoneKey);
+}
+function sendStatus(session) {
+  if (module.exports.sendStatusFn) return module.exports.sendStatusFn(session);
+}
+function interruptCasting(session, message) {
+  if (module.exports.interruptCastingFn) return module.exports.interruptCastingFn(session, message);
+}
+
+function handleSwimTick(session, msg) {
+  if (session && session.char) {
+    combat.trySkillUp(session, 'swimming');
+  }
 }
 
 async function handleZone(session, msg) {
@@ -354,6 +373,7 @@ module.exports = {
   handleUpdatePos,
   handleUpdateSneak,
   handleHide,
+  handleSwimTick,
   breakSneak,
   breakHide,
   handleTeleporterPad,
@@ -362,5 +382,9 @@ module.exports = {
   setHandleStopCombatFn: (fn) => { module.exports.handleStopCombatFn = fn; },
   setDespawnPetFn: (fn) => { module.exports.despawnPetFn = fn; },
   setSendCombatLogFn: (fn) => { module.exports.sendCombatLogFn = fn; },
-  setBroadcastEntityStateFn: (fn) => { module.exports.broadcastEntityStateFn = fn; }
+  setBroadcastEntityStateFn: (fn) => { module.exports.broadcastEntityStateFn = fn; },
+  setFlushSkillUpsFn: (fn) => { module.exports.flushSkillUpsFn = fn; },
+  setEnsureZoneLoadedFn: (fn) => { module.exports.ensureZoneLoadedFn = fn; },
+  setSendStatusFn: (fn) => { module.exports.sendStatusFn = fn; },
+  setInterruptCastingFn: (fn) => { module.exports.interruptCastingFn = fn; }
 };

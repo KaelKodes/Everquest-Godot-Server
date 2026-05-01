@@ -308,11 +308,6 @@
       "id": 286
     },
     {
-      "slot": 7,
-      "spell_key": "pendrils_animation",
-      "id": 285
-    },
-    {
       "slot": 4,
       "spell_key": "weaken",
       "id": 41
@@ -326,6 +321,11 @@
       "slot": 6,
       "spell_key": "illusion_ogre_pirate",
       "id": 27744
+    },
+    {
+      "slot": 7,
+      "spell_key": "true_north",
+      "id": 205
     }
   ]
 }

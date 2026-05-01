@@ -1,0 +1,91 @@
+{
+  "spellbook": [
+    {
+      "bookSlot": 0,
+      "spell_key": "minor_healing",
+      "id": 200
+    },
+    {
+      "bookSlot": 1,
+      "spell_key": "inner_fire",
+      "id": 267
+    },
+    {
+      "bookSlot": 2,
+      "spell_key": "strengthen",
+      "id": 40
+    },
+    {
+      "bookSlot": 3,
+      "spell_key": "burst_of_flame",
+      "id": 93
+    },
+    {
+      "bookSlot": 4,
+      "spell_key": "flash_of_light",
+      "id": 201
+    },
+    {
+      "bookSlot": 5,
+      "spell_key": "true_north",
+      "id": 205
+    },
+    {
+      "bookSlot": 6,
+      "spell_key": "cure_disease",
+      "id": 213
+    },
+    {
+      "bookSlot": 7,
+      "spell_key": "endure_cold",
+      "id": 225
+    },
+    {
+      "bookSlot": 8,
+      "spell_key": "dexterous_aura",
+      "id": 266
+    }
+  ],
+  "memorized": [
+    {
+      "slot": 1,
+      "spell_key": "inner_fire",
+      "id": 267
+    },
+    {
+      "slot": 2,
+      "spell_key": "dexterous_aura",
+      "id": 266
+    },
+    {
+      "slot": 3,
+      "spell_key": "strengthen",
+      "id": 40
+    },
+    {
+      "slot": 4,
+      "spell_key": "burst_of_flame",
+      "id": 93
+    },
+    {
+      "slot": 5,
+      "spell_key": "flash_of_light",
+      "id": 201
+    },
+    {
+      "slot": 6,
+      "spell_key": "true_north",
+      "id": 205
+    },
+    {
+      "slot": 7,
+      "spell_key": "cure_disease",
+      "id": 213
+    },
+    {
+      "slot": 0,
+      "spell_key": "minor_healing",
+      "id": 200
+    }
+  ]
+}

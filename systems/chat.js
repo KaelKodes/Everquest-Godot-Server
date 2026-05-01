@@ -1,0 +1,246 @@
+const { send } = require('../utils');
+const State = require('../state');
+const { zoneInstances, sessions, authSessions } = State;
+
+function getDistanceSq(x1, y1, x2, y2) {
+  return (x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1);
+}
+
+async function handleSay(session, msg) {
+  const char = session.char;
+  const text = (msg.text || '').trim();
+  if (!text) return;
+
+  // Echo the player's speech via CHAT
+  send(session.ws, { type: 'CHAT', channel: 'say', sender: char.name, text: text });
+
+  // If we have a targeted NPC, check for keyword responses
+  if (session.combatTarget && session.combatTarget.npcType) {
+    const target = session.combatTarget;
+
+    // Proximity check
+    const distSq = getDistanceSq(char.x, char.y, target.x, target.y);
+    if (distSq > HAIL_RANGE * HAIL_RANGE) {
+      // Still broadcast to other players even if NPC is too far
+      broadcastChat(session, 'say', text, 200);
+      return;
+    }
+
+    // Process new Dual-Engine Quest Scripts
+    const zoneShortName = char.zoneId;
+    const eData = { message: text, joined: false, trade: {} };
+    const actions = await QuestManager.triggerEvent(zoneShortName, target, char, 'EVENT_SAY', eData);
+    
+    if (actions && actions.length > 0) {
+      processQuestActions(session, target, actions);
+      return; // Handled by quest engine
+    }
+
+    // Quest NPCs and merchants with dialog respond to keywords (Legacy Fallback)
+    if (target.npcType === NPC_TYPES.QUEST || target.npcType === NPC_TYPES.MERCHANT) {
+      const response = QuestDialogs.getKeywordResponse(target.key, text, char);
+      if (response) {
+        const keywords = QuestDialogs.extractKeywords(response);
+        sendCombatLog(session, [{ event: 'NPC_SAY', npcName: target.name, text: response, keywords: keywords }]);
+        return;
+      }
+    }
+
+    // Merchant fallback: 'buy', 'wares', 'shop' re-opens the merchant window
+    if (target.npcType === NPC_TYPES.MERCHANT) {
+      const lowerText = text.toLowerCase();
+      if (lowerText === 'buy' || lowerText === 'wares' || lowerText === 'shop') {
+        handleHail(session, msg);
+        return;
+      }
+    }
+
+    // Bind keyword check
+    if (target.npcType === NPC_TYPES.BIND && text.toLowerCase() === 'bind') {
+      sendCombatLog(session, [{ event: 'MESSAGE', text: `${target.name} begins to cast a spell.` }]);
+      sendCombatLog(session, [{ event: 'MESSAGE', text: `You feel your soul bound to this location.` }]);
+      // TODO: Actually save bind point
+      return;
+    }
+  }
+
+  // Broadcast to other players within say range (200 units)
+  broadcastChat(session, 'say', text, 200);
+}
+
+// ── Chat Channel Utility ────────────────────────────────────────────
+// Broadcasts a CHAT message to players within radius (same zone).
+function broadcastChat(session, channel, text, radius) {
+  const char = session.char;
+  for (const [ws, other] of sessions) {
+    if (other !== session && other.char.zoneId === char.zoneId) {
+      const pDistSq = getDistanceSq(other.char.x, other.char.y, char.x, char.y);
+      if (pDistSq <= radius * radius) {
+        send(other.ws, { type: 'CHAT', channel: channel, sender: char.name, text: text });
+      }
+    }
+  }
+}
+
+// ── /shout — 3x say radius (600u), local only ───────────────────────
+function handleShout(session, msg) {
+  const char = session.char;
+  const text = (msg.text || '').trim();
+  if (!text) return;
+  send(session.ws, { type: 'CHAT', channel: 'shout', sender: char.name, text: text });
+  broadcastChat(session, 'shout', text, 600);
+}
+
+// ── /ooc — same as say radius (200u), local only ────────────────────
+function handleOOC(session, msg) {
+  const char = session.char;
+  const text = (msg.text || '').trim();
+  if (!text) return;
+  send(session.ws, { type: 'CHAT', channel: 'ooc', sender: char.name, text: text });
+  broadcastChat(session, 'ooc', text, 200);
+}
+
+// ── /yell — 2x say radius (400u) + guard AI assist ─────────────────
+function handleYell(session, msg) {
+  const char = session.char;
+  const text = (msg.text || '').trim() || 'Help!!';
+  send(session.ws, { type: 'CHAT', channel: 'yell', sender: char.name, text: text });
+  broadcastChat(session, 'yell', text, 400);
+
+  // Guard AI: nearby guards respond to the yell
+  const instance = zoneInstances[char.zoneId];
+  if (!instance) return;
+
+  for (const mob of instance.liveMobs) {
+    if (!mob.alive) continue;
+    // Identify guards by key prefix (guard_ or watchman_)
+    const isGuard = mob.key && (mob.key.startsWith('guard_') || mob.key.startsWith('watchman_'));
+    if (!isGuard) continue;
+
+    const guardDistSq = getDistanceSq(mob.x, mob.y, char.x, char.y);
+    if (guardDistSq > 160000) continue; // Guard must hear the yell
+
+    // Check if the player is being attacked by a mob
+    // Find mobs that are targeting this player
+    for (const attacker of instance.liveMobs) {
+      if (!attacker.alive || attacker === mob) continue;
+      if (attacker.target && attacker.target === char.name) {
+        // Don't help if the attacker IS a guard (guards help each other)
+        const attackerIsGuard = attacker.key && (attacker.key.startsWith('guard_') || attacker.key.startsWith('watchman_'));
+        if (attackerIsGuard) {
+          // Player is fighting guards — guards assist each other, not the player
+          continue;
+        }
+        // Don't help in PvP (attacker is a player session, not a mob)
+        if (!attacker.npcType) continue;
+
+        // Guard engages the mob attacking the player
+        mob.target = attacker.id || attacker.name;
+        mob.inCombat = true;
+        sendCombatLog(session, [{ event: 'MESSAGE', text: `${mob.name} shouts, 'I'll protect you, citizen!'` }]);
+        break; // Guard only assists against one attacker
+      }
+    }
+  }
+}
+
+// ── /whisper — global private message ───────────────────────────────
+function handleWhisper(session, msg) {
+  const char = session.char;
+  const targetName = (msg.target || '').trim();
+  const text = (msg.text || '').trim();
+  if (!text || !targetName) {
+    send(session.ws, { type: 'CHAT', channel: 'system', sender: '', text: 'Usage: /whisper <player> <message>' });
+    return;
+  }
+
+  // Find target player across all zones
+  let targetSession = null;
+  for (const [ws, other] of sessions) {
+    if (other.char.name.toLowerCase() === targetName.toLowerCase()) {
+      targetSession = other;
+      break;
+    }
+  }
+
+  if (!targetSession) {
+    send(session.ws, { type: 'CHAT', channel: 'system', sender: '', text: `${targetName} is not online.` });
+    return;
+  }
+
+  // Send to recipient
+  send(targetSession.ws, { type: 'CHAT', channel: 'whisper', sender: char.name, text: text, direction: 'from' });
+  // Echo to sender
+  send(session.ws, { type: 'CHAT', channel: 'whisper', sender: targetName, text: text, direction: 'to' });
+}
+
+// ── /group — global (stub: not implemented) ─────────────────────────
+function handleGroup(session, msg) {
+  const text = (msg.text || '').trim();
+  if (!text) return;
+
+  // TODO: Implement group system
+  // For now, check if player is in a group
+  if (!session.group) {
+    send(session.ws, { type: 'CHAT', channel: 'system', sender: '', text: 'You are not in a group.' });
+    return;
+  }
+
+  // When groups are implemented, broadcast to group members:
+  // for (const member of session.group.members) {
+  //   send(member.ws, { type: 'CHAT', channel: 'group', sender: session.char.name, text: text });
+  // }
+}
+
+// ── /guild — global (stub: not implemented) ─────────────────────────
+function handleGuild(session, msg) {
+  const text = (msg.text || '').trim();
+  if (!text) return;
+
+  if (!session.guild) {
+    send(session.ws, { type: 'CHAT', channel: 'system', sender: '', text: 'You are not in a guild.' });
+    return;
+  }
+}
+
+// ── /raid — global (stub: not implemented) ──────────────────────────
+function handleRaid(session, msg) {
+  const text = (msg.text || '').trim();
+  if (!text) return;
+
+  if (!session.raid) {
+    send(session.ws, { type: 'CHAT', channel: 'system', sender: '', text: 'You are not in a raid.' });
+    return;
+  }
+}
+
+// ── /announcement — admin-only global broadcast ─────────────────────
+function handleAnnouncement(session, msg) {
+  const text = (msg.text || '').trim();
+  if (!text) return;
+
+  // Check admin status (EQEmu: status >= 200 = GM)
+  const auth = authSessions.get(session.ws);
+  if (!auth || (auth.status || 0) < 200) {
+    send(session.ws, { type: 'CHAT', channel: 'system', sender: '', text: 'You do not have permission to use this command.' });
+    return;
+  }
+
+  // Broadcast to ALL connected players
+  for (const [ws, other] of sessions) {
+    send(other.ws, { type: 'CHAT', channel: 'announcement', sender: session.char.name, text: text });
+  }
+}
+
+
+module.exports = {
+  handleSay,
+  handleShout,
+  handleOOC,
+  handleYell,
+  handleWhisper,
+  handleGroup,
+  handleGuild,
+  handleRaid,
+  handleAnnouncement
+};

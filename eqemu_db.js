@@ -469,7 +469,10 @@ async function getAllItems() {
                aagi, acha, adex, aint, asta, astr, awis, 
                ac, hp, mana, damage, delay, price, 
                itemtype, slots, classes, races, weight, icon, material, idfile,
-               reclevel, scrolllevel, scrolleffect, light
+               reclevel, reqlevel, scrolllevel, scrolleffect, light,
+               lore, magic, nodrop, norent, size, endur, fr, cr, mr, pr, dr,
+               elemdmgtype, elemdmgamt, banedmgrace, banedmgamt, placeable,
+               augslot1type, augslot2type, augslot3type, augslot4type, augslot5type, augslot6type
         FROM items
     `;
 
@@ -510,7 +513,7 @@ async function addItem(charId, itemKey, equipped, slot, qty = 1) {
     if (!pool) return;
     try {
         await pool.query(
-            'INSERT INTO inventory (character_id, slot_id, item_id, charges) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE item_id = ?, charges = charges + ?',
+            'INSERT INTO inventory (id, slot_id, item_id, charges) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE item_id = ?, charges = charges + ?',
             [charId, slot, itemKey, qty, itemKey, qty]
         );
     } catch(e) { console.error('[DB] addItem error:', e.message); }
@@ -534,29 +537,36 @@ async function equipItem(itemId, charId, slot) {
     } catch(e) { console.error('[DB] equipItem error:', e.message); }
 }
 
-async function unequipItem(itemId, charId) {
+async function unequipItem(itemId, charId, targetSlot) {
     if (!pool) return;
     try {
-        // Find an empty main inventory slot (22-31, 10 slots)
-        const [rows] = await pool.query('SELECT slot_id FROM inventory WHERE character_id = ? AND slot_id >= 22 AND slot_id <= 31', [charId]);
-        const occupied = rows.map(r => r.slot_id);
-        let freeSlot = 22;
-        while(occupied.includes(freeSlot) && freeSlot <= 31) { freeSlot++; }
+        let finalSlot = targetSlot;
+        if (targetSlot !== undefined && targetSlot >= 22 && targetSlot <= 29) {
+            const [check] = await pool.query('SELECT item_id FROM inventory WHERE character_id = ? AND slot_id = ?', [charId, targetSlot]);
+            if (check.length > 0) {
+                // Target is occupied, bump existing item to Cursor (Slot 30)
+                await pool.query('UPDATE inventory SET slot_id = 30 WHERE character_id = ? AND slot_id = ? LIMIT 1', [charId, targetSlot]);
+            }
+        } else {
+            const [rows] = await pool.query('SELECT slot_id FROM inventory WHERE character_id = ? AND slot_id >= 22 AND slot_id <= 29', [charId]);
+            const occupied = rows.map(r => r.slot_id);
+            let freeSlot = 22;
+            while(occupied.includes(freeSlot) && freeSlot <= 29) { freeSlot++; }
+            finalSlot = freeSlot;
+        }
         
-        await pool.query('UPDATE inventory SET slot_id = ? WHERE character_id = ? AND item_id = ? LIMIT 1', [freeSlot, charId, itemId]);
+        await pool.query('UPDATE inventory SET slot_id = ? WHERE character_id = ? AND item_id = ? LIMIT 1', [finalSlot, charId, itemId]);
     } catch(e) { console.error('[DB] unequipItem error:', e.message); }
 }
 
 async function unequipSlot(charId, slotId) {
     if (!pool) return;
     try {
-        // Find an empty main inventory slot (22-31, 10 slots)
-        const [rows] = await pool.query('SELECT slot_id FROM inventory WHERE character_id = ? AND slot_id >= 22 AND slot_id <= 31', [charId]);
-        const occupied = rows.map(r => r.slot_id);
-        let freeSlot = 22;
-        while(occupied.includes(freeSlot) && freeSlot <= 31) { freeSlot++; }
-        
-        await pool.query('UPDATE inventory SET slot_id = ? WHERE character_id = ? AND slot_id = ? LIMIT 1', [freeSlot, charId, slotId]);
+        const [rows] = await pool.query('SELECT slot_id FROM inventory WHERE character_id = ? AND slot_id = ?', [charId, slotId]);
+        if (rows.length > 0) {
+            // Un-equipping an occupied slot implicitly bumps it to Cursor (Slot 30)
+            await pool.query('UPDATE inventory SET slot_id = 30 WHERE character_id = ? AND slot_id = ? LIMIT 1', [charId, slotId]);
+        }
     } catch(e) { console.error('[DB] unequipSlot error:', e.message); }
 }
 
@@ -577,10 +587,9 @@ async function moveItem(charId, fromSlot, toSlot) {
         // Check if toSlot is occupied
         const [toRows] = await pool.query('SELECT slot_id FROM inventory WHERE character_id = ? AND slot_id = ?', [charId, toSlot]);
         if (toRows.length > 0) {
-            // Swap: use temp slot -999
-            await pool.query('UPDATE inventory SET slot_id = -999 WHERE character_id = ? AND slot_id = ? LIMIT 1', [charId, toSlot]);
+            // Swap: move the item currently in toSlot to the Cursor (Slot 30)
+            await pool.query('UPDATE inventory SET slot_id = 30 WHERE character_id = ? AND slot_id = ? LIMIT 1', [charId, toSlot]);
             await pool.query('UPDATE inventory SET slot_id = ? WHERE character_id = ? AND slot_id = ? LIMIT 1', [toSlot, charId, fromSlot]);
-            await pool.query('UPDATE inventory SET slot_id = ? WHERE character_id = ? AND slot_id = -999 LIMIT 1', [fromSlot, charId]);
         } else {
             await pool.query('UPDATE inventory SET slot_id = ? WHERE character_id = ? AND slot_id = ? LIMIT 1', [toSlot, charId, fromSlot]);
         }

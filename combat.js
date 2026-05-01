@@ -267,15 +267,76 @@ function getCon(playerLevel, mobLevel) {
   return                       { color: 'GRAY',       label: 'looks harmless',       xpMod: 0 };
 }
 
-const HELL_LEVELS = new Set([30, 35, 40, 45, 50]);
+const CUSTOM_XP_TABLE = [
+  0,          // 0 (unused)
+  0,          // 1
+  300,        // 2
+  1677,       // 3
+  5040,       // 4
+  11373,      // 5
+  21720,      // 6
+  37173,      // 7
+  58866,      // 8
+  87966,      // 9
+  125673,     // 10
+  187652,     // 11
+  251176,     // 12
+  328104,     // 13
+  419842,     // 14
+  527826,     // 15
+  653510,     // 16
+  798369,     // 17
+  963895,     // 18
+  1151602,    // 19
+  1363018,    // 20
+  1722742,    // 21
+  2006501,    // 22
+  2320840,    // 23
+  2667469,    // 24
+  3048122,    // 25
+  3464545,    // 26
+  3918495,    // 27
+  4411743,    // 28
+  4946078,    // 29
+  5523298,    // 30
+  6456174,    // 31
+  7633515,    // 32
+  8401515,    // 33
+  9223305,    // 34
+  10100880,   // 35
+  11503924,   // 36
+  12499091,   // 37
+  13556089,   // 38
+  14676956,   // 39
+  15863741,   // 40
+  17745889,   // 41
+  20342084,   // 42
+  21832160,   // 43
+  23401404,   // 44
+  25052056,   // 45
+  27653524,   // 46
+  29473756,   // 47
+  31382180,   // 48
+  33381076,   // 49
+  35472736,   // 50
+  41174871,   // 51
+  43601723,   // 52
+  46134494,   // 53
+  48775661,   // 54
+  51527701,   // 55
+  54393111,   // 56
+  57374388,   // 57
+  60474045,   // 58
+  63694597,   // 59
+  67038574    // 60
+];
 
 function xpForLevel(level) {
   if (level <= 1) return 0;
-  let base = Math.floor(100 * Math.pow(level, 2.2));
-  if (HELL_LEVELS.has(level)) {
-    base = Math.floor(base * 1.5);
-  }
-  return base;
+  if (level <= 60) return CUSTOM_XP_TABLE[level];
+  // Fallback for levels above 60, if they ever become possible
+  let diff = CUSTOM_XP_TABLE[60] - CUSTOM_XP_TABLE[59];
+  return CUSTOM_XP_TABLE[60] + diff * (level - 60);
 }
 
 function calcXPGain(playerLevel, mobLevel, mobXpBase, zoneZEM) {

@@ -24,7 +24,7 @@ let loaded = false;
  */
 function loadSpells(filePath) {
     if (!filePath) {
-        filePath = path.join(__dirname, 'spells_classic.json');
+        filePath = path.join(__dirname, 'spells_parsed.json');
     }
 
     if (!fs.existsSync(filePath)) {
@@ -49,7 +49,21 @@ function loadSpells(filePath) {
 
         // Generate a snake_case key for backwards compatibility with DB
         const key = generateSpellKey(spell.name);
-        spellsByKey[key] = adapted;
+        const isPlayerSpell = Object.values(spell.classes).some(lvl => lvl !== 255);
+        
+        if (!spellsByKey[key]) {
+            spellsByKey[key] = adapted;
+        } else {
+            const existingIsPlayer = Object.values(spellsByKey[key].classes).some(lvl => lvl !== 255);
+            if (isPlayerSpell && !existingIsPlayer) {
+                spellsByKey[key] = adapted; // Overwrite NPC spell with Player spell
+            } else if (isPlayerSpell && existingIsPlayer) {
+                // Both are player spells. Prefer the lower ID (original classic spell).
+                if (spell.id < spellsByKey[key].id) {
+                    spellsByKey[key] = adapted;
+                }
+            }
+        }
         adapted._key = key;
     }
 

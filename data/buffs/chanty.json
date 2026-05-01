@@ -1,0 +1,32 @@
+{
+  "savedAt": 1777596282092,
+  "buffs": [
+    {
+      "name": "Lull",
+      "duration": 34,
+      "maxDuration": 120,
+      "beneficial": true,
+      "effects": [
+        {
+          "slot": 1,
+          "spa": 30,
+          "spaName": "blindness",
+          "base": 15,
+          "limit": 0,
+          "max": 30,
+          "formula": 100
+        },
+        {
+          "slot": 2,
+          "spa": 86,
+          "spaName": "castingLevel",
+          "base": 15,
+          "limit": 0,
+          "max": 30,
+          "formula": 100
+        }
+      ],
+      "ac": 0
+    }
+  ]
+}

@@ -20,6 +20,24 @@ const WorldAtlas = require('./data/worldAtlas');
 const { send } = require('./utils');
 const VisionSystem = require('./systems/vision');
 const AISystem = require('./systems/ai');
+const EnvironmentSystem = require('./systems/environment');
+const SpellSystem = require('./systems/spells');
+const ChatSystem = require('./systems/chat');
+const InventorySystem = require('./systems/inventory');
+const MovementSystem = require('./systems/movement');
+// Bind stat calculation for spells
+setTimeout(() => SpellSystem.setCalcEffectiveStatsFn(calcEffectiveStats), 0);
+setTimeout(() => {
+  InventorySystem.setCalcEffectiveStatsFn(calcEffectiveStats);
+  InventorySystem.setSendCombatLogFn(sendCombatLog);
+  InventorySystem.setSendInventoryFn(sendInventory);
+  InventorySystem.setSendStatusFn(sendStatus);
+  MovementSystem.setGetZoneDefFn(getZoneDef);
+  MovementSystem.setHandleStopCombatFn(handleStopCombat);
+  MovementSystem.setDespawnPetFn(despawnPet);
+  MovementSystem.setSendCombatLogFn(sendCombatLog);
+  MovementSystem.setBroadcastEntityStateFn(broadcastEntityState);
+}, 0);
 const QuestManager = require('./questManager');
 
 // Precise zone line trigger data extracted from EQ S3D client files (BSP regions)
@@ -532,7 +550,38 @@ async function ensureZoneLoaded(zoneKey) {
       const targetLongName = (targetMeta && targetMeta.long_name) || zp.target_short;
 
       // Match BSP trigger by referenceIndex (zone_points 'number' field = 1-based)
-      const bsp = bspTriggers.find(t => t.referenceIndex === zp.number);
+      let bsp = bspTriggers.find(t => t.referenceIndex === zp.number);
+
+      if (zoneKey === 'felwitheb' && zp.number === 3) {
+        // The original EQ client used a massive 36x40 "catch-all" trigger for the middle platform
+        // which hijacks the entire room. We override it here to match the 6x12 size of the other two platforms.
+        bsp = {
+          eq_center: { x: -601.5, y: 459.2, z: 41.5 },
+          eq_min: { x: -607.5, y: 456.2, z: 31 },
+          eq_max: { x: -595.5, y: 462.2, z: 52 },
+          eq_size: { width: 12, depth: 6, height: 21 }
+        };
+      }
+      
+      if (zoneKey === 'felwitheb' && zp.number === 5) {
+        // Manually override another misaligned trigger
+        bsp = {
+          eq_center: { x: -338.9, y: 503.0, z: 14.5 },
+          eq_min: { x: -341.9, y: 497.0, z: 4.0 },
+          eq_max: { x: -335.9, y: 509.0, z: 25.0 },
+          eq_size: { width: 6, depth: 12, height: 21 }
+        };
+      }
+
+      if (zoneKey === 'felwitheb' && zp.number === 7) {
+        // Override oversized pad trigger in the other house
+        bsp = {
+          eq_center: { x: -919.8, y: 554.1, z: 14.5 },
+          eq_min: { x: -922.8, y: 548.1, z: 4.0 },
+          eq_max: { x: -916.8, y: 560.1, z: 25.0 },
+          eq_size: { width: 6, depth: 12, height: 21 }
+        };
+      }
 
       if (bsp) {
         // Use precise BSP-derived trigger geometry from S3D client files
@@ -1060,10 +1109,10 @@ async function createSession(ws, char) {
   };
 
   // Load spellbook from file
-  loadSpellbookFromFile(session);
+  SpellSystem.loadSpellbookFromFile(session);
 
   // Load persisted buffs (with elapsed-time calculation)
-  loadBuffsFromFile(session);
+  SpellSystem.loadBuffsFromFile(session);
 
   const zoneDef = getZoneDef(char.zoneId);
   if (!session.char.roomId && zoneDef && zoneDef.defaultRoom) {
@@ -1088,7 +1137,7 @@ function removeSession(ws) {
     }
     DB.updateCharacterState(session.char);
     DB.saveCharacterSkills(session.char.id, session.char.skills);
-    saveBuffsToFile(session);
+    SpellSystem.saveBuffsToFile(session);
     // Despawn pet on disconnect
     if (session.pet) {
       despawnPet(session);
@@ -1128,31 +1177,32 @@ async function handleMessage(ws, msg) {
       session.isOutOfRange = msg.outOfRange;
       return;
     case 'CAST_SPELL': return handleCastSpell(session, msg);
-    case 'EQUIP_ITEM': return handleEquipItem(session, msg);
-    case 'UNEQUIP_ITEM': return handleUnequipItem(session, msg);
-    case 'ZONE': return handleZone(session, msg);
+    case 'SPELL_INSPECT': return handleSpellInspect(session, msg);
+    case 'EQUIP_ITEM': return InventorySystem.handleEquipItem(session, msg);
+    case 'UNEQUIP_ITEM': return InventorySystem.handleUnequipItem(session, msg);
+    case 'ZONE': return MovementSystem.handleZone(session, msg);
     // 'MOVE' — removed (legacy room-grid system, 3D client uses UPDATE_POS)
-    case 'UPDATE_POS': return handleUpdatePos(session, msg);
-    case 'UPDATE_SNEAK': return handleUpdateSneak(session, msg);
-    case 'USE_HIDE': return handleHide(session, msg);
+    case 'UPDATE_POS': return MovementSystem.handleUpdatePos(session, msg);
+    case 'UPDATE_SNEAK': return MovementSystem.handleUpdateSneak(session, msg);
+    case 'USE_HIDE': return MovementSystem.handleHide(session, msg);
     case 'CAMP': return handleCamp(session);
     case 'TRAIN_SKILL': return handleTrainSkill(session, parsed);
     case 'ABILITY': return handleAbility(session, msg);
     case 'SET_TACTIC': return handleTactic(session, msg);
     case 'HAIL': return handleHail(session, msg);
-    case 'SAY': return handleSay(session, msg);
-    case 'BUY': return handleBuy(session, msg);
-    case 'SELL': return handleSell(session, msg);
-    case 'NPC_GIVE_ITEMS': return handleNPCGiveItems(session, msg);
+    case 'SAY': return ChatSystem.handleSay(session, msg);
+    case 'BUY': return InventorySystem.handleBuy(session, msg);
+    case 'SELL': return InventorySystem.handleSell(session, msg);
+    case 'NPC_GIVE_ITEMS': return InventorySystem.handleNPCGiveItems(session, msg);
     case 'NPC_GIVE_CANCEL': 
       sendInventory(session);
       return;
-    case 'DESTROY_ITEM': return handleDestroyItem(session, msg);
-    case 'MOVE_ITEM': return handleMoveItem(session, msg);
-    case 'AUTO_EQUIP': return handleAutoEquip(session, msg);
-    case 'MEMORIZE_SPELL': return handleMemorizeSpell(session, msg);
-    case 'FORGET_SPELL': return handleForgetSpell(session, msg);
-    case 'SWAP_BOOK_SPELLS': return handleSwapBookSpells(session, msg);
+    case 'DESTROY_ITEM': return InventorySystem.handleDestroyItem(session, msg);
+    case 'MOVE_ITEM': return InventorySystem.handleMoveItem(session, msg);
+    case 'AUTO_EQUIP': return InventorySystem.handleAutoEquip(session, msg);
+    case 'MEMORIZE_SPELL': return SpellSystem.handleMemorizeSpell(session, msg);
+    case 'FORGET_SPELL': return SpellSystem.handleForgetSpell(session, msg);
+    case 'SWAP_BOOK_SPELLS': return SpellSystem.handleSwapBookSpells(session, msg);
     // 'LOOK' — removed (legacy MUD command, 3D client uses periodic ZONE_STATE sync)
     case 'SENSE_HEADING': {
       return handleSenseHeading(session);
@@ -1161,18 +1211,18 @@ async function handleMessage(ws, msg) {
     case 'EMOTE': return handleEmote(session, msg);
     case 'MINE': return handleMine(session, msg);
     case 'SET_VISION_MODE': return handleSetVisionMode(session, msg);
-    case 'SUCCOR': return await handleSuccor(session);
+    case 'SUCCOR': return await MovementSystem.handleSuccor(session);
     case 'PET_COMMAND': return handlePetCommand(session, msg);
     case 'DOOR_CLICK': return handleDoorClick(session, msg);
     // ── Chat Channels ──
-    case 'SHOUT': return handleShout(session, msg);
-    case 'OOC': return handleOOC(session, msg);
-    case 'YELL': return handleYell(session, msg);
-    case 'WHISPER': return handleWhisper(session, msg);
-    case 'GROUP': return handleGroup(session, msg);
-    case 'GUILD': return handleGuild(session, msg);
-    case 'RAID': return handleRaid(session, msg);
-    case 'ANNOUNCEMENT': return handleAnnouncement(session, msg);
+    case 'SHOUT': return ChatSystem.handleShout(session, msg);
+    case 'OOC': return ChatSystem.handleOOC(session, msg);
+    case 'YELL': return ChatSystem.handleYell(session, msg);
+    case 'WHISPER': return ChatSystem.handleWhisper(session, msg);
+    case 'GROUP': return ChatSystem.handleGroup(session, msg);
+    case 'GUILD': return ChatSystem.handleGuild(session, msg);
+    case 'RAID': return ChatSystem.handleRaid(session, msg);
+    case 'ANNOUNCEMENT': return ChatSystem.handleAnnouncement(session, msg);
     default:
       console.log(`[ENGINE] Unknown message type: ${msg.type}`);
   }
@@ -1567,52 +1617,52 @@ function handleDoorClick(session, msg) {
     return;
   }
 
-  // Check if it triggers another door (like an elevator button)
+  // Check if it triggers another door (like an elevator button or double doors)
   // triggerdoor links to the target's local zone 'doorid', NOT the primary key 'id'
-  let targetDoor = clickedDoor;
+  let doorsToToggle = [clickedDoor];
   if (clickedDoor.triggerdoor && clickedDoor.triggerdoor > 0) {
-    targetDoor = zone.doors.find(d => d.doorid === clickedDoor.triggerdoor) || clickedDoor;
-  }
-
-  // Toggle state using the primary key 'id'
-  let doorState = zone.doorStates[targetDoor.id];
-  if (!doorState) {
-    doorState = { isOpen: false, closeTimer: null };
-    zone.doorStates[targetDoor.id] = doorState;
-  }
-
-  // If it's already in motion/open and we don't want to interrupt, we just return.
-  // Actually, EQ elevators don't respond while moving, but if they are static and open, they stay open or auto close.
-  // We'll toggle it.
-  doorState.isOpen = !doorState.isOpen;
-
-  console.log(`[ENGINE] Door ${targetDoor.id} (${targetDoor.name}) state changed to ${doorState.isOpen}`);
-
-  // Broadcast to all players in the zone using the primary key 'id'
-  const payload = JSON.stringify({
-    type: 'DOOR_STATE_CHANGE',
-    doorId: targetDoor.id,
-    isOpen: doorState.isOpen
-  });
-
-  for (const [, client] of sessions) {
-    if (client.char && client.char.zoneId === session.char.zoneId && client.ws.readyState === 1) {
-      client.ws.send(payload);
+    const triggered = zone.doors.find(d => d.doorid === clickedDoor.triggerdoor);
+    if (triggered && triggered.id !== clickedDoor.id) {
+      doorsToToggle.push(triggered);
     }
   }
 
-  // Auto-close elevators after 10 seconds (standard EQ logic)
-  if (targetDoor.opentype === 59 || targetDoor.opentype === 54 || targetDoor.name.includes("LEVATOR")) {
+  for (const door of doorsToToggle) {
+    // Toggle state using the primary key 'id'
+    let doorState = zone.doorStates[door.id];
+    if (!doorState) {
+      doorState = { isOpen: false, closeTimer: null };
+      zone.doorStates[door.id] = doorState;
+    }
+
+    // Toggle it
+    doorState.isOpen = !doorState.isOpen;
+    console.log(`[ENGINE] Door ${door.id} (${door.name}) state changed to ${doorState.isOpen}`);
+
+    // Broadcast to all players in the zone using the primary key 'id'
+    const payload = JSON.stringify({
+      type: 'DOOR_STATE_CHANGE',
+      doorId: door.id,
+      isOpen: doorState.isOpen
+    });
+
+    for (const [, client] of sessions) {
+      if (client.char && client.char.zoneId === session.char.zoneId && client.ws.readyState === 1) {
+        client.ws.send(payload);
+      }
+    }
+
+    // Auto-close doors after 15 seconds (standard EQ logic for both lifts and swinging doors)
     if (doorState.closeTimer) clearTimeout(doorState.closeTimer);
     
     // Only auto-close if it just opened
     if (doorState.isOpen) {
       doorState.closeTimer = setTimeout(() => {
-        if (zone.doorStates[targetDoor.id]) {
-          zone.doorStates[targetDoor.id].isOpen = false;
+        if (zone.doorStates[door.id]) {
+          zone.doorStates[door.id].isOpen = false;
           const closePayload = JSON.stringify({
             type: 'DOOR_STATE_CHANGE',
-            doorId: targetDoor.id,
+            doorId: door.id,
             isOpen: false
           });
           for (const [, client] of sessions) {
@@ -1789,6 +1839,43 @@ function engageNextMob(session) {
   return true;
 }
 
+function handleSpellInspect(session, msg) {
+  let targetSpellId = msg.spellId;
+
+  if (msg.itemId) {
+    const def = ItemDB.getById(msg.itemId) || ITEMS[msg.itemId] || {};
+    if (def.scrolleffect > 0) {
+      targetSpellId = def.scrolleffect;
+    }
+  }
+
+  if (targetSpellId) {
+    const spellDef = SPELLS[targetSpellId] || SPELLS[String(targetSpellId)];
+    if (spellDef) {
+      send(session.ws, {
+        type: 'SPELL_DETAILS',
+        spell: {
+          spellId: targetSpellId,
+          name: spellDef.name || 'Unknown Spell',
+          manaCost: spellDef.manaCost || 0,
+          castTime: spellDef.castTime || 1.5,
+          target: spellDef.targetType ? spellDef.targetType.name : (spellDef.target || 'self'),
+          effect: spellDef.effect || 'unknown',
+          level: spellDef.level || 1,
+          description: spellDef.description || '',
+          memIcon: spellDef.visual ? spellDef.visual.memIcon : 0,
+          icon: spellDef.visual ? spellDef.visual.icon : 0,
+          skill: spellDef.skill ? spellDef.skill.name : 'Unknown',
+          range: spellDef.range ? spellDef.range.range : 0,
+          duration: spellDef.duration || 0,
+          reflectable: spellDef.properties ? (spellDef.properties.reflectable > 0) : false,
+          spellLine: spellDef.visual ? (spellDef.visual.spellAffectName || '') : '',
+        }
+      });
+    }
+  }
+}
+
 async function handleCastSpell(session, msg) {
   const slotIndex = msg.slot;
   const spellRow = session.spells.find(s => s.slot === slotIndex);
@@ -1834,8 +1921,8 @@ async function handleCastSpell(session, msg) {
   session.char.mana -= spellDef.manaCost;
 
   // Casting breaks sneak and hide
-  breakSneak(session);
-  breakHide(session);
+  MovementSystem.breakSneak(session);
+  MovementSystem.breakHide(session);
 
   // Record cast-start position for movement interruption detection
   const castStartPos = { x: session.char.x || 0, y: session.char.y || 0 };
@@ -1940,6 +2027,7 @@ async function applySpellEffect(session, spellDef, spellKey) {
         break;
       }
       
+      if (!mob.target) mob.target = session;
       let dmg = spellDef.damage || 10;
       if (resistResult === 'PARTIAL_RESIST') dmg = Math.floor(dmg / 2);
 
@@ -1966,7 +2054,7 @@ async function applySpellEffect(session, spellDef, spellKey) {
       session.effectiveStats = calcEffectiveStats(session.char, session.inventory, session.buffs);
       session.char.maxHp = session.effectiveStats.hp;
       session.char.maxMana = session.effectiveStats.mana;
-      sendBuffs(session);
+      SpellSystem.sendBuffs(session);
       sendStatus(session);
       break;
     }
@@ -1995,7 +2083,7 @@ async function applySpellEffect(session, spellDef, spellKey) {
       if (session.buffs.length < beforeCount) {
         events.push({ event: 'MESSAGE', text: 'You feel the ailment leave your body.' });
         session.effectiveStats = calcEffectiveStats(session.char, session.inventory, session.buffs);
-        sendBuffs(session);
+        SpellSystem.sendBuffs(session);
       } else {
         events.push({ event: 'MESSAGE', text: 'You feel a brief rush of cleansing energy.' });
       }
@@ -2008,6 +2096,7 @@ async function applySpellEffect(session, spellDef, spellKey) {
         if (resistResult === 'FULL_RESIST') {
           events.push({ event: 'RESIST', target: mob.name, spell: spellDef.name });
         } else {
+          if (!mob.target) mob.target = session;
           events.push({ event: 'MESSAGE', text: `${mob.name} has been rooted to the ground!` });
         }
       } else {
@@ -2064,7 +2153,7 @@ async function applySpellEffect(session, spellDef, spellKey) {
       session.effectiveStats = calcEffectiveStats(session.char, session.inventory, session.buffs);
       session.char.maxHp = session.effectiveStats.hp;
       session.char.maxMana = session.effectiveStats.mana;
-      sendBuffs(session);
+      SpellSystem.sendBuffs(session);
       sendStatus(session);
       break;
     }
@@ -2081,6 +2170,7 @@ async function applySpellEffect(session, spellDef, spellKey) {
       if (rr === 'FULL_RESIST') {
         events.push({ event: 'RESIST', target: tgt.name, spell: spellDef.name });
       } else {
+        if (!tgt.target) tgt.target = session;
         // Apply debuff to mob's buff array
         if (!tgt.buffs) tgt.buffs = [];
         tgt.buffs = tgt.buffs.filter(b => b.name !== spellDef.buffName);
@@ -2231,7 +2321,7 @@ async function applySpellEffect(session, spellDef, spellKey) {
       });
       const invisMsg = spellDef.messages?.castOnYou || 'You fade from sight.';
       events.push({ event: 'MESSAGE', text: invisMsg });
-      sendBuffs(session);
+      SpellSystem.sendBuffs(session);
       break;
     }
     // Lifetap — damage target + heal self
@@ -2416,7 +2506,7 @@ async function applySpellEffect(session, spellDef, spellKey) {
         const visionType = spaIds.includes(69) ? 'Thermal Vision' : 'Starlight Vision';
         const visionMsg = spellDef.messages?.castOnYou || `Your eyes shimmer as ${visionType} takes hold.`;
         events.push({ event: 'MESSAGE', text: visionMsg });
-        sendBuffs(session);
+        SpellSystem.sendBuffs(session);
         break;
       }
 
@@ -2441,7 +2531,7 @@ async function applySpellEffect(session, spellDef, spellKey) {
         if (session.buffs.length < beforeCount) {
           events.push({ event: 'MESSAGE', text: 'You feel the ailment leave your body.' });
           session.effectiveStats = calcEffectiveStats(session.char, session.inventory, session.buffs);
-          sendBuffs(session);
+          SpellSystem.sendBuffs(session);
         } else {
           events.push({ event: 'MESSAGE', text: 'You feel a brief rush of cleansing energy.' });
         }
@@ -3135,818 +3225,17 @@ function processQuestActions(session, npc, actions) {
   if (events.length > 0) sendCombatLog(session, events);
 }
 
-async function handleSay(session, msg) {
-  const char = session.char;
-  const text = (msg.text || '').trim();
-  if (!text) return;
+// ── Chat System extracted to systems/chat.js ──────────────────────
+// ── Inventory System extracted to systems/inventory.js ──────────────────────
 
-  // Echo the player's speech via CHAT
-  send(session.ws, { type: 'CHAT', channel: 'say', sender: char.name, text: text });
 
-  // If we have a targeted NPC, check for keyword responses
-  if (session.combatTarget && session.combatTarget.npcType) {
-    const target = session.combatTarget;
 
-    // Proximity check
-    const distSq = getDistanceSq(char.x, char.y, target.x, target.y);
-    if (distSq > HAIL_RANGE * HAIL_RANGE) {
-      // Still broadcast to other players even if NPC is too far
-      broadcastChat(session, 'say', text, 200);
-      return;
-    }
-
-    // Process new Dual-Engine Quest Scripts
-    const zoneShortName = char.zoneId;
-    const eData = { message: text, joined: false, trade: {} };
-    const actions = await QuestManager.triggerEvent(zoneShortName, target, char, 'EVENT_SAY', eData);
-    
-    if (actions && actions.length > 0) {
-      processQuestActions(session, target, actions);
-      return; // Handled by quest engine
-    }
-
-    // Quest NPCs and merchants with dialog respond to keywords (Legacy Fallback)
-    if (target.npcType === NPC_TYPES.QUEST || target.npcType === NPC_TYPES.MERCHANT) {
-      const response = QuestDialogs.getKeywordResponse(target.key, text, char);
-      if (response) {
-        const keywords = QuestDialogs.extractKeywords(response);
-        sendCombatLog(session, [{ event: 'NPC_SAY', npcName: target.name, text: response, keywords: keywords }]);
-        return;
-      }
-    }
-
-    // Merchant fallback: 'buy', 'wares', 'shop' re-opens the merchant window
-    if (target.npcType === NPC_TYPES.MERCHANT) {
-      const lowerText = text.toLowerCase();
-      if (lowerText === 'buy' || lowerText === 'wares' || lowerText === 'shop') {
-        handleHail(session, msg);
-        return;
-      }
-    }
-
-    // Bind keyword check
-    if (target.npcType === NPC_TYPES.BIND && text.toLowerCase() === 'bind') {
-      sendCombatLog(session, [{ event: 'MESSAGE', text: `${target.name} begins to cast a spell.` }]);
-      sendCombatLog(session, [{ event: 'MESSAGE', text: `You feel your soul bound to this location.` }]);
-      // TODO: Actually save bind point
-      return;
-    }
-  }
-
-  // Broadcast to other players within say range (200 units)
-  broadcastChat(session, 'say', text, 200);
-}
-
-// ── Chat Channel Utility ────────────────────────────────────────────
-// Broadcasts a CHAT message to players within radius (same zone).
-function broadcastChat(session, channel, text, radius) {
-  const char = session.char;
-  for (const [ws, other] of sessions) {
-    if (other !== session && other.char.zoneId === char.zoneId) {
-      const pDistSq = getDistanceSq(other.char.x, other.char.y, char.x, char.y);
-      if (pDistSq <= radius * radius) {
-        send(other.ws, { type: 'CHAT', channel: channel, sender: char.name, text: text });
-      }
-    }
-  }
-}
-
-// ── /shout — 3x say radius (600u), local only ───────────────────────
-function handleShout(session, msg) {
-  const char = session.char;
-  const text = (msg.text || '').trim();
-  if (!text) return;
-  send(session.ws, { type: 'CHAT', channel: 'shout', sender: char.name, text: text });
-  broadcastChat(session, 'shout', text, 600);
-}
-
-// ── /ooc — same as say radius (200u), local only ────────────────────
-function handleOOC(session, msg) {
-  const char = session.char;
-  const text = (msg.text || '').trim();
-  if (!text) return;
-  send(session.ws, { type: 'CHAT', channel: 'ooc', sender: char.name, text: text });
-  broadcastChat(session, 'ooc', text, 200);
-}
-
-// ── /yell — 2x say radius (400u) + guard AI assist ─────────────────
-function handleYell(session, msg) {
-  const char = session.char;
-  const text = (msg.text || '').trim() || 'Help!!';
-  send(session.ws, { type: 'CHAT', channel: 'yell', sender: char.name, text: text });
-  broadcastChat(session, 'yell', text, 400);
-
-  // Guard AI: nearby guards respond to the yell
-  const instance = zoneInstances[char.zoneId];
-  if (!instance) return;
-
-  for (const mob of instance.liveMobs) {
-    if (!mob.alive) continue;
-    // Identify guards by key prefix (guard_ or watchman_)
-    const isGuard = mob.key && (mob.key.startsWith('guard_') || mob.key.startsWith('watchman_'));
-    if (!isGuard) continue;
-
-    const guardDistSq = getDistanceSq(mob.x, mob.y, char.x, char.y);
-    if (guardDistSq > 160000) continue; // Guard must hear the yell
-
-    // Check if the player is being attacked by a mob
-    // Find mobs that are targeting this player
-    for (const attacker of instance.liveMobs) {
-      if (!attacker.alive || attacker === mob) continue;
-      if (attacker.target && attacker.target === char.name) {
-        // Don't help if the attacker IS a guard (guards help each other)
-        const attackerIsGuard = attacker.key && (attacker.key.startsWith('guard_') || attacker.key.startsWith('watchman_'));
-        if (attackerIsGuard) {
-          // Player is fighting guards — guards assist each other, not the player
-          continue;
-        }
-        // Don't help in PvP (attacker is a player session, not a mob)
-        if (!attacker.npcType) continue;
-
-        // Guard engages the mob attacking the player
-        mob.target = attacker.id || attacker.name;
-        mob.inCombat = true;
-        sendCombatLog(session, [{ event: 'MESSAGE', text: `${mob.name} shouts, 'I'll protect you, citizen!'` }]);
-        break; // Guard only assists against one attacker
-      }
-    }
-  }
-}
-
-// ── /whisper — global private message ───────────────────────────────
-function handleWhisper(session, msg) {
-  const char = session.char;
-  const targetName = (msg.target || '').trim();
-  const text = (msg.text || '').trim();
-  if (!text || !targetName) {
-    send(session.ws, { type: 'CHAT', channel: 'system', sender: '', text: 'Usage: /whisper <player> <message>' });
-    return;
-  }
-
-  // Find target player across all zones
-  let targetSession = null;
-  for (const [ws, other] of sessions) {
-    if (other.char.name.toLowerCase() === targetName.toLowerCase()) {
-      targetSession = other;
-      break;
-    }
-  }
-
-  if (!targetSession) {
-    send(session.ws, { type: 'CHAT', channel: 'system', sender: '', text: `${targetName} is not online.` });
-    return;
-  }
-
-  // Send to recipient
-  send(targetSession.ws, { type: 'CHAT', channel: 'whisper', sender: char.name, text: text, direction: 'from' });
-  // Echo to sender
-  send(session.ws, { type: 'CHAT', channel: 'whisper', sender: targetName, text: text, direction: 'to' });
-}
-
-// ── /group — global (stub: not implemented) ─────────────────────────
-function handleGroup(session, msg) {
-  const text = (msg.text || '').trim();
-  if (!text) return;
-
-  // TODO: Implement group system
-  // For now, check if player is in a group
-  if (!session.group) {
-    send(session.ws, { type: 'CHAT', channel: 'system', sender: '', text: 'You are not in a group.' });
-    return;
-  }
-
-  // When groups are implemented, broadcast to group members:
-  // for (const member of session.group.members) {
-  //   send(member.ws, { type: 'CHAT', channel: 'group', sender: session.char.name, text: text });
-  // }
-}
-
-// ── /guild — global (stub: not implemented) ─────────────────────────
-function handleGuild(session, msg) {
-  const text = (msg.text || '').trim();
-  if (!text) return;
-
-  if (!session.guild) {
-    send(session.ws, { type: 'CHAT', channel: 'system', sender: '', text: 'You are not in a guild.' });
-    return;
-  }
-}
-
-// ── /raid — global (stub: not implemented) ──────────────────────────
-function handleRaid(session, msg) {
-  const text = (msg.text || '').trim();
-  if (!text) return;
-
-  if (!session.raid) {
-    send(session.ws, { type: 'CHAT', channel: 'system', sender: '', text: 'You are not in a raid.' });
-    return;
-  }
-}
-
-// ── /announcement — admin-only global broadcast ─────────────────────
-function handleAnnouncement(session, msg) {
-  const text = (msg.text || '').trim();
-  if (!text) return;
-
-  // Check admin status (EQEmu: status >= 200 = GM)
-  const auth = authSessions.get(session.ws);
-  if (!auth || (auth.status || 0) < 200) {
-    send(session.ws, { type: 'CHAT', channel: 'system', sender: '', text: 'You do not have permission to use this command.' });
-    return;
-  }
-
-  // Broadcast to ALL connected players
-  for (const [ws, other] of sessions) {
-    send(other.ws, { type: 'CHAT', channel: 'announcement', sender: session.char.name, text: text });
-  }
-}
-
-async function handleBuy(session, msg) {
-  const { npcId, itemKey } = msg;
-  const char = session.char;
-  const instance = zoneInstances[char.zoneId];
-
-  if (!instance) return;
-
-  const merchant = instance.liveMobs.find(m => m.id === npcId);
-  if (!merchant || merchant.npcType !== NPC_TYPES.MERCHANT) {
-    sendCombatLog(session, [{ event: 'MESSAGE', text: 'That merchant is no longer available.' }]);
-    return;
-  }
-
-  // Proximity check
-  const distSq = getDistanceSq(char.x, char.y, merchant.x, merchant.y);
-  if (distSq > HAIL_RANGE * HAIL_RANGE) {
-    sendCombatLog(session, [{ event: 'MESSAGE', text: 'You are too far away to trade.' }]);
-    return;
-  }
-
-  // Try static merchant data first, then DB merchantlist
-  let itemName = String(itemKey);
-  let basePrice = 10;
-
-  const shopData = MERCHANT_INVENTORIES[merchant.key];
-  if (shopData) {
-    const itemInfo = shopData.items.find(i => i.itemKey === itemKey);
-    if (!itemInfo) {
-      sendCombatLog(session, [{ event: 'MESSAGE', text: `${merchant.name} doesn't seem to have that item.` }]);
-      return;
-    }
-    const itemDef = ITEMS[itemKey];
-    itemName = itemDef ? itemDef.name : itemKey;
-    basePrice = itemInfo.price || (itemDef ? itemDef.value || 10 : 10);
-  } else {
-    // DB-sourced merchant — validate against cached merchantlist
-    const eqemuDB = require('./eqemu_db');
-    const dbItems = await eqemuDB.getMerchantItems(parseInt(merchant.key));
-    const parsedKey = parseInt(itemKey) || itemKey;
-    const dbItem = dbItems.find(i => i.itemKey === parsedKey || i.itemKey === itemKey);
-    if (!dbItem) {
-      sendCombatLog(session, [{ event: 'MESSAGE', text: `${merchant.name} doesn't seem to have that item.` }]);
-      return;
-    }
-    itemName = dbItem.name;
-    basePrice = dbItem.price;
-  }
-
-  const price = Math.max(1, Math.floor(basePrice * getChaBuyMod(session)));
-
-  if (char.copper < price) {
-    sendCombatLog(session, [{ event: 'MESSAGE', text: `You don't have enough money! That costs ${formatCurrency(price)}.` }]);
-    return;
-  }
-
-  // Transaction — use the numeric itemKey for DB items
-  char.copper -= price;
-  const addKey = parseInt(itemKey) || itemKey;
-  await DB.addItem(char.id, addKey, 0, 0);
-  await DB.updateCharacterState(char);
-
-  session.inventory = await DB.getInventory(char.id);
-  session.effectiveStats = calcEffectiveStats(char, session.inventory, session.buffs);
-
-  sendInventory(session);
-  sendCombatLog(session, [{ event: 'MESSAGE', text: `You bought ${itemName} for ${formatCurrency(price)}.` }]);
-  sendStatus(session);
-}
-
-async function handleSell(session, msg) {
-  const { npcId, itemId, slotId } = msg;
-  const char = session.char;
-  const instance = zoneInstances[char.zoneId];
-  if (!instance) return;
-
-  // Verify merchant is nearby
-  const merchant = instance.liveMobs.find(m => m.id === npcId);
-  if (!merchant || merchant.npcType !== NPC_TYPES.MERCHANT) {
-    sendCombatLog(session, [{ event: 'MESSAGE', text: 'That merchant is no longer available.' }]);
-    return;
-  }
-  const distSq = getDistanceSq(char.x, char.y, merchant.x, merchant.y);
-  if (distSq > HAIL_RANGE * HAIL_RANGE) {
-    sendCombatLog(session, [{ event: 'MESSAGE', text: 'You are too far away to trade.' }]);
-    return;
-  }
-
-  // Find the item in player inventory
-  const invRow = session.inventory.find(i => i.id === itemId);
-  if (!invRow) {
-    sendCombatLog(session, [{ event: 'MESSAGE', text: 'You don\'t have that item.' }]);
-    return;
-  }
-  
-  // Can't sell equipped items
-  if (invRow.equipped === 1) {
-    sendCombatLog(session, [{ event: 'MESSAGE', text: 'You must unequip that item before selling it.' }]);
-    return;
-  }
-
-  // Calculate sell price (25% base, modified by CHA, minimum 1 cp)
-  const itemDef = ItemDB.getById(invRow.item_key) || ITEMS[invRow.item_key];
-  const itemName = itemDef ? itemDef.name : String(invRow.item_key);
-  const baseSell = (itemDef ? itemDef.value || 1 : 1) * 0.25;
-
-  // Check for merchant-specific sell bonus (e.g., mining NPCs pay more for ore)
-  const shopData = MERCHANT_INVENTORIES[merchant.key];
-  let bonusMult = 1.0;
-  if (shopData && shopData.sellBonus && shopData.sellBonusCategories) {
-    const itemNameLower = (itemDef ? itemDef.name || '' : '').toLowerCase();
-    if (shopData.sellBonusCategories.some(cat => itemNameLower.includes(cat))) {
-      bonusMult = 1.0 + shopData.sellBonus;
-    }
-  }
-  const sellPrice = Math.max(1, Math.floor(baseSell * getChaSellMod(session) * bonusMult));
-
-  // Transaction
-  await DB.deleteItem(char.id, invRow.item_key, invRow.slot);
-  char.copper += sellPrice;
-  DB.updateCharacterState(char);
-
-  // Refresh inventory
-  session.inventory = await DB.getInventory(char.id);
-  session.effectiveStats = calcEffectiveStats(char, session.inventory, session.buffs);
-
-  sendInventory(session);
-  sendCombatLog(session, [{ event: 'LOOT', text: `You sold ${itemName} to ${merchant.name} for ${formatCurrency(sellPrice)}.` }]);
-  sendStatus(session);
-}
-
-async function handleNPCGiveItems(session, msg) {
-  const char = session.char;
-  const targetId = msg.npcId;
-  const items = msg.items || [];
-  
-  if (items.length === 0) {
-    sendInventory(session);
-    return;
-  }
-
-  let target = null;
-  const zoneKey = char.zoneId;
-  const zoneDef = ZONES[zoneKey] || (zoneInstances[zoneKey] && zoneInstances[zoneKey].def);
-  if (zoneDef && zoneDef.mobs) {
-    target = zoneDef.mobs.find(m => String(m.id) === String(targetId));
-  }
-
-  if (!target) {
-    sendCombatLog(session, [{ event: 'ERROR', text: "That NPC is no longer there." }]);
-    sendInventory(session);
-    return;
-  }
-
-  // Trigger Event
-  const zoneShortName = char.zoneId;
-  const trade = {};
-  for (const it of items) {
-    trade[`item${it.slot}`] = it.item_id;
-  }
-  
-  const eData = { trade: trade, rawItems: items };
-  const actions = await QuestManager.triggerEvent(zoneShortName, target, char, 'EVENT_TRADE', eData);
-  
-  let itemsToConsume = [...items];
-
-  if (actions && actions.length > 0) {
-    for (const act of actions) {
-      if (act.action === 'return_items') {
-        if (Array.isArray(act.returned)) {
-          for (const r_id of act.returned) {
-            const idx = itemsToConsume.findIndex(i => i.item_id === r_id);
-            if (idx !== -1) itemsToConsume.splice(idx, 1);
-          }
-        }
-      }
-    }
-    processQuestActions(session, target, actions);
-  }
-
-  // Delete only the consumed items from inventory
-  for (const it of itemsToConsume) {
-    if (it.inst_id) {
-      await DB.pool.query('DELETE FROM inventory WHERE id = ? AND char_id = ?', [it.inst_id, char.id]);
-    }
-  }
-  
-  // Refresh inventory
-  session.inventory = await DB.getInventory(char.id);
-  session.effectiveStats = calcEffectiveStats(char, session.inventory, session.buffs);
-  sendInventory(session);
-}
-
-async function handleDestroyItem(session, msg) {
-  const { itemId, slotId } = msg;
-  const char = session.char;
-
-  const invRow = session.inventory.find(i => i.id === itemId);
-  if (!invRow) return;
-
-  // Can't destroy equipped items
-  if (invRow.equipped === 1) {
-    sendCombatLog(session, [{ event: 'MESSAGE', text: 'You must unequip that item first.' }]);
-    return;
-  }
-
-  const itemDef = ItemDB.getById(invRow.item_key) || ITEMS[invRow.item_key];
-  const itemName = itemDef ? itemDef.name : String(invRow.item_key);
-
-  await DB.deleteItem(char.id, invRow.item_key, invRow.slot);
-  
-  // Refresh inventory
-  session.inventory = await DB.getInventory(char.id);
-  session.effectiveStats = calcEffectiveStats(char, session.inventory, session.buffs);
-  
-  sendInventory(session);
-  sendCombatLog(session, [{ event: 'MESSAGE', text: `You destroy ${itemName}.` }]);
-}
-
-/**
- * Format copper value into EQ-style pp/gp/sp/cp string.
- * 1 plat = 1000 cp, 1 gold = 100 cp, 1 silver = 10 cp
- */
-function formatCurrency(copper) {
-  const pp = Math.floor(copper / 1000);
-  const gp = Math.floor((copper % 1000) / 100);
-  const sp = Math.floor((copper % 100) / 10);
-  const cp = copper % 10;
-  const parts = [];
-  if (pp > 0) parts.push(`${pp}pp`);
-  if (gp > 0) parts.push(`${gp}gp`);
-  if (sp > 0) parts.push(`${sp}sp`);
-  if (cp > 0 || parts.length === 0) parts.push(`${cp}cp`);
-  return parts.join(' ');
-}
-
-/**
- * CHA-based vendor price modifiers (classic EQ).
- * Baseline CHA = 75. ~0.4% improvement per point above/below.
- * Buy mod: lower is better (you pay less). Clamped 0.7 - 1.15
- * Sell mod: higher is better (you get more). Clamped 0.85 - 1.4
- */
-function getChaBuyMod(session) {
-  const cha = session.effectiveStats?.cha || session.char?.cha || 75;
-  const mod = 1.0 - (cha - 75) * 0.004;
-  return Math.max(0.7, Math.min(1.15, mod));
-}
-
-function getChaSellMod(session) {
-  const cha = session.effectiveStats?.cha || session.char?.cha || 75;
-  const mod = 1.0 + (cha - 75) * 0.004;
-  return Math.max(0.85, Math.min(1.4, mod));
-}
-
-async function handleEquipItem(session, msg) {
-  const { itemId, slot } = msg;
-  const invRow = session.inventory.find(i => i.id === itemId);
-  if (!invRow) return;
-
-  const itemDef = ITEMS[invRow.item_key];
-  if (!itemDef) return;
-
-  const targetSlot = slot || itemDef.slot;
-  if (targetSlot <= 0) return;
-
-  // Class/Race restriction check (EQEmu bitmask: bit N = class/race ID N+1; 65535 = all)
-  const CLASSES_MAP = { warrior:1, cleric:2, paladin:3, ranger:4, shadow_knight:5, druid:6, monk:7, bard:8, rogue:9, shaman:10, necromancer:11, wizard:12, magician:13, enchanter:14, beastlord:15, berserker:16 };
-  const RACES_MAP = { human:1, barbarian:2, erudite:3, wood_elf:4, high_elf:5, dark_elf:6, half_elf:7, dwarf:8, troll:9, ogre:10, halfling:11, gnome:12, iksar:128, vah_shir:130, froglok:330 };
-  if (itemDef.classes && itemDef.classes !== 65535) {
-    const classId = CLASSES_MAP[session.char.class] || 1;
-    if (!(itemDef.classes & (1 << (classId - 1)))) {
-      return sendCombatLog(session, [{ event: 'MESSAGE', text: 'Your class cannot use this item.' }]);
-    }
-  }
-  if (itemDef.races && itemDef.races !== 65535) {
-    const raceId = RACES_MAP[session.char.race] || 1;
-    // EQEmu race bitmask for standard races uses sequential bits 0-11
-    // For Iksar/VahShir/Froglok it's bit 12/13/14
-    const RACE_BIT = { 1:0, 2:1, 3:2, 4:3, 5:4, 6:5, 7:6, 8:7, 9:8, 10:9, 11:10, 12:11, 128:12, 130:13, 330:14 };
-    const bit = RACE_BIT[raceId] ?? -1;
-    if (bit >= 0 && !(itemDef.races & (1 << bit))) {
-      return sendCombatLog(session, [{ event: 'MESSAGE', text: 'Your race cannot use this item.' }]);
-    }
-  }
-
-  await DB.unequipSlot(session.char.id, targetSlot);
-  await DB.equipItem(invRow.id, session.char.id, targetSlot);
-
-  session.inventory = await DB.getInventory(session.char.id);
-  session.effectiveStats = calcEffectiveStats(session.char, session.inventory, session.buffs);
-
-  sendInventory(session);
-  sendStatus(session);
-}
-
-async function handleUnequipItem(session, msg) {
-  const { itemId } = msg;
-  await DB.unequipItem(itemId, session.char.id);
-  session.inventory = await DB.getInventory(session.char.id);
-  session.effectiveStats = calcEffectiveStats(session.char, session.inventory, session.buffs);
-  sendInventory(session);
-  sendStatus(session);
-}
-
-async function handleMoveItem(session, msg) {
-  const { fromSlot, toSlot } = msg;
-  if (fromSlot === toSlot) return;
-
-  await DB.moveItem(session.char.id, fromSlot, toSlot);
-
-  session.inventory = await DB.getInventory(session.char.id);
-  session.effectiveStats = calcEffectiveStats(session.char, session.inventory, session.buffs);
-  sendInventory(session);
-  sendStatus(session);
-}
-
-async function handleAutoEquip(session, msg) {
-  const { itemId } = msg;
-  const invRow = session.inventory.find(i => i.id === itemId);
-  if (!invRow) return;
-
-  const def = ItemDB.getById(invRow.item_key) || ITEMS[invRow.item_key] || {};
-  const slotBitmask = def.slot || 0;
-  if (slotBitmask <= 0) {
-    send(session.ws, { type: 'SYSTEM_MSG', message: 'This item cannot be equipped.' });
-    return;
-  }
-
-  // Find the first matching equipment slot from the bitmask
-  // EQEmu slot bitmask: bit 0 = slot 0 (charm), bit 1 = slot 1 (ear1), bit 2 = slot 2 (head), etc.
-  let targetSlot = -1;
-  for (let bit = 0; bit < 22; bit++) {
-    if (slotBitmask & (1 << bit)) {
-      targetSlot = bit;
-      break;
-    }
-  }
-  if (targetSlot < 0) {
-    send(session.ws, { type: 'SYSTEM_MSG', message: 'Cannot determine equipment slot.' });
-    return;
-  }
-
-  // Class/Race restriction check
-  const CLASSES_MAP = { warrior:1, cleric:2, paladin:3, ranger:4, shadow_knight:5, druid:6, monk:7, bard:8, rogue:9, shaman:10, necromancer:11, wizard:12, magician:13, enchanter:14, beastlord:15, berserker:16 };
-  const RACES_MAP = { human:1, barbarian:2, erudite:3, wood_elf:4, high_elf:5, dark_elf:6, half_elf:7, dwarf:8, troll:9, ogre:10, halfling:11, gnome:12, iksar:128, vah_shir:130, froglok:330 };
-  if (def.classes && def.classes !== 65535) {
-    const classId = CLASSES_MAP[session.char.class] || 1;
-    if (!(def.classes & (1 << (classId - 1)))) {
-      return send(session.ws, { type: 'SYSTEM_MSG', message: 'Your class cannot use this item.' });
-    }
-  }
-  if (def.races && def.races !== 65535) {
-    const raceId = RACES_MAP[session.char.race] || 1;
-    const RACE_BIT = { 1:0, 2:1, 3:2, 4:3, 5:4, 6:5, 7:6, 8:7, 9:8, 10:9, 11:10, 12:11, 128:12, 130:13, 330:14 };
-    const bit = RACE_BIT[raceId] ?? -1;
-    if (bit >= 0 && !(def.races & (1 << bit))) {
-      return send(session.ws, { type: 'SYSTEM_MSG', message: 'Your race cannot use this item.' });
-    }
-  }
-
-  // Unequip whatever is in that slot, then equip this item
-  await DB.unequipSlot(session.char.id, targetSlot);
-  await DB.equipItem(invRow.id, session.char.id, targetSlot);
-
-  session.inventory = await DB.getInventory(session.char.id);
-  session.effectiveStats = calcEffectiveStats(session.char, session.inventory, session.buffs);
-  sendInventory(session);
-  sendStatus(session);
-}
-
-async function handleZone(session, msg) {
-  const currentZone = session.char.zoneId;
-  const targetZone = msg.zoneId;
-
-  // Zone transition cooldown — prevent instant bounce-back between adjacent zones
-  const now = Date.now();
-  if (session.lastZoneTime && (now - session.lastZoneTime) < 3000) {
-    return; // Silently ignore rapid zone requests
-  }
-
-  const zoneDef = getZoneDef(currentZone);
-  const zoneLine = zoneDef && zoneDef.zoneLines && zoneDef.zoneLines.find(zl => zl.target === targetZone);
-
-  if (!zoneLine) {
-    return sendCombatLog(session, [{ event: 'MESSAGE', text: 'You cannot go that way.' }]);
-  }
-
-  handleStopCombat(session);
-  // Despawn pet on zone transition (P99: pets don't zone)
-  if (session.pet) {
-    despawnPet(session, 'Your pet could not follow you.');
-  }
-  session.lastZoneTime = now;
-
-  // Dynamically load the target zone if needed
-  await ensureZoneLoaded(targetZone);
-
-  session.char.zoneId = targetZone;
-
-  const newZoneDef = getZoneDef(targetZone);
-  session.char.roomId = (newZoneDef && newZoneDef.defaultRoom) || '';
-  
-  DB.saveCharacterLocation(session.char.id, targetZone, session.char.roomId);
-
-  // Use the zone_point's target coordinates for spawn position
-  // 999999 means "keep the player's current coordinate on that axis"
-  let spawnX = zoneLine.targetX || 0;
-  let spawnY = zoneLine.targetY || 0;
-  let spawnZ = zoneLine.targetZ || 0;
-
-  if (spawnX > 900000) spawnX = session.char.x || 0;
-  if (spawnY > 900000) spawnY = session.char.y || 0;
-  if (spawnZ > 900000) spawnZ = session.char.z || 0;
-
-
-
-  session.char.x = spawnX;
-  session.char.y = spawnY;
-  session.char.z = spawnZ;
-  session.pendingTeleport = { x: spawnX, y: spawnY, z: spawnZ };
-  
-  const zoneName = (newZoneDef && newZoneDef.name) || targetZone;
-  sendCombatLog(session, [{ event: 'MESSAGE', text: `You have entered ${zoneName}.` }]);
-  sendStatus(session);
-}
-
-function handleUpdatePos(session, msg) {
-  if (session.char) {
-    if (msg.x != null) session.char.x = msg.x;
-    if (msg.y != null) session.char.y = msg.y;
-
-    // Movement interrupts casting
-    if (session.casting && session.casting.startPos) {
-      const dx = session.char.x - session.casting.startPos.x;
-      const dy = session.char.y - session.casting.startPos.y;
-      const distSq = dx * dx + dy * dy;
-      if (distSq > 25) { // Small threshold to avoid jitter false-positives
-        interruptCasting(session, 'Your spell is interrupted!');
-      }
-    }
-  }
-}
-
-function handleUpdateSneak(session, msg) {
-  if (!session.char) return;
-  const char = session.char;
-
-  // Turning sneak OFF
-  if (!msg.sneaking) {
-    const wasSneaking = char.isSneaking;
-    const wasHidden = char.isHidden;
-    char.isSneaking = false;
-    // Turning off sneak also breaks hide
-    if (wasHidden) {
-      char.isHidden = false;
-      broadcastEntityState(session, 'ENTITY_HIDE', { hidden: false });
-    }
-    broadcastEntityState(session, 'ENTITY_SNEAK', { sneaking: false });
-    // Only show "stop sneaking" if they were actually sneaking (had the skill)
-    if (wasSneaking) {
-      sendCombatLog(session, [{ event: 'MESSAGE', text: 'You stop sneaking.' }]);
-    }
-    return;
-  }
-
-  // Turning sneak ON — skill check
-  const sneakSkill = combat.getCharSkill(char, 'sneak');
-  if (sneakSkill <= 0) {
-    // No sneak skill — still allow the crouch visual, just no stealth benefit
-    // Don't spam "You do not have the Sneak skill" every time they press Ctrl
-    broadcastEntityState(session, 'ENTITY_SNEAK', { sneaking: true });
-    return;
-  }
-
-  // Cooldown check (10s on failure)
-  if (!session.skillCooldowns) session.skillCooldowns = {};
-  if (session.skillCooldowns.sneak > 0) {
-    sendCombatLog(session, [{ event: 'MESSAGE', text: 'You must wait before sneaking again.' }]);
-    send(session.ws, { type: 'SNEAK_RESULT', success: false });
-    return;
-  }
-
-  // Skill check: higher skill = better chance. At 200 skill, near-guaranteed.
-  const successChance = Math.min(95, sneakSkill * 0.5 + 5);
-  const succeeded = Math.random() * 100 < successChance;
-
-  if (succeeded) {
-    char.isSneaking = true;
-    combat.trySkillUp(session, 'sneak');
-
-    // Rogue gets explicit success message
-    if (char.class === 'rogue') {
-      sendCombatLog(session, [{ event: 'MESSAGE', text: 'You are as quiet as a cat stalking its prey.' }]);
-    } else {
-      sendCombatLog(session, [{ event: 'MESSAGE', text: 'You begin to move silently.' }]);
-    }
-    broadcastEntityState(session, 'ENTITY_SNEAK', { sneaking: true });
-    send(session.ws, { type: 'SNEAK_RESULT', success: true });
-  } else {
-    // Failed — 10s cooldown
-    session.skillCooldowns.sneak = 10;
-    if (char.class === 'rogue') {
-      sendCombatLog(session, [{ event: 'MESSAGE', text: 'You are as quiet as a herd of stampeding elephants.' }]);
-    } else {
-      // Non-rogues don't get explicit failure message (authentic behavior)
-      // but we still need to tell the client it failed
-    }
-    send(session.ws, { type: 'SNEAK_RESULT', success: false });
-  }
-
-  // Send skill-up messages if any
-  flushSkillUps(session);
-}
-
-function handleHide(session, msg) {
-  if (!session.char) return;
-  const char = session.char;
-
-  // Turning hide OFF
-  if (msg && msg.hiding === false) {
-    char.isHidden = false;
-    broadcastEntityState(session, 'ENTITY_HIDE', { hidden: false });
-    sendCombatLog(session, [{ event: 'MESSAGE', text: 'You are no longer hidden.' }]);
-    send(session.ws, { type: 'HIDE_RESULT', success: false, action: 'off' });
-    return;
-  }
-
-  // Turning hide ON — skill check
-  const hideSkill = combat.getCharSkill(char, 'hide');
-  if (hideSkill <= 0) {
-    sendCombatLog(session, [{ event: 'MESSAGE', text: 'You do not have the Hide skill.' }]);
-    send(session.ws, { type: 'HIDE_RESULT', success: false });
-    return;
-  }
-
-  // Cooldown check (10s reuse)
-  if (!session.skillCooldowns) session.skillCooldowns = {};
-  if (session.skillCooldowns.hide > 0) {
-    sendCombatLog(session, [{ event: 'MESSAGE', text: 'You must wait before hiding again.' }]);
-    send(session.ws, { type: 'HIDE_RESULT', success: false });
-    return;
-  }
-
-  // Skill check
-  const successChance = Math.min(95, hideSkill * 0.5 + 5);
-  const succeeded = Math.random() * 100 < successChance;
-
-  if (succeeded) {
-    char.isHidden = true;
-    combat.trySkillUp(session, 'hide');
-
-    if (char.class === 'rogue') {
-      sendCombatLog(session, [{ event: 'MESSAGE', text: 'You have hidden yourself from view.' }]);
-    }
-    // Non-rogues: no explicit success message (authentic — you see yourself hide but don't know if it worked)
-    broadcastEntityState(session, 'ENTITY_HIDE', { hidden: true });
-    send(session.ws, { type: 'HIDE_RESULT', success: true });
-  } else {
-    session.skillCooldowns.hide = 10;
-    if (char.class === 'rogue') {
-      sendCombatLog(session, [{ event: 'MESSAGE', text: 'You failed to hide yourself.' }]);
-    }
-    send(session.ws, { type: 'HIDE_RESULT', success: false });
-  }
-
-  flushSkillUps(session);
-}
 
 // ── Sneak/Hide Break Helpers ────────────────────────────────────────
 
 /** Break sneak state (called when hit by spell/melee, or casting) */
-function breakSneak(session) {
-  if (!session.char || !session.char.isSneaking) return;
-  session.char.isSneaking = false;
-  broadcastEntityState(session, 'ENTITY_SNEAK', { sneaking: false });
-  sendCombatLog(session, [{ event: 'MESSAGE', text: 'Your sneaking has been interrupted!' }]);
-  send(session.ws, { type: 'SNEAK_BROKEN' });
-}
 
 /** Break hide state (called when moving without sneak, hit, casting) */
-function breakHide(session) {
-  if (!session.char || !session.char.isHidden) return;
-  session.char.isHidden = false;
-  broadcastEntityState(session, 'ENTITY_HIDE', { hidden: false });
-  sendCombatLog(session, [{ event: 'MESSAGE', text: 'You are no longer hidden.' }]);
-  send(session.ws, { type: 'HIDE_BROKEN' });
-}
 
 /** Broadcast an entity state change (sneak/hide) to other players in the zone */
 function broadcastEntityState(session, msgType, extraFields) {
@@ -4637,10 +3926,6 @@ async function processCombatTick(session, dt) {
     if (session.isOutOfRange) {
       events.push({ event: 'MESSAGE', text: 'You cannot reach your target!' });
     } else {
-      // First successful swing in range triggers mob aggro
-      if (mob.target !== session) {
-        mob.target = session;
-      }
       const atk = combat.calcPlayerATK(session);
       const def = combat.calcMobDefense(mob);
       const charLvl = session.char.level;
@@ -4652,6 +3937,11 @@ async function processCombatTick(session, dt) {
 
         const hitChance = combat.calcHitChance(atk, def, charLvl - mob.level);
         if (combat.chance(hitChance)) {
+          // First successful swing triggers mob aggro
+          if (mob.target !== session) {
+            mob.target = session;
+          }
+
           let dmgRoll = combat.calcPlayerDamage(session, damage, delay);
           const isCrit = combat.checkCritical(session.char.class, charLvl);
           const isCripple = combat.checkCripplingBlow(charLvl, mob.level);
@@ -4772,7 +4062,7 @@ async function handleMobDeath(session, mob, events) {
         events.push({ event: 'MESSAGE', text: `You have learned ${spell.name}! It has been scribed to your spellbook.` });
       }
     }
-    if (newSpells.length > 0) sendSpellbookFull(session);
+    if (newSpells.length > 0) SpellSystem.sendSpellbookFull(session);
   }
 
   // Loot
@@ -4859,7 +4149,7 @@ function handleCamp(session) {
       // Save character state
       DB.updateCharacterState(session.char);
       DB.saveCharacterSkills(session.char.id, session.char.skills);
-      saveBuffsToFile(session);
+      SpellSystem.saveBuffsToFile(session);
       sendCombatLog(session, [{ event: 'MESSAGE', text: 'You have safely camped out.' }]);
 
       // Tell the client to return to character select
@@ -5049,7 +4339,7 @@ function processBuffs(session, dt) {
     // Cap current HP/mana to new max
     if (session.char.hp > session.effectiveStats.hp) session.char.hp = session.effectiveStats.hp;
     if (session.char.mana > session.effectiveStats.mana) session.char.mana = session.effectiveStats.mana;
-    sendBuffs(session);
+    SpellSystem.sendBuffs(session);
   }
 }
 
@@ -5102,9 +4392,9 @@ function getEquipVisuals(session) {
 function sendFullState(session) {
   sendLoginOk(session);
   sendInventory(session);
-  sendSpellbook(session);
-  sendSpellbookFull(session);
-  sendBuffs(session);
+  SpellSystem.sendSpellbook(session);
+  SpellSystem.sendSpellbookFull(session);
+  SpellSystem.sendBuffs(session);
   sendStatus(session);
   handleLook(session);
 }
@@ -5188,9 +4478,16 @@ function sendStatus(session) {
 
   // Build Extended Targets list (only mobs actively in combat with this player)
   const extendedTargets = [];
-  if (zone && zone.liveMobs) {
-      for (const m of zone.liveMobs) {
-          if (m.target === session && m.hp > 0) {
+  const zoneInst = zoneInstances[char.zoneId];
+  if (zoneInst && zoneInst.liveMobs) {
+      for (const m of zoneInst.liveMobs) {
+          const isTargetingPlayer = m.target === session || m.target === session.id || m.target === session.char.name;
+          const isTargetingPet = session.pet && (m.target === session.pet || m.target === session.pet.id || m.target === session.pet.name);
+          const isPlayerAttacking = session.inCombat && session.combatTarget === m;
+          const isPetAttacking = session.pet && session.pet.target === m;
+
+          if ((isTargetingPlayer || isTargetingPet || isPlayerAttacking || isPetAttacking) && m.hp > 0) {
+              console.log(`[EXT] Pushing ${m.name} to extended targets for ${session.char.name} (isTargetingPlayer=${isTargetingPlayer}, isPlayerAttacking=${isPlayerAttacking})`);
               extendedTargets.push({
                   id: m.id,
                   name: m.name,
@@ -5206,6 +4503,7 @@ function sendStatus(session) {
     type: 'STATUS',
     character: {
       name: char.name,
+      class: char.class,
       raceId: char.raceId || 1,
       gender: char.gender || 0,
       face: char.face || 0,
@@ -5357,6 +4655,21 @@ function sendInventory(session) {
       races: def.races || 0,
       itemtype: def.itemtype || 0,
       equipSlot: def.slot || 0,
+      icon: def.icon || 0,
+      clicky: def.scrolleffect || 0,
+      lore: def.lore || "",
+      magic: def.magic || 0,
+      nodrop: def.nodrop || 0,
+      norent: def.norent || 0,
+      size: def.size || 0,
+      endur: def.endur || 0,
+      fr: def.fr || 0, cr: def.cr || 0, mr: def.mr || 0, pr: def.pr || 0, dr: def.dr || 0,
+      elemdmgtype: def.elemdmgtype || 0, elemdmgamt: def.elemdmgamt || 0,
+      banedmgrace: def.banedmgrace || 0, banedmgamt: def.banedmgamt || 0,
+      placeable: def.placeable || 0, reqlevel: def.reqlevel || 0, reclevel: def.reclevel || 0,
+      augslot1type: def.augslot1type || 0, augslot2type: def.augslot2type || 0,
+      augslot3type: def.augslot3type || 0, augslot4type: def.augslot4type || 0,
+      augslot5type: def.augslot5type || 0, augslot6type: def.augslot6type || 0,
     };
   });
 
@@ -5365,338 +4678,7 @@ function sendInventory(session) {
 
 // ── Spellbook Persistence (file-based) ──────────────────────────────
 
-const SPELLBOOK_DIR = path.join(__dirname, 'data', 'spellbooks');
-
-function getSpellbookPath(charName) {
-  return path.join(SPELLBOOK_DIR, `${charName.toLowerCase()}.json`);
-}
-
-function loadSpellbookFromFile(session) {
-  try {
-    const filePath = getSpellbookPath(session.char.name);
-    if (!fs.existsSync(filePath)) {
-      // No saved spellbook — build from starter spells
-      buildStarterSpellbook(session);
-      return;
-    }
-    const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-    session.spellbook = data.spellbook || [];
-    session.spells = data.memorized || [];
-    console.log(`[SPELLBOOK] Loaded ${session.spellbook.length} scribed spells, ${session.spells.length} memorized for ${session.char.name}`);
-  } catch (e) {
-    console.error(`[SPELLBOOK] Load error for ${session.char.name}: ${e.message}`);
-    buildStarterSpellbook(session);
-  }
-}
-
-function saveSpellbookToFile(session) {
-  try {
-    if (!fs.existsSync(SPELLBOOK_DIR)) {
-      fs.mkdirSync(SPELLBOOK_DIR, { recursive: true });
-    }
-    const data = {
-      spellbook: session.spellbook,
-      memorized: session.spells,
-    };
-    fs.writeFileSync(getSpellbookPath(session.char.name), JSON.stringify(data, null, 2));
-  } catch (e) {
-    console.error(`[SPELLBOOK] Save error for ${session.char.name}: ${e.message}`);
-  }
-}
-
-// ── Buff Persistence (file-based) ───────────────────────────────────
-
-const BUFFS_DIR = path.join(__dirname, 'data', 'buffs');
-
-function getBuffsPath(charName) {
-  return path.join(BUFFS_DIR, `${charName.toLowerCase()}.json`);
-}
-
-function loadBuffsFromFile(session) {
-  try {
-    const filePath = getBuffsPath(session.char.name);
-    if (!fs.existsSync(filePath)) return;
-    const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-    if (!Array.isArray(data.buffs)) return;
-
-    // Calculate elapsed time since save and subtract from durations
-    const savedAt = data.savedAt || 0;
-    const elapsed = savedAt ? (Date.now() - savedAt) / 1000 : 0;
-
-    const restored = [];
-    for (const b of data.buffs) {
-      const remaining = (b.duration || 0) - elapsed;
-      if (remaining > 0) {
-        restored.push({
-          name: b.name,
-          duration: remaining,
-          maxDuration: b.maxDuration || remaining,
-          beneficial: b.beneficial !== false,
-          effects: b.effects || [],
-          ac: b.ac || 0,
-        });
-      }
-    }
-
-    session.buffs = restored;
-    if (restored.length > 0) {
-      // Recalculate stats with restored buffs
-      session.effectiveStats = calcEffectiveStats(session.char, session.inventory, session.buffs);
-      session.char.maxHp = session.effectiveStats.hp;
-      session.char.maxMana = session.effectiveStats.mana;
-      console.log(`[BUFFS] Restored ${restored.length} active buffs for ${session.char.name}`);
-    }
-  } catch (e) {
-    console.error(`[BUFFS] Load error for ${session.char.name}: ${e.message}`);
-  }
-}
-
-function saveBuffsToFile(session) {
-  try {
-    if (!fs.existsSync(BUFFS_DIR)) {
-      fs.mkdirSync(BUFFS_DIR, { recursive: true });
-    }
-    // Only save beneficial buffs with remaining duration (skip expired/instant)
-    const activeBeneficial = (session.buffs || []).filter(b => b.duration > 0);
-    const data = {
-      savedAt: Date.now(),
-      buffs: activeBeneficial.map(b => ({
-        name: b.name,
-        duration: b.duration,
-        maxDuration: b.maxDuration,
-        beneficial: b.beneficial !== false,
-        effects: b.effects || [],
-        ac: b.ac || 0,
-      })),
-    };
-    fs.writeFileSync(getBuffsPath(session.char.name), JSON.stringify(data, null, 2));
-  } catch (e) {
-    console.error(`[BUFFS] Save error for ${session.char.name}: ${e.message}`);
-  }
-}
-
-function buildStarterSpellbook(session) {
-  const STARTER_SPELLS = {
-    cleric: ['minor_healing', 'strike'],
-    wizard: ['frost_bolt', 'minor_shielding'],
-    necromancer: ['lifetap', 'minor_shielding'],
-    enchanter: ['lull', 'minor_shielding'],
-    magician: ['flare', 'minor_shielding'],
-    druid: ['minor_healing', 'snare'],
-    shaman: ['minor_healing', 'inner_fire'],
-    bard: ['chant_of_battle'],
-    ranger: ['salve'],
-    paladin: ['salve'],
-    shadow_knight: ['spike_of_disease'],
-    warrior: [], monk: [], rogue: [],
-  };
-
-  const charClass = session.char.class;
-  const starterKeys = STARTER_SPELLS[charClass] || [];
-  
-  session.spellbook = [];
-  session.spells = [];
-  
-  let bookSlot = 0;
-  let gemSlot = 0;
-  for (const key of starterKeys) {
-    const spellDef = SpellDB.getByKey(key);
-    if (!spellDef) continue;
-    
-    // Scribe into book
-    session.spellbook.push({
-      bookSlot: bookSlot,
-      spell_key: key,
-      id: spellDef._spellId || spellDef.id || bookSlot + 1,
-    });
-    
-    // Also memorize into first available gem slots
-    if (gemSlot < 8) {
-      session.spells.push({
-        slot: gemSlot,
-        spell_key: key,
-        id: spellDef._spellId || spellDef.id || bookSlot + 1,
-      });
-      gemSlot++;
-    }
-    bookSlot++;
-  }
-  
-  // Also add any spells the character should have from level-ups
-  const allClassSpells = SpellDB.getSpellsForClass(charClass, session.char.level);
-  for (const spell of allClassSpells) {
-    const key = spell._key;
-    if (session.spellbook.find(s => s.spell_key === key)) continue; // Already have it
-    session.spellbook.push({
-      bookSlot: bookSlot++,
-      spell_key: key,
-      id: spell._spellId || spell.id,
-    });
-  }
-  
-  saveSpellbookToFile(session);
-  console.log(`[SPELLBOOK] Built starter spellbook for ${session.char.name}: ${session.spellbook.length} spells`);
-}
-
-/** Scribe a new spell into the first empty book slot. Returns the bookSlot used, or -1 if book is full. */
-function scribeSpellToBook(session, spellKey) {
-  const spellDef = SpellDB.getByKey(spellKey);
-  if (!spellDef) return -1;
-  
-  // Already scribed?
-  if (session.spellbook.find(s => s.spell_key === spellKey)) return -2;
-  
-  // Find first empty bookSlot (0-791 for 99 pages × 8)
-  const usedSlots = new Set(session.spellbook.map(s => s.bookSlot));
-  let freeSlot = -1;
-  for (let i = 0; i < 792; i++) {
-    if (!usedSlots.has(i)) { freeSlot = i; break; }
-  }
-  if (freeSlot < 0) return -1; // Book full
-  
-  session.spellbook.push({
-    bookSlot: freeSlot,
-    spell_key: spellKey,
-    id: spellDef._spellId || spellDef.id,
-  });
-  
-  saveSpellbookToFile(session);
-  return freeSlot;
-}
-
-// ── Spellbook Message Handlers ──────────────────────────────────────
-
-function handleMemorizeSpell(session, msg) {
-  const { spellKey, slot } = msg;
-  if (slot == null || slot < 0 || slot >= 8) return;
-  if (!spellKey) return;
-  
-  // Must be sitting
-  if (session.char.state !== 'medding') {
-    send(session.ws, { type: 'MESSAGE', text: 'You must be sitting to memorize spells.' });
-    return;
-  }
-  
-  // Must be in spellbook
-  const bookEntry = session.spellbook.find(s => s.spell_key === spellKey);
-  if (!bookEntry) {
-    send(session.ws, { type: 'MESSAGE', text: 'That spell is not in your spellbook.' });
-    return;
-  }
-  
-  // Remove from current gem slot if already memorized elsewhere
-  session.spells = session.spells.filter(s => s.spell_key !== spellKey);
-  // Remove whatever was in the target slot
-  session.spells = session.spells.filter(s => s.slot !== slot);
-  
-  session.spells.push({
-    slot,
-    spell_key: spellKey,
-    id: bookEntry.id,
-  });
-  
-  saveSpellbookToFile(session);
-  DB.memorizeSpell(session.char.id, spellKey, slot);
-  sendSpellbook(session);
-  
-  const def = SPELLS[spellKey] || {};
-  send(session.ws, { type: 'MESSAGE', text: `You have memorized ${def.name || spellKey}.` });
-}
-
-function handleForgetSpell(session, msg) {
-  const { slot } = msg;
-  if (slot == null || slot < 0 || slot >= 8) return;
-  
-  const existing = session.spells.find(s => s.slot === slot);
-  session.spells = session.spells.filter(s => s.slot !== slot);
-  
-  saveSpellbookToFile(session);
-  DB.forgetSpell(session.char.id, slot);
-  sendSpellbook(session);
-  
-  if (existing) {
-    const def = SPELLS[existing.spell_key] || {};
-    send(session.ws, { type: 'MESSAGE', text: `You have forgotten ${def.name || existing.spell_key}.` });
-  }
-}
-
-function handleSwapBookSpells(session, msg) {
-  const { fromSlot, toSlot } = msg;
-  if (fromSlot == null || toSlot == null) return;
-  if (fromSlot < 0 || fromSlot >= 792 || toSlot < 0 || toSlot >= 792) return;
-  
-  const fromEntry = session.spellbook.find(s => s.bookSlot === fromSlot);
-  const toEntry = session.spellbook.find(s => s.bookSlot === toSlot);
-  
-  if (fromEntry && toEntry) {
-    // Swap
-    fromEntry.bookSlot = toSlot;
-    toEntry.bookSlot = fromSlot;
-  } else if (fromEntry) {
-    // Move to empty slot
-    fromEntry.bookSlot = toSlot;
-  }
-  // If fromEntry is null, nothing to do
-  
-  saveSpellbookToFile(session);
-  sendSpellbookFull(session);
-}
-
-// ── Send Functions ──────────────────────────────────────────────────
-
-function sendSpellbook(session) {
-  // Send memorized gems (spell bar)
-  const spells = session.spells.map(row => {
-    const def = SPELLS[row.spell_key] || {};
-    return {
-      slot: row.slot,
-      spellId: row.id,
-      spellKey: row.spell_key,
-      name: def.name || row.spell_key,
-      manaCost: def.manaCost || 0,
-      castTime: def.castTime || 1.5,
-      target: def.target || 'self',
-      effect: def.effect || 'unknown',
-      level: def.level || 1,
-      description: def.description || '',
-    };
-  });
-  send(session.ws, { type: 'SPELLBOOK_UPDATE', spells });
-
-  // Also send full spellbook
-  sendSpellbookFull(session);
-}
-
-function sendSpellbookFull(session) {
-  const entries = session.spellbook.map(row => {
-    const def = SPELLS[row.spell_key] || {};
-    return {
-      bookSlot: row.bookSlot,
-      spellId: row.id,
-      spellKey: row.spell_key,
-      name: def.name || row.spell_key,
-      manaCost: def.manaCost || 0,
-      castTime: def.castTime || 1.5,
-      effect: def.effect || 'unknown',
-      level: def.level || 1,
-      description: def.description || '',
-    };
-  });
-  send(session.ws, { type: 'SPELLBOOK_FULL', entries });
-}
-
-function sendBuffs(session) {
-  send(session.ws, {
-    type: 'BUFFS_UPDATE',
-    buffs: session.buffs.map(b => ({
-      name: b.name,
-      duration: b.duration,
-      maxDuration: b.maxDuration,
-      beneficial: b.beneficial !== false,
-    })),
-  });
-}
-
+// ── Spell System extracted to systems/spells.js ──────────────────────
 function sendCombatLog(session, events) {
   send(session.ws, { type: 'COMBAT_LOG', events });
 }
@@ -5744,7 +4726,7 @@ function startGameLoop() {
     const aiApi = {
       broadcastMobMove, processPetAI, handlePetDeath, sendCombatLog,
       sessions, handleMobDeath, getWeaponStats, tryInterruptCasting,
-      breakSneak, breakHide, despawnPet
+      breakSneak: MovementSystem.breakSneak, breakHide: MovementSystem.breakHide, despawnPet
     };
 
     for (const zoneId of Object.keys(zoneInstances)) {
@@ -5768,7 +4750,7 @@ function startGameLoop() {
       for (const [, session] of sessions) {
         DB.updateCharacterState(session.char);
         DB.saveCharacterSkills(session.char.id, session.char.skills);
-        saveBuffsToFile(session);
+        SpellSystem.saveBuffsToFile(session);
       }
     }
   }, TICK_RATE);
@@ -5778,75 +4760,12 @@ function startGameLoop() {
 
 // ── AI System moved to systems/ai.js ────────────────────────────────
 function processEnvironment() {
-  State.envTickCounter++;
-  // Every 45 ticks (90 seconds at 2s tick) = 1 in-game hour
-  if (State.envTickCounter >= 45) {
-    State.envTickCounter = 0;
-
-    // Advance the Norrathian calendar by one hour
-    const calendarEvents = Calendar.advanceHour(worldCalendar);
-    const currentSeason = Calendar.getMonth(worldCalendar.month).season;
-    const isDay = Calendar.isDaytime(worldCalendar.hour, worldCalendar.month);
-
-    // Roll weather changes for each loaded zone
-    for (const [zoneId, zone] of Object.entries(zoneInstances)) {
-      if (!zone.weather) continue;
-      const result = Calendar.rollWeatherChange(zone.weather, currentSeason);
-
-      // If weather changed, notify players in that zone
-      if (result && result.changed && result.message) {
-        const zoneDef = zone.def || getZoneDef(zoneId);
-        const isOutdoor = zoneDef && zoneDef.environment === 'outdoor';
-        if (isOutdoor) {
-          for (const [, session] of sessions) {
-            if (session.char.zoneId === zoneId) {
-              sendCombatLog(session, [{ event: 'MESSAGE', text: `[color=gray]${result.message}[/color]` }]);
-            }
-          }
-        }
-      }
-    }
-
-    // Broadcast calendar events (dawn, dusk, new month, season changes)
-    for (const evt of calendarEvents) {
-      for (const [, session] of sessions) {
-        const zoneDef = getZoneDef(session.char.zoneId);
-        const isOutdoor = zoneDef && zoneDef.environment === 'outdoor';
-
-        if (evt.type === 'DAWN' || evt.type === 'DUSK') {
-          if (isOutdoor) {
-            sendCombatLog(session, [{ event: 'MESSAGE', text: `[color=gold]${evt.message}[/color]` }]);
-          }
-        } else if (evt.type === 'SEASON_CHANGE') {
-          sendCombatLog(session, [{ event: 'MESSAGE', text: `[color=cyan]${evt.message}[/color]` }]);
-        } else if (evt.type === 'NEW_MONTH' || evt.type === 'NEW_YEAR') {
-          sendCombatLog(session, [{ event: 'MESSAGE', text: `[color=gray]${evt.message}[/color]` }]);
-        } else if (evt.type === 'TWIN_FULL_MOON') {
-          if (isOutdoor) {
-            sendCombatLog(session, [{ event: 'MESSAGE', text: `[color=gold]${evt.message}[/color]` }]);
-          }
-        } else if (evt.type === 'FULL_MOON' || evt.type === 'NEW_MOON') {
-          if (isOutdoor) {
-            sendCombatLog(session, [{ event: 'MESSAGE', text: `[color=silver]${evt.message}[/color]` }]);
-          }
-        }
-      }
-    }
-
-    // Broadcast environment update to sync day/night cycles on clients
-    const daylight = Calendar.getDaylightHours(worldCalendar.month);
-    for (const [, session] of sessions) {
-      if (!session.char) continue;
-      session.ws.send(JSON.stringify({
-        type: 'ENVIRONMENT_UPDATE',
-        worldHour: worldCalendar.hour,
-        dawn: daylight.dawn,
-        dusk: daylight.dusk,
-        season: currentSeason.name,
-        moons: Calendar.getMoonPhases(worldCalendar.totalDays)
-      }));
-    }
-  }
+  EnvironmentSystem.processEnvironment({
+    zoneInstances,
+    sessions,
+    getZoneDef,
+    sendCombatLog
+  });
 }
 
 function handleLook(session, skipText = false) {
@@ -6138,56 +5057,8 @@ function handleEmote(session, msg) {
 
 // ── Admin Succor (F8) — teleport to zone safe point ──────────────────
 
-async function handleSuccor(session) {
-  const char = session.char;
-  
-  try {
-    const eqemuDB = require('./eqemu_db');
-    await eqemuDB.init();
-    const mysql = require('mysql2/promise');
-    const p = mysql.createPool({
-      host: process.env.EQEMU_HOST || '127.0.0.1',
-      port: process.env.EQEMU_PORT || 3307,
-      user: process.env.EQEMU_USER || 'eqemu',
-      password: process.env.EQEMU_PASSWORD || '',
-      database: process.env.EQEMU_DATABASE || 'peq',
-    });
-    
-    const zoneDef = getZoneDef(char.zoneId);
-    const dbShort = zoneDef && zoneDef.shortName ? zoneDef.shortName : char.zoneId;
-    
-    const [rows] = await p.query('SELECT safe_x, safe_y, safe_z FROM zone WHERE short_name = ?', [dbShort]);
-    await p.end();
-    
-    if (rows.length === 0) {
-      sendCombatLog(session, [{ event: 'MESSAGE', text: 'No safe point found for this zone.' }]);
-      return;
-    }
-    
-    const safe = rows[0];
-    
-    // safe_x/safe_y/safe_z use the same coordinate system as spawn2:
-    // x = horizontal, y = horizontal, z = height
-    // TELEPORT handler on the client applies the EQ→Godot mapping
-    console.log(`[ENGINE] Succor: ${char.name} teleporting to safe point (${safe.safe_x}, ${safe.safe_y}, ${safe.safe_z}) in ${dbShort}`);
-    
-    char.x = safe.safe_x;
-    char.y = safe.safe_y;
-    char.z = safe.safe_z;
-    
-    send(session.ws, {
-      type: 'TELEPORT',
-      x: char.x,
-      y: char.y,
-      z: char.z,
-    });
-    
-    sendCombatLog(session, [{ event: 'MESSAGE', text: 'You have been transported to safety.' }]);
-  } catch (e) {
-    console.error('[ENGINE] Succor error:', e.message);
-    sendCombatLog(session, [{ event: 'MESSAGE', text: 'Succor failed.' }]);
-  }
-}
+
+//  Teleporter Pad Logic 
 
 module.exports = {
   initZones,

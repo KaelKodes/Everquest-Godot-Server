@@ -201,8 +201,8 @@ function processMobAI(zone, zoneId, dt, api) {
         inMeleeRange = distSq <= (MELEE_RANGE * MELEE_RANGE);
       }
 
-      // Leash: if target is > 1300 units away, drop aggro and return to spawn
-      const LEASH_RANGE = 1300;
+      // Leash: if target is > 3500 units away, drop aggro and return to spawn
+      const LEASH_RANGE = 3500;
       if (distSq > LEASH_RANGE * LEASH_RANGE) {
         mob.target = null;
         mob.x = mob.spawnX ?? mob.x;
@@ -220,6 +220,7 @@ function processMobAI(zone, zoneId, dt, api) {
           const dy = targetY - mob.y;
           mob.x += (dx / dist) * Math.min(moveAmount, dist);
           mob.y += (dy / dist) * Math.min(moveAmount, dist);
+          api.broadcastMobMove(mob, zoneId);
         }
         continue;
       }
@@ -229,6 +230,7 @@ function processMobAI(zone, zoneId, dt, api) {
         mob.attackTimer = mob.attackDelay * (1 / mobSlowMod);
 
         const events = [];
+        let playerSession = targetIsPet ? null : mob.target;
 
         if (targetIsPet) {
           // ── Mob attacks pet ──
@@ -260,7 +262,7 @@ function processMobAI(zone, zoneId, dt, api) {
           }
         } else {
           // ── Mob attacks player session (existing code) ──
-          const session = mob.target;
+          const session = playerSession;
           combat.trySkillUp(session, 'defense');
 
           const avoidance = combat.checkAvoidance(session);
@@ -323,7 +325,7 @@ function processMobAI(zone, zoneId, dt, api) {
           }
         }
 
-        if (events.length > 0 && !targetIsPet) api.sendCombatLog(mob.target, events);
+        if (events.length > 0 && playerSession) api.sendCombatLog(playerSession, events);
       }
     } else if (mob.hp > 0 && !mob.target && mob.isRoaming) {
       // Roaming logic when not in combat

@@ -1,4 +1,34 @@
 {
-  "savedAt": 1777698469339,
-  "buffs": []
+  "savedAt": 1777701973266,
+  "buffs": [
+    {
+      "name": "Minor Shielding",
+      "duration": 265.60099999996834,
+      "maxDuration": 1620,
+      "beneficial": true,
+      "effects": [
+        {
+          "slot": 1,
+          "spa": 69,
+          "spaName": "totalHP",
+          "base": 5,
+          "limit": 0,
+          "max": 10,
+          "formula": 102
+        },
+        {
+          "slot": 2,
+          "spa": 1,
+          "spaName": "armorClass",
+          "base": 10,
+          "limit": 0,
+          "max": 15,
+          "formula": 102
+        }
+      ],
+      "ac": 10,
+      "icon": 100,
+      "memIcon": 133
+    }
+  ]
 }

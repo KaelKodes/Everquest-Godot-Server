@@ -1,9 +1,9 @@
 {
-  "savedAt": 1777698076910,
+  "savedAt": 1777701898456,
   "buffs": [
     {
       "name": "Chant of Battle",
-      "duration": 8.000000000000036,
+      "duration": 7.600000000000035,
       "maxDuration": 18,
       "beneficial": true,
       "effects": [

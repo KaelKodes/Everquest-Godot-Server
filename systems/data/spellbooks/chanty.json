@@ -303,14 +303,43 @@
       "id": 286
     },
     {
-      "slot": 3,
-      "spell_key": "weaken",
-      "id": 41
-    },
-    {
       "slot": 4,
       "spell_key": "strengthen",
       "id": 40
+    },
+    {
+      "slot": 3,
+      "spell_key": "weaken",
+      "id": 41
     }
-  ]
+  ],
+  "loadouts": {
+    "Starting": [
+      {
+        "slot": 0,
+        "spell_key": "lull",
+        "id": 208
+      },
+      {
+        "slot": 1,
+        "spell_key": "minor_shielding",
+        "id": 288
+      },
+      {
+        "slot": 2,
+        "spell_key": "shallow_breath",
+        "id": 286
+      },
+      {
+        "slot": 4,
+        "spell_key": "strengthen",
+        "id": 40
+      },
+      {
+        "slot": 3,
+        "spell_key": "weaken",
+        "id": 41
+      }
+    ]
+  }
 }

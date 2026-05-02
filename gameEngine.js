@@ -246,6 +246,7 @@ async function handleMessage(ws, msg) {
       return;
     case 'CAST_SPELL': return handleCastSpell(session, msg);
     case 'SPELL_INSPECT': return handleSpellInspect(session, msg);
+    case 'ITEM_INSPECT': return handleItemInspect(session, msg);
     case 'REMOVE_BUFF': return require('./systems/spells').handleRemoveBuff(session, msg);
     case 'EQUIP_ITEM': return InventorySystem.handleEquipItem(session, msg);
     case 'UNEQUIP_ITEM': return InventorySystem.handleUnequipItem(session, msg);
@@ -255,10 +256,14 @@ async function handleMessage(ws, msg) {
     case 'UPDATE_SNEAK': return MovementSystem.handleUpdateSneak(session, msg);
     case 'USE_HIDE': return MovementSystem.handleHide(session, msg);
     case 'SWIM_TICK': return MovementSystem.handleSwimTick(session, msg);
+    case 'JUMP': return MovementSystem.handleJump(session);
     case 'CAMP': return handleCamp(session);
     case 'TRAIN_SKILL': return handleTrainSkill(session, msg);
     case 'ABILITY': return handleAbility(session, msg);
     case 'SET_TACTIC': return handleTactic(session, msg);
+    case 'GET_TRACKING_LIST': return handleGetTrackingList(session);
+    case 'SET_TRACKING_TARGET': return handleSetTrackingTarget(session, msg);
+    case 'CLEAR_TRACKING': return handleClearTracking(session);
     case 'HAIL': return handleHail(session, msg);
     case 'SAY': return ChatSystem.handleSay(session, msg);
     case 'AUTO_INVENTORY': return handleAutoInventory(session);
@@ -280,6 +285,10 @@ async function handleMessage(ws, msg) {
     case 'MEMORIZE_SPELL': return SpellSystem.handleMemorizeSpell(session, msg);
     case 'FORGET_SPELL': return SpellSystem.handleForgetSpell(session, msg);
     case 'SWAP_BOOK_SPELLS': return SpellSystem.handleSwapBookSpells(session, msg);
+    case 'SAVE_SPELL_LOADOUT': return SpellSystem.handleSaveSpellLoadout(session, msg);
+    case 'LOAD_SPELL_LOADOUT': return SpellSystem.handleLoadSpellLoadout(session, msg);
+    case 'DELETE_SPELL_LOADOUT': return SpellSystem.handleDeleteSpellLoadout(session, msg);
+    case 'CLEAR_SPELLS': return SpellSystem.handleClearSpells(session, msg);
     // 'LOOK' — removed (legacy MUD command, 3D client uses periodic ZONE_STATE sync)
     case 'SENSE_HEADING': {
       return handleSenseHeading(session);
@@ -379,6 +388,16 @@ async function handleSelectCharacter(ws, msg) {
     return send(ws, { type: 'ERROR', message: 'That character does not belong to your account.' });
   }
 
+  // Check if character is already online and boot them
+  for (const [existingWs, existingSession] of sessions.entries()) {
+    if (existingSession.char.id === char.id) {
+      console.log(`[ENGINE] Kicking existing session for ${char.name}`);
+      send(existingWs, { type: 'ERROR', message: 'You have been disconnected because another connection has logged into this character.' });
+      existingWs.close();
+      sessions.delete(existingWs);
+    }
+  }
+
   const session = await createSession(ws, char);
   
   // Safety: If inventory is empty, grant starter gear
@@ -469,9 +488,38 @@ async function handleRequestCharCreateData(ws, msg) {
     if (entry) {
       const countFaces = (code) => {
         try {
-          const files = fs.readdirSync(charsDir);
-          const pattern = new RegExp(`^${code}_face\\d+\\.glb$`, 'i');
-          return 1 + files.filter(f => pattern.test(f)).length; // base + variants
+          // 1. Classic races use texture swapping
+          const texDir = path.join(charsDir, 'Textures');
+          if (fs.existsSync(texDir)) {
+            const files = fs.readdirSync(texDir);
+            const pattern = new RegExp(`^${code}he00(\\d)1\\.png$`, 'i');
+            let maxFace = 0;
+            for (const f of files) {
+              const match = f.match(pattern);
+              if (match) {
+                const faceIdx = parseInt(match[1], 10);
+                if (faceIdx > maxFace) maxFace = faceIdx;
+              }
+            }
+            if (maxFace > 0) return maxFace + 1; // 0 is base face
+          }
+
+          // 2. Iksar/Vah Shir use _faceX.glb
+          const baseFiles = fs.readdirSync(charsDir);
+          const facePattern = new RegExp(`^${code}_face(\\d+)\\.glb$`, 'i');
+          const faceFiles = baseFiles.filter(f => facePattern.test(f));
+          if (faceFiles.length > 0) {
+            return faceFiles.length + 1; // base (0) + variants (1..N)
+          }
+
+          // 3. Frogloks use _0X.glb
+          if (code === 'frm' || code === 'frf') {
+            const frogPattern = new RegExp(`^${code}_0(\\d)\\.glb$`, 'i');
+            const frogFiles = baseFiles.filter(f => frogPattern.test(f));
+            if (frogFiles.length > 0) return frogFiles.length; // frm_00 to frm_08
+          }
+
+          return 1;
         } catch { return 1; }
       };
       faceCountMale = countFaces(entry.m);
@@ -492,6 +540,16 @@ async function handleLogin(ws, msg) {
   if (!char) {
     send(ws, { type: 'ERROR', message: 'Character not found. Send CREATE_CHARACTER.' });
     return;
+  }
+
+  // Check if character is already online and boot them
+  for (const [existingWs, existingSession] of sessions.entries()) {
+    if (existingSession.char.id === char.id) {
+      console.log(`[ENGINE] Kicking existing session for ${char.name}`);
+      send(existingWs, { type: 'ERROR', message: 'You have been disconnected because another connection has logged into this character.' });
+      existingWs.close();
+      sessions.delete(existingWs);
+    }
   }
 
   const session = await createSession(ws, char);
@@ -843,6 +901,36 @@ function handleSetTarget(session, msg) {
 
   session.miningTarget = null; // Clear mining target when targeting a mob
 
+  // Check if targeting a player
+  if (targetId.startsWith('player_')) {
+    const pId = parseInt(targetId.substring(7));
+    let targetSession = null;
+    for (const [, s] of sessions) {
+      if (s.char && s.char.id === pId && s.char.zoneId === session.char.zoneId) {
+        targetSession = s;
+        break;
+      }
+    }
+    
+    if (targetSession) {
+      session.combatTarget = targetSession;
+      send(session.ws, {
+        type: 'TARGET_UPDATE',
+        target: {
+          id: targetId,
+          name: targetSession.char.name,
+          hp: targetSession.char.hp,
+          maxHp: targetSession.char.maxHp || 100, // Should use effective stats, but this is a fallback
+          level: targetSession.char.level,
+          type: 'player',
+          pvpFaction: targetSession.char.pvpFaction || 0
+        },
+      });
+      sendStatus(session);
+      return;
+    }
+  }
+
   let mob = zone.liveMobs.find(m => m.id === mobId || m.id === targetId);
   if (mob) {
     // Always update target, even during combat, so auto-attack switches
@@ -859,6 +947,28 @@ function handleSetTarget(session, msg) {
       },
     });
     sendStatus(session);
+    return;
+  }
+
+  // Check if targeting a corpse
+  if (zone.corpses) {
+      let corpse = zone.corpses.find(c => c.id === mobId || c.id === targetId);
+      if (corpse) {
+          session.combatTarget = corpse;
+          send(session.ws, {
+              type: 'TARGET_UPDATE',
+              target: {
+                  id: corpse.id,
+                  name: corpse.name,
+                  hp: 0,
+                  maxHp: 100,
+                  level: corpse.level,
+                  type: 'corpse',
+              },
+          });
+          sendStatus(session);
+          return;
+      }
   }
 }
 
@@ -883,39 +993,61 @@ function handleAttackTarget(session, msg) {
   const mobId = targetId.startsWith('mob_') ? targetId.substring(4) : targetId;
 
   const zone = zoneInstances[session.char.zoneId];
-  if (!zone || !zone.liveMobs) {
+  if (!zone) {
     sendCombatLog(session, [{ event: 'MESSAGE', text: 'There is nothing to fight here.' }]);
     return;
   }
 
-  let mob = zone.liveMobs.find(m => m.id === mobId || m.id === targetId);
+  let targetEntity = null;
+
+  if (targetId.startsWith('player_')) {
+    const pId = parseInt(targetId.substring(7));
+    for (const [, s] of sessions) {
+      if (s.char && s.char.id === pId && s.char.zoneId === session.char.zoneId) {
+        targetEntity = s;
+        break;
+      }
+    }
+  } else {
+    if (zone.liveMobs) {
+      targetEntity = zone.liveMobs.find(m => m.id === mobId || m.id === targetId);
+    }
+  }
   
-  if (!mob) {
+  if (!targetEntity) {
     sendCombatLog(session, [{ event: 'MESSAGE', text: 'Your target is no longer available.' }]);
     return;
   }
 
-  // Prevent attacking non-mob NPCs (merchants, quest givers, etc.)
-  if (mob.npcType && mob.npcType !== NPC_TYPES.MOB) {
-    sendCombatLog(session, [{ event: 'MESSAGE', text: `You cannot attack ${mob.name}. Try hailing them instead.` }]);
-    return;
-  }
+  // Player PvP Check
+  if (targetEntity.char) { // It's a player session
+    if (!CombatSystem.canInteract(session, targetEntity, false)) {
+       sendCombatLog(session, [{ event: 'MESSAGE', text: 'You cannot attack that player!' }]);
+       return;
+    }
+  } else {
+    // Prevent attacking non-mob NPCs (merchants, quest givers, etc.)
+    if (targetEntity.npcType && targetEntity.npcType !== NPC_TYPES.MOB) {
+      sendCombatLog(session, [{ event: 'MESSAGE', text: `You cannot attack ${targetEntity.name}. Try hailing them instead.` }]);
+      return;
+    }
 
-  if (mob.target && mob.target !== session) {
-    sendCombatLog(session, [{ event: 'MESSAGE', text: `${mob.name} is already engaged by another player.` }]);
-    return;
+    if (targetEntity.target && targetEntity.target !== session) {
+      sendCombatLog(session, [{ event: 'MESSAGE', text: `${targetEntity.name} is already engaged by another player.` }]);
+      return;
+    }
   }
 
   session.inCombat = true;
   session.autoFight = true;
-  session.combatTarget = mob;
-  // NOTE: Do NOT set mob.target here — mob only becomes aggressive
-  // when the player's first melee swing actually goes through in range.
-  // This prevents aggro from cycling targets with auto-attack on.
-  session.attackTimer = 0;
+  session.combatTarget = targetEntity;
 
-  sendCombatLog(session, [{ event: 'MESSAGE', text: `You engage ${mob.name}!` }]);
-  sendStatus(session);
+  // NOTE: Do NOT set mob.target here - mob only becomes aggressive
+  // when the player's first melee swing actually goes through in range.
+  
+  sendCombatLog(session, [{ event: 'MESSAGE', text: `Auto attack is on.` }]);
+  CombatSystem.processPlayerCombatTurn(session);
+
 }
 
 function engageNextMob(session) {
@@ -1037,6 +1169,10 @@ async function handleCastSpell(session, msg) {
   if (spellDef.target === 'enemy') {
     if (!session.combatTarget) {
       return sendCombatLog(session, [{ event: 'MESSAGE', text: 'You must have a target to cast that spell.' }]);
+    }
+    // PvP Check for detrimental
+    if (session.combatTarget.char && !CombatSystem.canInteract(session, session.combatTarget, false)) {
+      return sendCombatLog(session, [{ event: 'MESSAGE', text: 'You cannot cast offensive spells on this target!' }]);
     }
     // Check distance to target mob
     const mob = session.combatTarget;
@@ -1179,6 +1315,16 @@ function handleAbility(session, msg) {
 
   if (ability === 'sensehead' || ability === 'sense_heading' || ability === 'sense heading') {
     return handleSenseHeading(session);
+  }
+
+  if (ability === 'tracking') {
+    const skill = combat.getCharSkill(char, 'tracking');
+    if (skill <= 0) {
+      return sendCombatLog(session, [{ event: 'MESSAGE', text: `You have no idea how to track.` }]);
+    }
+    combat.trySkillUp(session, 'tracking');
+    flushSkillUps(session);
+    return handleGetTrackingList(session);
   }
 
   if (ability === 'forage') {
@@ -1391,6 +1537,9 @@ function handleAbility(session, msg) {
   }
 
   const mob = session.combatTarget;
+  if (mob.char && !CombatSystem.canInteract(session, mob, false)) {
+    return sendCombatLog(session, [{ event: 'MESSAGE', text: `You cannot use offensive abilities on this target.` }]);
+  }
   if (msg.ability === 'kick') {
     const dmg = combat.calcKickDamage(session);
     if (dmg > 0) {
@@ -2313,8 +2462,25 @@ function handleTargetName(session, msg) {
 }
 
 function handleCorpseDrag(session) {
-  sendCombatLog(session, [{ event: 'MESSAGE', text: `You attempt to drag the corpse.` }]);
-  // TODO: implement actual corpse drag logic when corpses are persistent entities.
+  const target = session.combatTarget;
+  if (!target || target.type !== 'corpse') {
+      sendCombatLog(session, [{ event: 'MESSAGE', text: `You must have a corpse targeted to drag it.` }]);
+      return;
+  }
+
+  const char = session.char;
+  const distSq = getDistanceSq(char.x, char.y, target.x, target.y);
+  const DRAG_RANGE = 40; // Fairly short range to start dragging
+  
+  if (distSq > DRAG_RANGE * DRAG_RANGE) {
+      sendCombatLog(session, [{ event: 'MESSAGE', text: `You are too far away to drag that corpse.` }]);
+      return;
+  }
+
+  target.x = char.x;
+  target.y = char.y;
+  target.z = char.z;
+  sendCombatLog(session, [{ event: 'MESSAGE', text: `You pull the corpse towards you.` }]);
 }
 
 function handlePetCommand(session, msg) {
@@ -2715,6 +2881,7 @@ function sendStatus(session) {
       face: char.face || 0,
       hp: char.hp, maxHp: effective.hp,
       mana: char.mana, maxMana: effective.mana,
+      fatigue: char.fatigue || 0,
       str: effective.str, sta: effective.sta, agi: effective.agi,
       dex: effective.dex, wis: effective.wis, intel: effective.intel, cha: effective.cha,
       ac: effective.ac,
@@ -2946,6 +3113,51 @@ function startGameLoop() {
       if (tickCount % SYNC_RATE === 0) {
           handleLook(session, true); // skipText = true
       }
+
+      // --- Tracking Updates ---
+      if (tickCount % 20 === 0 && session.trackingTargetId) {
+          const zone = zoneInstances[session.char.zoneId];
+          let target = null;
+          if (zone) {
+              if (zone.mobs && zone.mobs[session.trackingTargetId]) target = zone.mobs[session.trackingTargetId];
+              if (!target && activeSessions) {
+                  for (const p of Object.values(activeSessions)) {
+                      if (p.char && p.char.id === session.trackingTargetId) { target = p.char; break; }
+                  }
+              }
+          }
+
+          if (target && target.hp > 0) {
+              // Calculate direction relative to player's heading
+              // In EQ, North is positive Y? Actually let's just output angle relative to player heading
+              const dx = target.x - session.char.x;
+              const dy = target.y - session.char.y;
+              // Target angle from player
+              let angleToTarget = Math.atan2(dx, dy) * 180 / Math.PI; // Assuming standard Cartesian, but EQ axes might vary.
+              // Normalize angleToTarget to 0-360
+              if (angleToTarget < 0) angleToTarget += 360;
+              
+              let playerHeading = session.char.heading || 0;
+              // Player heading might be 0-360 or 0-512 (EQ uses 0-512). Let's assume degrees for now or EQ 0-512?
+              // Standardizing to degrees for the message string.
+              // We'll just output straight direction or left/right.
+              // For simplicity, just use cardinal directions.
+              let dirStr = '';
+              if (angleToTarget > 337.5 || angleToTarget <= 22.5) dirStr = 'North';
+              else if (angleToTarget > 22.5 && angleToTarget <= 67.5) dirStr = 'Northeast';
+              else if (angleToTarget > 67.5 && angleToTarget <= 112.5) dirStr = 'East';
+              else if (angleToTarget > 112.5 && angleToTarget <= 157.5) dirStr = 'Southeast';
+              else if (angleToTarget > 157.5 && angleToTarget <= 202.5) dirStr = 'South';
+              else if (angleToTarget > 202.5 && angleToTarget <= 247.5) dirStr = 'Southwest';
+              else if (angleToTarget > 247.5 && angleToTarget <= 292.5) dirStr = 'West';
+              else if (angleToTarget > 292.5 && angleToTarget <= 337.5) dirStr = 'Northwest';
+
+              sendCombatLog(session, [{ event: 'MESSAGE', text: `To track ${target.name || target.originalName}, head ${dirStr}.` }]);
+          } else {
+              sendCombatLog(session, [{ event: 'MESSAGE', text: `You have lost your tracking target.` }]);
+              session.trackingTargetId = null;
+          }
+      }
     }
 
     const aiApi = {
@@ -2992,6 +3204,20 @@ function processEnvironment() {
     getZoneDef: ZoneSystem.getZoneDef,
     sendCombatLog
   });
+
+  const now = Date.now();
+  for (const zoneKey in zoneInstances) {
+      const zone = zoneInstances[zoneKey];
+      if (zone.corpses) {
+          zone.corpses = zone.corpses.filter(c => {
+              if (now >= c.decayTime) {
+                  // Poof!
+                  return false;
+              }
+              return true;
+          });
+      }
+  }
 }
 
 function handleLook(session, skipText = false) {
@@ -3048,6 +3274,29 @@ function handleLook(session, skipText = false) {
           entities.push({ ...mob.networkData, x: mob.x, y: mob.y, z: mob.z || 0, heading: mob.heading || 0, hp: mob.hp });
       }
 
+      // ── Corpses ──
+      if (instance.corpses) {
+          for (const corpse of instance.corpses) {
+              const distSq = getDistanceSq(corpse.x, corpse.y, char.x, char.y);
+              if (distSq > VIEW_DISTANCE * VIEW_DISTANCE) continue;
+
+              if (!corpse.networkData) {
+                  corpse.networkData = {
+                      id: corpse.id,
+                      name: corpse.name,
+                      type: 'corpse',
+                      race: corpse.race || 1,
+                      gender: corpse.gender || 0,
+                      face: corpse.face || 0,
+                      appearance: corpse.appearance || {},
+                      equipVisuals: corpse.equipVisuals || {},
+                      size: corpse.size || 6
+                  };
+              }
+              entities.push({ ...corpse.networkData, x: corpse.x, y: corpse.y, z: corpse.z || 0, heading: corpse.heading || 0, hp: 0 });
+          }
+      }
+
       // ── Mining Nodes ──
       if (instance.liveNodes) {
         for (const node of instance.liveNodes) {
@@ -3097,6 +3346,7 @@ function handleLook(session, skipText = false) {
           }
           entities.push({
               ...other.char.networkData,
+              pvpFaction: other.char.pvpFaction || 0,
               sneaking: other.char.isSneaking, hidden: other.char.isHidden,
               equipVisuals: getEquipVisuals(other),
               x: other.char.x, y: other.char.y, z: other.char.z || 0, heading: other.char.heading || 0
@@ -3232,6 +3482,18 @@ function handleConsider(session) {
   }
 
   const mob = session.combatTarget;
+  
+  // Corpse Consider
+  if (mob.type === 'corpse') {
+      const remainingMs = mob.decayTime - Date.now();
+      const remainingMins = Math.floor(remainingMs / 60000);
+      const remainingSecs = Math.floor((remainingMs % 60000) / 1000);
+      return sendCombatLog(session, [{
+          event: 'MESSAGE',
+          text: `This corpse will decay in ${remainingMins} minute(s) and ${remainingSecs} second(s).`
+      }]);
+  }
+
   const playerLvl = session.char.level;
   const mobLvl = mob.level || 1;
   const diff = mobLvl - playerLvl;
@@ -3299,6 +3561,71 @@ function handleEmote(session, msg) {
 
 async function initZones() {
   return ZoneSystem.initZones();
+}
+
+function handleGetTrackingList(session) {
+  const char = session.char;
+  const skill = combat.getCharSkill(char, 'tracking');
+  if (skill <= 0) return;
+
+  let multiplier = 7; // Bard
+  if (char.class === 'Ranger') multiplier = 12;
+  if (char.class === 'Druid') multiplier = 10;
+  const maxRangeSq = (skill * multiplier) * (skill * multiplier);
+
+  const zone = zoneInstances[char.zoneId];
+  if (!zone) return;
+
+  const list = [];
+  const charLvl = char.level;
+
+  const checkAddEntity = (ent, isPlayer) => {
+    if (ent.id === char.id) return;
+    const distSq = getDistanceSq(char.x, char.y, ent.x, ent.y);
+    if (distSq <= maxRangeSq) {
+      const diff = ent.level - charLvl;
+      let con = 'green';
+      if (diff >= 3) con = 'red';
+      else if (diff >= 1) con = 'yellow';
+      else if (diff === 0) con = 'white';
+      else if (diff >= -2) con = 'blue';
+      else if (diff >= -5) con = 'lightblue';
+      else if (diff < -5) {
+         if (charLvl < 10) con = 'green';
+         else con = 'gray'; // trivial
+      }
+
+      list.push({
+        id: ent.id,
+        name: ent.name || ent.originalName,
+        dist: Math.sqrt(distSq),
+        con: con,
+        isPlayer: isPlayer
+      });
+    }
+  };
+
+  if (zone.mobs) {
+    for (const mob of Object.values(zone.mobs)) {
+      if (mob.hp > 0) checkAddEntity(mob, false);
+    }
+  }
+  for (const p of Object.values(activeSessions)) {
+    if (p.char && p.char.zoneId === char.zoneId && p.char.hp > 0) {
+      checkAddEntity(p.char, true);
+    }
+  }
+
+  // Sort by spawn order / default (ID works for now)
+  send(session.ws, { type: 'TRACKING_LIST', targets: list });
+}
+
+function handleSetTrackingTarget(session, msg) {
+  session.trackingTargetId = msg.targetId;
+}
+
+function handleClearTracking(session) {
+  session.trackingTargetId = null;
 }
 
 module.exports = {

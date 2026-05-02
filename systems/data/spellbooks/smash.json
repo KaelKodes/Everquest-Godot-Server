@@ -1,0 +1,26 @@
+{
+  "spellbook": [
+    {
+      "bookSlot": 0,
+      "spell_key": "throw_stone",
+      "id": 5225
+    },
+    {
+      "bookSlot": 1,
+      "spell_key": "mercenary_taunt",
+      "id": 17189
+    }
+  ],
+  "memorized": [
+    {
+      "slot": 0,
+      "spell_key": "throw_stone",
+      "id": 5225
+    },
+    {
+      "slot": 1,
+      "spell_key": "mercenary_taunt",
+      "id": 17189
+    }
+  ]
+}

@@ -396,6 +396,65 @@ async function handleMoveItem(session, msg) {
   const { fromSlot, toSlot } = msg;
   if (fromSlot === toSlot) return;
 
+  const invRow = session.inventory.find(i => i.slot === fromSlot);
+  if (!invRow) return;
+
+  const itemDef = ItemDB.getById(invRow.item_key) || ITEMS[invRow.item_key] || {};
+
+  // Check if target is a bag slot
+  if ((toSlot >= 251 && toSlot <= 330) || (toSlot >= 2531 && toSlot <= 2770) || (toSlot >= 2511 && toSlot <= 2590)) {
+    // Cannot put bags inside bags
+    if (itemDef.itemtype === 1) {
+      send(session.ws, { type: 'SYSTEM_MSG', message: 'You cannot put a container inside another container.' });
+      return;
+    }
+
+    let parentBagSlot = 0;
+    if (toSlot >= 251 && toSlot <= 330) {
+        parentBagSlot = 22 + Math.floor((toSlot - 251) / 10);
+    } else if (toSlot >= 2531 && toSlot <= 2770) {
+        parentBagSlot = 2000 + Math.floor((toSlot - 2531) / 10);
+    } else if (toSlot >= 2511 && toSlot <= 2590) {
+        parentBagSlot = 2500 + Math.floor((toSlot - 2511) / 10);
+    }
+
+    const parentBagRow = session.inventory.find(i => i.slot === parentBagSlot);
+    if (!parentBagRow) {
+      send(session.ws, { type: 'SYSTEM_MSG', message: 'There is no bag there.' });
+      return;
+    }
+
+    const bagDef = ItemDB.getById(parentBagRow.item_key) || ITEMS[parentBagRow.item_key] || {};
+    
+    // Check if item fits in the bag (bagsize 0-4 = tiny-giant, item size 0-4)
+    if (itemDef.size > bagDef.bagsize) {
+      send(session.ws, { type: 'SYSTEM_MSG', message: 'That item is too large to fit in this container.' });
+      return;
+    }
+  }
+
+  // If moving a bag to another slot, ensure the target slot is not inside a bag
+  if (itemDef.itemtype === 1) {
+      if ((toSlot >= 251 && toSlot <= 330) || (toSlot >= 2531 && toSlot <= 2770) || (toSlot >= 2511 && toSlot <= 2590)) {
+          send(session.ws, { type: 'SYSTEM_MSG', message: 'You cannot put a container inside another container.' });
+          return;
+      }
+      
+      // If moving a bag, and there's an item in the target slot, that target item will swap with the bag.
+      // So if target item is NOT a bag, it will try to go into fromSlot.
+      // If fromSlot is an equip slot or inside a bag, it might be invalid.
+      // For MVP, we let eqemu_db swap them, but EQ might not allow swapping bags if target is occupied.
+      const toRow = session.inventory.find(i => i.slot === toSlot);
+      if (toRow) {
+          // If swapping, ensure the swapped item can go into fromSlot
+          if (fromSlot >= 251 && fromSlot <= 330) {
+               // The fromSlot is a bag slot, so we're swapping an item out of a bag WITH a bag into the bag. Invalid.
+               send(session.ws, { type: 'SYSTEM_MSG', message: 'Invalid container swap.' });
+               return;
+          }
+      }
+  }
+
   await DB.moveItem(session.char.id, fromSlot, toSlot);
 
   session.inventory = await DB.getInventory(session.char.id);
@@ -669,7 +728,14 @@ async function handleRightClick(session, msg) {
   const zone = zoneInstances[char.zoneId];
 
   if (!zone || !zone.liveMobs) return;
-  const target = zone.liveMobs.find(m => String(m.id) === String(targetId));
+  let target = zone.liveMobs.find(m => String(m.id) === String(targetId));
+  let effectiveType = target ? target.npcType : null;
+
+  if (!target && zone.corpses) {
+      target = zone.corpses.find(c => String(c.id) === String(targetId));
+      if (target) effectiveType = 'corpse';
+  }
+
   if (!target) return;
 
   const distSq = getDistanceSq(char.x, char.y, target.x, target.y);
@@ -679,11 +745,42 @@ async function handleRightClick(session, msg) {
   }
 
   // Safety Fallback: If npcType is generic MOB, try re-resolving via eqClass
-  let effectiveType = target.npcType;
   if (effectiveType === NPC_TYPES.MOB && target.eqClass > 0) {
       const { mapEqemuClassToNpcType } = require('../utils/npcUtils');
       effectiveType = mapEqemuClassToNpcType(target.eqClass);
       target.npcType = effectiveType; // Fix it for future clicks
+  }
+
+  if (effectiveType === 'corpse') {
+      let lootedSomething = false;
+      for (const lootEntry of target.loot) {
+          const itemDef = ITEMS[lootEntry.itemKey];
+          if (itemDef) {
+              if (itemDef.type !== 'weapon' && itemDef.type !== 'armor' && itemDef.type !== 'shield' && itemDef.type !== 'clothing') {
+                  const existing = session.inventory.find(i => i.item_key === lootEntry.itemKey);
+                  if (existing) {
+                      await DB.updateItemQuantity(existing.id, session.char.id, 1);
+                  } else {
+                      await DB.addItem(session.char.id, lootEntry.itemKey, 0, 0, 1);
+                  }
+              } else {
+                  await DB.addItem(session.char.id, lootEntry.itemKey, 0, 0, 1);
+              }
+              sendCombatLog(session, [{ event: 'LOOT', item: itemDef.name, source: target.originalName }]);
+              lootedSomething = true;
+          }
+      }
+      
+      if (lootedSomething) {
+          session.inventory = await DB.getInventory(session.char.id);
+          sendInventory(session);
+      } else {
+          sendCombatLog(session, [{ event: 'MESSAGE', text: `This corpse is empty.` }]);
+      }
+      
+      // Fast decay after looted
+      target.decayTime = 0; 
+      return;
   }
 
   // Handle based on NPC type
@@ -759,6 +856,13 @@ async function handleRightClick(session, msg) {
       let newHeading = (Math.atan2(dx, dy) / (2 * Math.PI)) * 512;
       if (newHeading < 0) newHeading += 512;
       target.heading = newHeading;
+
+      // Drop Invis
+      if (session.char.invisible) {
+          session.char.invisible = false;
+          send(session.ws, { type: 'SYSTEM_MSG', message: 'You appear.' });
+          // Note: In a full system, you would call buff removal logic here
+      }
 
       send(session.ws, { type: 'OPEN_BANK', npcId: target.id });
       break;

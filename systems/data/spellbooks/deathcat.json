@@ -1,0 +1,16 @@
+{
+  "spellbook": [
+    {
+      "bookSlot": 0,
+      "spell_key": "spike_of_disease",
+      "id": 5012
+    }
+  ],
+  "memorized": [
+    {
+      "slot": 0,
+      "spell_key": "spike_of_disease",
+      "id": 5012
+    }
+  ]
+}

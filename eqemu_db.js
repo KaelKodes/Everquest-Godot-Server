@@ -512,7 +512,8 @@ async function getAllItems() {
                reclevel, reqlevel, scrolllevel, scrolleffect, focuseffect, light,
                lore, magic, nodrop, norent, size, endur, fr, cr, mr, pr, dr,
                elemdmgtype, elemdmgamt, banedmgrace, banedmgamt, placeable,
-               augslot1type, augslot2type, augslot3type, augslot4type, augslot5type, augslot6type
+               augslot1type, augslot2type, augslot3type, augslot4type, augslot5type, augslot6type,
+               bagslots, bagsize, bagwr, bagtype
         FROM items
     `;
 

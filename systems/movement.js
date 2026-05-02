@@ -34,6 +34,7 @@ function interruptCasting(session, message) {
 
 function handleSwimTick(session, msg) {
   if (session && session.char) {
+    session.isInWater = true;
     combat.trySkillUp(session, 'swimming');
   }
 }
@@ -96,6 +97,12 @@ async function handleZone(session, msg) {
 
 function handleUpdatePos(session, msg) {
   if (session.char) {
+    if (session.tickDistance === undefined) session.tickDistance = 0;
+    let dx = 0, dy = 0;
+    if (msg.x != null && session.char.x != null) dx = msg.x - session.char.x;
+    if (msg.y != null && session.char.y != null) dy = msg.y - session.char.y;
+    session.tickDistance += Math.sqrt(dx*dx + dy*dy);
+
     if (msg.x != null) session.char.x = msg.x;
     if (msg.y != null) session.char.y = msg.y;
     if (msg.z != null) session.char.z = msg.z;
@@ -355,12 +362,24 @@ async function handleSuccor(session) {
 }
 
 
+function handleJump(session) {
+  if (!session || !session.char) return;
+  if (session.char.fatigue === undefined) session.char.fatigue = 0;
+  
+  let staMod = 150.0 / (100.0 + (session.effectiveStats && session.effectiveStats.sta ? session.effectiveStats.sta : 100));
+  let cost = 4.0 * staMod;
+  
+  session.char.fatigue += cost;
+  if (session.char.fatigue > 100) session.char.fatigue = 100;
+}
+
 module.exports = {
   handleZone,
   handleUpdatePos,
   handleUpdateSneak,
   handleHide,
   handleSwimTick,
+  handleJump,
   breakSneak,
   breakHide,
   handleTeleporterPad,

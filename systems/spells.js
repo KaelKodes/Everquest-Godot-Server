@@ -46,7 +46,8 @@ function loadSpellbookFromFile(session) {
     const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
     session.spellbook = data.spellbook || [];
     session.spells = data.memorized || [];
-    console.log(`[SPELLBOOK] Loaded ${session.spellbook.length} scribed spells, ${session.spells.length} memorized for ${session.char.name}`);
+    session.spellLoadouts = data.loadouts || {};
+    console.log(`[SPELLBOOK] Loaded ${session.spellbook.length} scribed spells, ${session.spells.length} memorized, ${Object.keys(session.spellLoadouts).length} loadouts for ${session.char.name}`);
   } catch (e) {
     console.error(`[SPELLBOOK] Load error for ${session.char.name}: ${e.message}`);
     buildStarterSpellbook(session);
@@ -61,6 +62,7 @@ function saveSpellbookToFile(session) {
     const data = {
       spellbook: session.spellbook,
       memorized: session.spells,
+      loadouts: session.spellLoadouts || {}
     };
     fs.writeFileSync(getSpellbookPath(session.char.name), JSON.stringify(data, null, 2));
   } catch (e) {
@@ -323,6 +325,55 @@ function handleSwapBookSpells(session, msg) {
   sendSpellbookFull(session);
 }
 
+function handleSaveSpellLoadout(session, msg) {
+  const { name } = msg;
+  if (!name) return;
+  if (!session.spellLoadouts) session.spellLoadouts = {};
+  
+  // Save current memorized spells
+  session.spellLoadouts[name] = JSON.parse(JSON.stringify(session.spells));
+  saveSpellbookToFile(session);
+  
+  send(session.ws, { type: 'MESSAGE', text: `Saved spell loadout: ${name}` });
+  sendSpellLoadouts(session);
+}
+
+function handleLoadSpellLoadout(session, msg) {
+  const { name } = msg;
+  if (!name || !session.spellLoadouts || !session.spellLoadouts[name]) return;
+  
+  // Must be sitting
+  if (session.char.state !== 'medding') {
+    send(session.ws, { type: 'MESSAGE', text: 'You must be sitting to memorize spells.' });
+    return;
+  }
+  
+  session.spells = JSON.parse(JSON.stringify(session.spellLoadouts[name]));
+  saveSpellbookToFile(session);
+  
+  send(session.ws, { type: 'MESSAGE', text: `Loaded spell loadout: ${name}` });
+  sendSpellbook(session);
+}
+
+function handleDeleteSpellLoadout(session, msg) {
+  const { name } = msg;
+  if (!name || !session.spellLoadouts || !session.spellLoadouts[name]) return;
+  
+  delete session.spellLoadouts[name];
+  saveSpellbookToFile(session);
+  
+  send(session.ws, { type: 'MESSAGE', text: `Deleted spell loadout: ${name}` });
+  sendSpellLoadouts(session);
+}
+
+function handleClearSpells(session, msg) {
+  session.spells = [];
+  saveSpellbookToFile(session);
+  
+  send(session.ws, { type: 'MESSAGE', text: 'Cleared all memorized spells.' });
+  sendSpellbook(session);
+}
+
 // ── Send Functions ──────────────────────────────────────────────────
 
 function sendSpellbook(session) {
@@ -351,8 +402,9 @@ function sendSpellbook(session) {
   });
   send(session.ws, { type: 'SPELLBOOK_UPDATE', spells });
 
-  // Also send full spellbook
+  // Also send full spellbook and loadouts
   sendSpellbookFull(session);
+  sendSpellLoadouts(session);
 }
 
 function sendSpellbookFull(session) {
@@ -379,6 +431,13 @@ function sendSpellbookFull(session) {
     };
   });
   send(session.ws, { type: 'SPELLBOOK_FULL', entries });
+}
+
+function sendSpellLoadouts(session) {
+  send(session.ws, {
+    type: 'SPELL_LOADOUTS',
+    loadouts: Object.keys(session.spellLoadouts || {})
+  });
 }
 
 function sendBuffs(session) {
@@ -463,7 +522,23 @@ async function applySpellEffect(session, spellDef, spellKey) {
 
   // Handle instant Mana / Endurance (SPA 15, 189)
   const isDetrimental = !spellDef.goodEffect;
-  const instantTarget = isDetrimental ? session.combatTarget : session.char;
+  let instantTarget = session.char;
+  let instantTargetSession = session;
+  
+  if (isDetrimental) {
+      instantTarget = session.combatTarget || session.char;
+  } else if (session.combatTarget) {
+      if (session.combatTarget.char) { // It's a player session
+          const combat = require('./combat');
+          if (combat.canInteract(session, session.combatTarget, true)) {
+              instantTargetSession = session.combatTarget;
+              instantTarget = instantTargetSession.char;
+          }
+      } else if (session.combatTarget.npcType === 'pet') {
+          instantTarget = session.combatTarget;
+          instantTargetSession = null; // Pets don't have sessions
+      }
+  }
   
   if (instantTarget && !spellDef.duration) {
      const manaEffect = (spellDef.effects || []).find(e => e.spa === 15);
@@ -481,11 +556,13 @@ async function applySpellEffect(session, spellDef, spellKey) {
      }
      
      if (endEffect) {
-         const val = endEffect.base;
+         const val = endEffect.base; // Val > 0 means restoring endurance
          if (val > 0) {
-             instantTarget.endurance = Math.min((instantTarget.endurance || 0) + val, instantTarget.maxEndurance || instantTarget.endurance || 0);
+             instantTarget.fatigue = Math.max(0, (instantTarget.fatigue || 0) - val);
+             if (instantTarget === session.char) events.push({ event: 'MESSAGE', text: `You feel invigorated.` });
          } else if (val < 0) {
-             instantTarget.endurance = Math.max(0, (instantTarget.endurance || 0) - Math.abs(val));
+             instantTarget.fatigue = Math.min(100, (instantTarget.fatigue || 0) + Math.abs(val));
+             if (instantTarget === session.char) events.push({ event: 'MESSAGE', text: `You feel exhausted.` });
          }
      }
      if ((manaEffect || endEffect) && instantTarget === session.char) sendStatus(session);
@@ -573,18 +650,22 @@ async function applySpellEffect(session, spellDef, spellKey) {
     case 'heal': {
       let healAmt = spellDef.amount || 10;
       if (healMod > 0) healAmt = Math.floor(healAmt * (1.0 + (healMod / 100.0)));
-      session.char.hp = Math.min(session.char.hp + healAmt, session.effectiveStats.hp);
-      events.push({ event: 'SPELL_HEAL', source: 'You', target: 'You', spell: spellDef.name, amount: healAmt });
+      
+      const maxHp = instantTarget === session.char ? session.effectiveStats.hp : (instantTarget.maxHp || 100);
+      instantTarget.hp = Math.min((instantTarget.hp || 0) + healAmt, maxHp);
+      
+      const targetName = instantTarget === session.char ? 'You' : (instantTarget.name || 'someone');
+      events.push({ event: 'SPELL_HEAL', source: 'You', target: targetName, spell: spellDef.name, amount: healAmt });
 
       // AE Heal Aggro: Find all mobs that have the healed target on their hate list
       const zone = module.exports.zoneInstances ? module.exports.zoneInstances[session.char.zoneId] : null;
       if (zone && zone.liveMobs) {
         const hateAmt = Math.floor(healAmt / 3);
         if (hateAmt > 0) {
-          for (const mob of zone.liveMobs) {
-            if (mob.hateList && mob.hateList.entries.some(e => e.entityId === session.char.name)) {
+          for (const m of zone.liveMobs) {
+            if (m.hateList && m.hateList.entries.some(e => e.entityId === instantTarget.name)) {
               // The mob is currently fighting the person who got healed. Add hate to the HEALER.
-              mob.hateList.addEntToHateList(session.char.name, hateAmt, 0);
+              m.hateList.addEntToHateList(session.char.name, hateAmt, 0);
             }
           }
         }
@@ -685,7 +766,8 @@ async function applySpellEffect(session, spellDef, spellKey) {
       break;
     }
     case 'buff': {
-      session.buffs = session.buffs.filter(b => b.name !== spellDef.buffName);
+      if (!instantTargetSession) break;
+      instantTargetSession.buffs = instantTargetSession.buffs.filter(b => b.name !== spellDef.buffName);
       
       const runeEffect = (spellDef.effects || []).find(e => e.spa === 55);
       const runeHealth = runeEffect ? Math.abs(runeEffect.max || runeEffect.base) : 0;
@@ -693,7 +775,7 @@ async function applySpellEffect(session, spellDef, spellKey) {
       let dur = spellDef.duration;
       if (durMod > 0) dur = Math.floor(dur * (1.0 + (durMod / 100.0)));
       
-      session.buffs.push({
+      instantTargetSession.buffs.push({
         name: spellDef.buffName,
         duration: dur,
         maxDuration: dur,
@@ -705,23 +787,30 @@ async function applySpellEffect(session, spellDef, spellKey) {
         memIcon: spellDef.visual?.memIcon || 0,
         isSong: spellDef.derived?.isBardSong === true
       });
-      const buffMsg = spellDef.messages?.castOnYou || `You feel ${spellDef.buffName} take hold.`;
+      const buffMsg = instantTargetSession === session 
+        ? (spellDef.messages?.castOnYou || `You feel ${spellDef.buffName} take hold.`)
+        : (spellDef.messages?.castOnOther ? `${instantTargetSession.char.name}${spellDef.messages.castOnOther}` : `${instantTargetSession.char.name} looks buffed.`);
+      
       events.push({ event: 'MESSAGE', text: buffMsg });
-      session.effectiveStats = calcEffectiveStats(session.char, session.inventory, session.buffs);
-      session.char.maxHp = session.effectiveStats.hp;
-      session.char.maxMana = session.effectiveStats.mana;
-      sendBuffs(session);
-      sendStatus(session);
+      if (instantTargetSession !== session && instantTargetSession.ws) {
+         instantTargetSession.ws.send(JSON.stringify({ type: 'CHAT', channel: 'system', text: spellDef.messages?.castOnYou || `You feel ${spellDef.buffName} take hold.` }));
+      }
+      instantTargetSession.effectiveStats = calcEffectiveStats(instantTargetSession.char, instantTargetSession.inventory, instantTargetSession.buffs);
+      instantTargetSession.char.maxHp = instantTargetSession.effectiveStats.hp;
+      instantTargetSession.char.maxMana = instantTargetSession.effectiveStats.mana;
+      sendBuffs(instantTargetSession);
+      sendStatus(instantTargetSession);
       break;
     }
     case 'cure': {
+      if (!instantTargetSession) break;
       const cureSpas = (spellDef.effects || []).map(e => e.spa);
       const curesPoison = cureSpas.includes(35) || spellDef.name.toLowerCase().includes('poison') || spellDef.name.toLowerCase().includes('antidote');
       const curesDisease = cureSpas.includes(36) || spellDef.name.toLowerCase().includes('disease');
       const curesCurse = cureSpas.includes(116) || spellDef.name.toLowerCase().includes('curse');
       const curesAll = spellDef.name.toLowerCase().includes('blood') || spellDef.name.toLowerCase().includes('aura');
       
-      session.buffs = session.buffs.filter(b => {
+      instantTargetSession.buffs = instantTargetSession.buffs.filter(b => {
         if (b.beneficial) return true;
         if (curesAll) return false;
         if (Array.isArray(b.effects)) {
@@ -734,10 +823,16 @@ async function applySpellEffect(session, spellDef, spellKey) {
         }
         return true;
       });
-      events.push({ event: 'MESSAGE', text: `You have been cured.` });
-      session.effectiveStats = calcEffectiveStats(session.char, session.inventory, session.buffs);
-      sendBuffs(session);
-      sendStatus(session);
+      
+      instantTargetSession.effectiveStats = calcEffectiveStats(instantTargetSession.char, instantTargetSession.inventory, instantTargetSession.buffs);
+      instantTargetSession.char.maxHp = instantTargetSession.effectiveStats.hp;
+      instantTargetSession.char.maxMana = instantTargetSession.effectiveStats.mana;
+      sendBuffs(instantTargetSession);
+      sendStatus(instantTargetSession);
+      events.push({ event: 'MESSAGE', text: `You cured ${instantTargetSession === session ? 'yourself' : instantTargetSession.char.name}.` });
+      if (instantTargetSession !== session && instantTargetSession.ws) {
+         instantTargetSession.ws.send(JSON.stringify({ type: 'CHAT', channel: 'system', text: `You have been cured by ${session.char.name}.` }));
+      }
       break;
     }
     case 'gate': {
@@ -861,6 +956,11 @@ module.exports = {
   handleMemorizeSpell,
   handleForgetSpell,
   handleSwapBookSpells,
+  handleSaveSpellLoadout,
+  handleLoadSpellLoadout,
+  handleDeleteSpellLoadout,
+  handleClearSpells,
+  sendSpellLoadouts,
   sendSpellbook,
   sendSpellbookFull,
   sendBuffs,

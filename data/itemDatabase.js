@@ -98,6 +98,10 @@ class ItemDatabase {
           augslot4type: rawItem.augslot4type || 0,
           augslot5type: rawItem.augslot5type || 0,
           augslot6type: rawItem.augslot6type || 0,
+          bagslots: rawItem.bagslots || 0,
+          bagsize: rawItem.bagsize || 0,
+          bagwr: rawItem.bagwr || 0,
+          bagtype: rawItem.bagtype || 0,
         };
 
         const legacyKey = this.generateKey(rawItem.name);

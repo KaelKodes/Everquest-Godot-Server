@@ -156,11 +156,18 @@ function calcEffectiveStats(char, inventory, buffs = []) {
   stats.offhandDmg = weapon.offhandDmg;
   stats.offhandDly = weapon.offhandDly;
 
+  // 8. Fatigue Penalties
+  if (char.fatigue >= 100 && stats.sta < 100) {
+    stats.str = Math.max(1, stats.str - 15);
+    stats.agi = Math.max(1, stats.agi - 15);
+    stats.dex = Math.max(1, stats.dex - 15);
+  }
+
   return stats;
 }
 
 function getWeaponStats(inventory) {
-  let stats = { damage: 2, delay: 30, offhandDmg: 0, offhandDly: 0 };
+  let stats = { damage: 2, delay: 30, weight: 0.0, offhandDmg: 0, offhandDly: 0, offhandWeight: 0.0 };
   
   for (const row of inventory) {
     if (row.equipped !== 1) continue;
@@ -170,9 +177,11 @@ function getWeaponStats(inventory) {
     if (row.slot === 13) { // Primary
       stats.damage = itemDef.damage || 2;
       stats.delay = itemDef.delay || 30;
+      stats.weight = (itemDef.weight || 0) / 10.0;
     } else if (row.slot === 14) { // Secondary
       stats.offhandDmg = itemDef.damage || 0;
       stats.offhandDly = itemDef.delay || 0;
+      stats.offhandWeight = (itemDef.weight || 0) / 10.0;
     }
   }
   return stats;
@@ -224,6 +233,55 @@ function processRegen(session, dt) {
   if (session.regenTimer <= 0) {
     session.regenTimer = 6.0;
     const rates = combat.getRegenRates(char.class, char.level, effective);
+
+    if (char.fatigue === undefined) char.fatigue = 0;
+    let fatigueChange = 0;
+
+    const dist = session.tickDistance || 0;
+    const isMoving = dist > 1.0;
+    const isSprinting = dist > 10.0; 
+    const isSwimming = session.isInWater || false;
+    session.isInWater = false;
+
+    if (isMoving) {
+      if (isSwimming) {
+        let swimSkill = combat.getCharSkill(char, 'swimming') || 0;
+        fatigueChange += (1.0 - (swimSkill / 100));
+      } else if (isSprinting) {
+        fatigueChange += 0.5;
+      } else {
+        fatigueChange -= 0.5;
+      }
+    } else {
+      if (char.state === 'medding') {
+        fatigueChange -= 4.0;
+      } else {
+        fatigueChange -= 2.0;
+      }
+    }
+
+    let totalWeight = 0;
+    const ItemDB = require('../data/itemDatabase');
+    for (const row of session.inventory) {
+      const itemDef = ItemDB.getById(row.item_key) || ITEMS[row.item_key];
+      if (itemDef && itemDef.weight) {
+        totalWeight += (itemDef.weight / 10) * (row.quantity || 1);
+      }
+    }
+    const maxWeight = effective.str; 
+    if (totalWeight > maxWeight) {
+      fatigueChange += ((totalWeight - maxWeight) * 0.2);
+    }
+
+    let oldFatigue = char.fatigue;
+    char.fatigue += fatigueChange;
+    if (char.fatigue < 0) char.fatigue = 0;
+    if (char.fatigue > 100) char.fatigue = 100;
+    session.tickDistance = 0; // reset
+
+    if ((oldFatigue < 100 && char.fatigue >= 100) || (oldFatigue >= 100 && char.fatigue < 100)) {
+        session.effectiveStats = calcEffectiveStats(char, session.inventory, session.buffs);
+    }
 
     if (char.state === 'medding') {
       char.hp = combat.clamp(char.hp + rates.hpSitting, 0, effective.hp);

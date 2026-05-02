@@ -1145,6 +1145,27 @@ function interruptCasting(session, message) {
 }
 
 async function applySpellEffect(session, spellDef, spellKey) {
+  // Broadcast SPELL_ANIMATION to everyone in the zone
+  const targetId = session.combatTarget ? session.combatTarget.id : `player_${session.char.id}`;
+  const spellAnimId = spellDef.visual && spellDef.visual.spellAffectIndex !== undefined ? spellDef.visual.spellAffectIndex : -1;
+  
+  if (spellAnimId !== -1) {
+    const payload = JSON.stringify({
+      type: 'SPELL_ANIMATION',
+      casterId: `player_${session.char.id}`,
+      targetId: targetId,
+      spellAnimId: spellAnimId,
+      spellName: spellDef.name,
+      isAura: spellDef.duration > 0
+    });
+    
+    for (const [ws, client] of sessions) {
+      if (client.char && client.char.zoneId === session.char.zoneId && ws.readyState === 1) {
+        try { ws.send(payload); } catch(e) {}
+      }
+    }
+  }
+
   return SpellSystem.applySpellEffect(session, spellDef, spellKey);
 }
 
@@ -2731,7 +2752,7 @@ function sendStatus(session) {
         if (!atlas) return null;
         const worldPos = WorldAtlas.localToWorld(char.zoneId, char.x || 0, char.y || 0);
         // Use vision viewDistance or fallback to 15000 for neighbor search
-        const visionState = getVisionState(session);
+        const visionState = VisionSystem.getVisionState(session, zone);
         const searchRadius = Math.max(visionState.viewDistance || 15000, 15000);
         const neighbors = WorldAtlas.getNeighborZones(char.zoneId, char.x || 0, char.y || 0, searchRadius);
         return {
@@ -3083,7 +3104,9 @@ function handleLook(session, skipText = false) {
       }
   }
 
-  const payload = { type: 'ZONE_STATE', entities, doors: instance ? (instance.doors || []) : [], vision: {
+  const ambienceTrack = (zoneDef && zoneDef.ambience) ? zoneDef.ambience : (char.zoneId + "am");
+
+  const payload = { type: 'ZONE_STATE', entities, doors: instance ? (instance.doors || []) : [], ambience: ambienceTrack, vision: {
     mode: vision.mode,
     renderStyle: vision.renderStyle,
     effectiveness: vision.effectiveness,

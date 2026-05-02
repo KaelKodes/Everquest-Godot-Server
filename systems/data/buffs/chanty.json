@@ -1,9 +1,29 @@
 {
-  "savedAt": 1777703227815,
+  "savedAt": 1777707111251,
   "buffs": [
     {
+      "name": "Strengthen",
+      "duration": 41.03699999989074,
+      "maxDuration": 1620,
+      "beneficial": true,
+      "effects": [
+        {
+          "slot": 1,
+          "spa": 4,
+          "spaName": "sTR",
+          "base": 4,
+          "limit": 0,
+          "max": 10,
+          "formula": 102
+        }
+      ],
+      "ac": 0,
+      "icon": 100,
+      "memIcon": 6
+    },
+    {
       "name": "Minor Shielding",
-      "duration": 764.3309999999094,
+      "duration": 304.6869999999061,
       "maxDuration": 1620,
       "beneficial": true,
       "effects": [
@@ -29,26 +49,6 @@
       "ac": 10,
       "icon": 100,
       "memIcon": 133
-    },
-    {
-      "name": "Strengthen",
-      "duration": 768.9309999999105,
-      "maxDuration": 1620,
-      "beneficial": true,
-      "effects": [
-        {
-          "slot": 1,
-          "spa": 4,
-          "spaName": "sTR",
-          "base": 4,
-          "limit": 0,
-          "max": 10,
-          "formula": 102
-        }
-      ],
-      "ac": 0,
-      "icon": 100,
-      "memIcon": 6
     }
   ]
 }

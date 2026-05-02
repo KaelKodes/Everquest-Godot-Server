@@ -108,6 +108,11 @@ function createAdaptedSpell(spell) {
         oldTarget = 'enemy'; // Targeted AE
     }
 
+    const isPacify = spell.effects.some(e => e.spa === 30 || e.spa === 86);
+    if (isPacify) {
+        oldTarget = 'enemy';
+    }
+
     // Determine the "old style" single class assignment
     // (For backwards compat; the real data supports multiple classes)
     let primaryClass = 'all';

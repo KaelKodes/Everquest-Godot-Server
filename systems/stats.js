@@ -82,8 +82,10 @@ function calcEffectiveStats(char, inventory, buffs = []) {
     if (itemDef.cha) stats.cha += itemDef.cha;
   }
 
-  // 2. Buff Stat Bonuses (SPAs 4-10)
+  // 2. Buff Stat Bonuses (SPAs 3-10)
   let buffAC = 0;
+  let maxSPA3 = 0;
+  let minSPA3 = 0;
   if (Array.isArray(buffs)) {
     for (const buff of buffs) {
       if (!Array.isArray(buff.effects)) {
@@ -93,6 +95,10 @@ function calcEffectiveStats(char, inventory, buffs = []) {
       for (const eff of buff.effects) {
         switch (eff.spa) {
           case 1:  buffAC    += eff.base; break;
+          case 3: 
+            if (eff.base < 0 && eff.base < minSPA3) minSPA3 = eff.base;
+            if (eff.base > 0 && eff.base > maxSPA3) maxSPA3 = eff.base;
+            break;
           case 4:  stats.str += eff.base; break;
           case 5:  stats.dex += eff.base; break;
           case 6:  stats.agi += eff.base; break;
@@ -103,6 +109,12 @@ function calcEffectiveStats(char, inventory, buffs = []) {
         }
       }
     }
+  }
+
+  if (minSPA3 < 0) {
+    stats.speedMod = Math.max(0.1, 1.0 + (minSPA3 / 100)); // Snared
+  } else {
+    stats.speedMod = 1.0 + (maxSPA3 / 100); // Hasted
   }
 
   // 3. AC Calculation (Mitigation/Avoidance Split)
@@ -169,7 +181,7 @@ function getWeaponStats(inventory) {
 function getWeaponSkillName(inventory) {
   for (const row of inventory) {
     if (row.equipped === 1 && row.slot === 13) {
-      const itemDef = ITEMS[row.item_key];
+      const itemDef = ItemDB.getById(row.item_key) || ITEMS[row.item_key];
       if (itemDef) {
         switch (itemDef.itemtype) {
           case 0:  return '1h_slashing';
@@ -206,17 +218,23 @@ function processRegen(session, dt) {
   const effective = session.effectiveStats;
   if (char.hp <= 0) return;
 
-  const rates = combat.getRegenRates(char.class, char.level, effective);
+  if (session.regenTimer === undefined) session.regenTimer = 6.0;
+  session.regenTimer -= dt;
+  
+  if (session.regenTimer <= 0) {
+    session.regenTimer = 6.0;
+    const rates = combat.getRegenRates(char.class, char.level, effective);
 
-  if (char.state === 'medding') {
-    char.hp = combat.clamp(char.hp + rates.hpSitting, 0, effective.hp);
-    if (effective.mana > 0) {
-      char.mana = combat.clamp(char.mana + rates.manaSitting, 0, effective.mana);
-    }
-  } else if (!session.inCombat) {
-    char.hp = combat.clamp(char.hp + rates.hpStanding, 0, effective.hp);
-    if (effective.mana > 0) {
-      char.mana = combat.clamp(char.mana + rates.manaStanding, 0, effective.mana);
+    if (char.state === 'medding') {
+      char.hp = combat.clamp(char.hp + rates.hpSitting, 0, effective.hp);
+      if (effective.mana > 0) {
+        char.mana = combat.clamp(char.mana + rates.manaSitting, 0, effective.mana);
+      }
+    } else if (!session.inCombat) {
+      char.hp = combat.clamp(char.hp + rates.hpStanding, 0, effective.hp);
+      if (effective.mana > 0) {
+        char.mana = combat.clamp(char.mana + rates.manaStanding, 0, effective.mana);
+      }
     }
   }
 }

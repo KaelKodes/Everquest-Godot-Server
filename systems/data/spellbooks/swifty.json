@@ -34,6 +34,11 @@
       "bookSlot": 6,
       "spell_key": "chant_of_chaos",
       "id": 22491
+    },
+    {
+      "bookSlot": 7,
+      "spell_key": "chords_of_dissonance",
+      "id": 703
     }
   ],
   "memorized": [

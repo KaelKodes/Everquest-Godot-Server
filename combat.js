@@ -20,10 +20,25 @@ function chance(pct) {
 
 // ── Skill System ────────────────────────────────────────────────────
 
-function getMaxSkill(charClass, skillName, level, charRace) {
+function getMaxSkill(charClassId, skillName, level, charRaceId) {
+  const CLASS_ID_TO_NAME = {
+    1: 'warrior', 2: 'cleric', 3: 'paladin', 4: 'ranger', 5: 'shadowknight',
+    6: 'druid', 7: 'monk', 8: 'bard', 9: 'rogue', 10: 'shaman',
+    11: 'necromancer', 12: 'wizard', 13: 'magician', 14: 'enchanter',
+    15: 'beastlord', 16: 'berserker'
+  };
+  const RACE_ID_TO_NAME = {
+    1: 'human', 2: 'barbarian', 3: 'erudite', 4: 'wood_elf', 5: 'high_elf',
+    6: 'dark_elf', 7: 'half_elf', 8: 'dwarf', 9: 'troll', 10: 'ogre',
+    11: 'halfling', 12: 'gnome', 128: 'iksar', 130: 'vah_shir', 330: 'froglok'
+  };
+
+  const charClass = typeof charClassId === 'string' ? charClassId : CLASS_ID_TO_NAME[charClassId];
+  const charRace = typeof charRaceId === 'string' ? charRaceId : RACE_ID_TO_NAME[charRaceId];
+
   let classCap = 0;
   const skillDef = Skills[skillName];
-  if (skillDef && skillDef.classes[charClass]) {
+  if (skillDef && charClass && skillDef.classes[charClass]) {
     const c = skillDef.classes[charClass];
     if (level >= c.levelGranted) {
       classCap = Math.min(c.maxCap, c.capFormula(level));
@@ -287,6 +302,26 @@ function calcMobDamage(mob, defenderMitigationAC) {
   // Improved mitigation logic using the Real Mitigation AC
   const mitigation = Math.floor(defenderMitigationAC * 0.15); // Adjusted multiplier for classic feel
   return Math.max(1, baseDmg - mitigation);
+}
+
+function getMobAttackText(mob) {
+    if (mob.attackType === 1 || mob.attackType === 3) return 'slash';
+    if (mob.attackType === 36) return 'pierce';
+    if (mob.attackType === 4 || mob.attackType === 5) return 'crush';
+    if (mob.attackType === 0) return 'hit';
+    
+    // 28 is hand_to_hand, used for unarmed / monsters
+    if (mob.attackType === 28 || mob.attackType === undefined) {
+        const BITE_RACES = [36, 42, 43, 38, 46, 59, 65, 66, 74, 118, 120];
+        const CLAW_RACES = [44, 57, 61, 117, 116];
+        const STRIKE_RACES = [60, 63, 154];
+        
+        if (BITE_RACES.includes(mob.race)) return 'bite';
+        if (CLAW_RACES.includes(mob.race)) return 'claw';
+        if (STRIKE_RACES.includes(mob.race)) return 'strike';
+        return 'hit';
+    }
+    return 'slash';
 }
 
 // ── Critical Hits ───────────────────────────────────────────────────
@@ -576,5 +611,5 @@ module.exports = {
   calcSpellResist, RESIST_TYPES,
   getCon, xpForLevel, calcXPGain, getRegenRates, checkFizzle,
   calcMaxHP, calcMaxMana,
-  calcAvoidanceAC, calcACSum, calcMitigationAC, calcDisplayedAC,
+  calcAvoidanceAC, calcACSum, calcMitigationAC, calcDisplayedAC, getMobAttackText,
 };

@@ -6,8 +6,8 @@ function processEnvironment(engineCtx) {
   const worldCalendar = State.worldCalendar;
 
   State.envTickCounter++;
-  // Every 45 ticks (90 seconds at 2s tick) = 1 in-game hour
-  if (State.envTickCounter >= 45) {
+  // Every 900 ticks (180 seconds at 200ms tick) = 1 in-game hour (3 real minutes)
+  if (State.envTickCounter >= 900) {
     State.envTickCounter = 0;
 
     // Advance the Norrathian calendar by one hour

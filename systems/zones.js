@@ -90,7 +90,13 @@ async function ensureZoneLoaded(zoneKey, spawnMobFn, spawnMiningNodesFn, spawnMi
       spawnPoints.get(row.spawn2_id).pool.push({
         npc_id: row.npc_id, name: row.name ? row.name.replace(/_/g, ' ').replace(/[0-9]/g, '').trim() : "Unknown",
         level: row.level, hp: row.hp, mindmg: row.mindmg, maxdmg: row.maxdmg,
-        race: row.race || 1, gender: row.gender || 0, npcClass: row.class || 1, chance: row.chance || 0
+        race: row.race || 1, gender: row.gender || 0, npcClass: row.class || 1, chance: row.chance || 0,
+        prim_melee_type: row.prim_melee_type, size: row.size || 6,
+        runspeed: row.runspeed, walkspeed: row.walkspeed, attack_delay: row.attack_delay,
+        textures: {
+            t: row.texture, h: row.helmtexture, w1: row.d_melee_texture1, w2: row.d_melee_texture2,
+            a: row.armtexture, b: row.bracertexture, hnd: row.handtexture, l: row.legtexture, f: row.feettexture
+        }
       });
     }
 
@@ -109,7 +115,11 @@ async function ensureZoneLoaded(zoneKey, spawnMobFn, spawnMiningNodesFn, spawnMi
         maxHp: picked.hp > 0 ? picked.hp : picked.level * 20,
         minDmg: picked.mindmg || Math.max(1, Math.floor(picked.level / 2)),
         maxDmg: picked.maxdmg || Math.max(4, picked.level * 2),
-        attackDelay: 3, xpBase: picked.level * picked.level * 15, respawnTime: point.respawntime
+        attackDelay: picked.attack_delay > 0 ? picked.attack_delay / 10.0 : 3.0, 
+        xpBase: picked.level * picked.level * 15, respawnTime: point.respawntime,
+        attackType: picked.prim_melee_type || 0,
+        size: picked.size || 6, runspeed: picked.runspeed || 1.25, walkspeed: picked.walkspeed || 0.4,
+        textures: picked.textures
       };
 
       const newMob = spawnMobFn(zoneKey, mobDef, point.x, point.y, point.z, point.heading);

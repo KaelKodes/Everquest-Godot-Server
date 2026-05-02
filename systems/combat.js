@@ -111,13 +111,32 @@ async function processCombatTick(session, dt) {
       const bsDmg = combat.calcBackstabDamage(session, damage);
       if (bsDmg > 0) {
         mob.hp -= bsDmg;
-        events.push({ event: 'MELEE_HIT', source: 'You', target: mob.name, damage: bsDmg, text: 'Backstab!' });
+        if (mob.hateList) mob.hateList.addEntToHateList(session.char.name, bsDmg, bsDmg);
+        events.push({ event: 'MELEE_HIT', source: 'You', target: mob.name, damage: bsDmg, text: 'Backstab!', type: 'piercing' });
       } else {
-        events.push({ event: 'MELEE_MISS', source: 'You', target: mob.name, text: 'Backstab missed' });
+        events.push({ event: 'MELEE_MISS', source: 'You', target: mob.name, text: 'Backstab missed', type: 'piercing' });
       }
       session.abilityCooldowns['backstab'] = 10; // 10s cooldown
     }
   } 
+  // -- The Warrior Loop (Taunt) --
+  else if (session.char.class === 'warrior') {
+    if ((!session.abilityCooldowns['taunt'] || session.abilityCooldowns['taunt'] <= 0) && session.attackTimer <= 0) {
+      if (mob.hateList) {
+        const topEnt = mob.hateList.getMobWithMostHateOnList();
+        if (topEnt !== session.char.name) {
+          const topEntry = mob.hateList.entries.find(e => e.entityId === topEnt);
+          const topHate = topEntry ? topEntry.hateAmount : 0;
+          // Taunt sets hate to Top Hate + 1 (classic EQ rule) + small flat amount
+          mob.hateList.setHateAmount(session.char.name, topHate + 10);
+          events.push({ event: 'MESSAGE', text: `You taunt ${mob.name} to ignore others and attack you!` });
+        } else {
+          events.push({ event: 'MESSAGE', text: `You fail to taunt ${mob.name}.` });
+        }
+      }
+      session.abilityCooldowns['taunt'] = 6; // 6s cooldown
+    }
+  }
   // -- The Cleric Loop --
   else if (session.char.class === 'cleric') {
     if (session.char.hp < session.effectiveStats.hp * 0.5 && session.char.mana >= 20 && !session.abilityCooldowns['cast']) {
@@ -164,27 +183,47 @@ async function processCombatTick(session, dt) {
 
   if (session.attackTimer <= 0 && !skipMelee && session.char.state === 'standing') {
     const { damage, delay } = StatsSystem.getWeaponStats(session.inventory);
-    // Check for haste buffs (SPA 11)
-    let hasteMod = 1.0;
+    // Check for haste/slow buffs (SPA 11)
+    let maxHaste = 1.0;
+    let minSlow = 1.0;
     if (Array.isArray(session.buffs)) {
       for (const buff of session.buffs) {
         if (Array.isArray(buff.effects)) {
-          const hasteEff = buff.effects.find(e => e.spa === 11 && e.base > 0);
-          if (hasteEff) hasteMod = Math.min(2.0, 1.0 + (hasteEff.base / 100));
+          const atkEff = buff.effects.find(e => e.spa === 11 && e.base !== 0);
+          if (atkEff) {
+              const mod = atkEff.base / 100.0;
+              if (mod > 1.0 && mod > maxHaste) maxHaste = mod;
+              if (mod < 1.0 && mod < minSlow) minSlow = mod;
+          }
         }
       }
     }
-    session.attackTimer = (delay / 10) / hasteMod;
+    let atkSpeedMod = maxHaste * minSlow;
+    atkSpeedMod = Math.min(2.0, Math.max(0.3, atkSpeedMod)); // Cap at 100% haste, 70% slow
+    session.attackTimer = (delay / 10) / atkSpeedMod;
 
     if (session.isOutOfRange) {
       events.push({ event: 'MESSAGE', text: 'You cannot reach your target!' });
     } else {
-      const atk = combat.calcPlayerATK(session);
+      // Server-side range validation — don't trust client alone
+      const MELEE_RANGE = 50; // EQ world units — characters next to mobs are ~20-40 apart
+      let serverOutOfRange = false;
+      if (session.char.x != null && mob.x != null) {
+        const dx = session.char.x - mob.x;
+        const dy = session.char.y - mob.y;
+        const distSq = dx * dx + dy * dy;
+        serverOutOfRange = distSq > (MELEE_RANGE * MELEE_RANGE);
+      }
+
+      if (serverOutOfRange) {
+        events.push({ event: 'MESSAGE', text: 'Your target is too far away!' });
+      } else {
+      const wpnSkill = StatsSystem.getWeaponSkillName(session.inventory);
+      const atk = combat.calcPlayerATK(session, wpnSkill);
       const def = combat.calcMobDefense(mob);
       const charLvl = session.char.level;
 
       const executeAttack = (isOffhand) => {
-        const wpnSkill = StatsSystem.getWeaponSkillName(session.inventory);
         combat.trySkillUp(session, wpnSkill);
         combat.trySkillUp(session, 'offense');
 
@@ -198,6 +237,8 @@ async function processCombatTick(session, dt) {
           
           if (isCrit || isCripple) dmgRoll *= 2;
           mob.hp -= dmgRoll;
+          if (mob.hateList) mob.hateList.addEntToHateList(session.char.name, dmgRoll, dmgRoll);
+          SpellSystem.breakMez(mob, events);
 
           let txt = isOffhand ? '' : null;
           if (isCrit) txt = isOffhand ? '(Offhand Crit)' : 'Critical hit!';
@@ -205,12 +246,12 @@ async function processCombatTick(session, dt) {
           else if (isOffhand) txt = 'Offhand hit';
 
           if (txt) {
-            events.push({ event: 'MELEE_HIT', source: 'You', target: mob.name, damage: dmgRoll, text: txt });
+            events.push({ event: 'MELEE_HIT', source: 'You', target: mob.name, damage: dmgRoll, text: txt, type: wpnSkill });
           } else {
-            events.push({ event: 'MELEE_HIT', source: 'You', target: mob.name, damage: dmgRoll });
+            events.push({ event: 'MELEE_HIT', source: 'You', target: mob.name, damage: dmgRoll, type: wpnSkill });
           }
         } else {
-          events.push({ event: 'MELEE_MISS', source: 'You', target: mob.name, text: isOffhand ? 'Offhand miss' : null });
+          events.push({ event: 'MELEE_MISS', source: 'You', target: mob.name, text: isOffhand ? 'Offhand miss' : null, type: wpnSkill });
         }
       };
 
@@ -231,6 +272,7 @@ async function processCombatTick(session, dt) {
              if (events.length > 0) sendCombatLog(session, events);
           }
         }, 150);
+      }
       }
     }
   }
@@ -264,6 +306,17 @@ async function processCombatTick(session, dt) {
     for (const msg of session.skillUpMessages) {
        events.push({ event: 'MESSAGE', text: `[color=yellow]You have become better at ${msg.skillName}! (${msg.newLevel})[/color]` });
     }
+    
+    // Sync the updated skills payload to the client so the UI matches the new rank
+    try {
+        session.ws.send(JSON.stringify({
+            type: 'SKILLS_UPDATE',
+            skills: session.char.skills
+        }));
+    } catch (e) {
+        console.error('[COMBAT] Failed to send SKILLS_UPDATE:', e);
+    }
+    
     session.skillUpMessages = [];
   }
 

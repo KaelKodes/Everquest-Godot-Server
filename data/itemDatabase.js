@@ -73,6 +73,7 @@ class ItemDatabase {
           reqlevel: rawItem.reqlevel || 0,
           scrolllevel: rawItem.scrolllevel || 0,
           scrolleffect: rawItem.scrolleffect || 0,
+          focuseffect: rawItem.focuseffect || 0,
           light: rawItem.light || 0,
           icon: rawItem.icon || 0,
           lore: rawItem.lore,

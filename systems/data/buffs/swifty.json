@@ -1,4 +1,43 @@
 {
-  "savedAt": 1777619409415,
-  "buffs": []
+  "savedAt": 1777698076910,
+  "buffs": [
+    {
+      "name": "Chant of Battle",
+      "duration": 8.000000000000036,
+      "maxDuration": 18,
+      "beneficial": true,
+      "effects": [
+        {
+          "slot": 1,
+          "spa": 1,
+          "spaName": "armorClass",
+          "base": 5,
+          "limit": 0,
+          "max": 0,
+          "formula": 109
+        },
+        {
+          "slot": 2,
+          "spa": 4,
+          "spaName": "sTR",
+          "base": 5,
+          "limit": 0,
+          "max": 0,
+          "formula": 109
+        },
+        {
+          "slot": 3,
+          "spa": 5,
+          "spaName": "dEX",
+          "base": 5,
+          "limit": 0,
+          "max": 0,
+          "formula": 109
+        }
+      ],
+      "ac": 5,
+      "icon": 0,
+      "memIcon": 6
+    }
+  ]
 }

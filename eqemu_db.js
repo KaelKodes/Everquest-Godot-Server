@@ -262,8 +262,10 @@ async function getCharacter(name) {
             id: char.id,
             name: char.name,
             class: INV_CLASSES[char.class] || 'warrior',
+            classId: char.class || 1,
             race: INV_RACES[char.race] || 'human',
             raceId: char.race || 1,
+            deityId: char.deity || 396,
             gender: char.gender || 0,
             face: char.face || 0,
             hairStyle: char.hair_style || 0,
@@ -448,7 +450,9 @@ async function getZoneSpawns(shortName) {
     const query = `
         SELECT s.id as spawn2_id, s.x, s.y, s.z, s.heading, s.respawntime, s.pathgrid,
                se.chance, 
-               n.id as npc_id, n.name, n.level, n.hp, n.mindmg, n.maxdmg, n.race, n.gender, n.class, n.npc_faction_id,
+               n.id as npc_id, n.name, n.level, n.hp, n.mindmg, n.maxdmg, n.race, n.gender, n.class, n.npc_faction_id, n.prim_melee_type,
+               n.size, n.texture, n.helmtexture, n.d_melee_texture1, n.d_melee_texture2, n.armtexture, n.bracertexture, n.handtexture, n.legtexture, n.feettexture,
+               n.runspeed, n.walkspeed, n.attack_delay,
                sg.dist as wander_dist
         FROM spawn2 s 
         JOIN spawnentry se ON s.spawngroupID = se.spawngroupID 
@@ -505,7 +509,7 @@ async function getAllItems() {
                aagi, acha, adex, aint, asta, astr, awis, 
                ac, hp, mana, damage, delay, price, 
                itemtype, slots, classes, races, weight, icon, material, idfile,
-               reclevel, reqlevel, scrolllevel, scrolleffect, light,
+               reclevel, reqlevel, scrolllevel, scrolleffect, focuseffect, light,
                lore, magic, nodrop, norent, size, endur, fr, cr, mr, pr, dr,
                elemdmgtype, elemdmgamt, banedmgrace, banedmgamt, placeable,
                augslot1type, augslot2type, augslot3type, augslot4type, augslot5type, augslot6type

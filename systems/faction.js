@@ -82,8 +82,17 @@ class FactionSystem {
 
         // 5. Apply Modifiers (Race, Class, Deity)
         // If player has an illusion, use illusion's race ID
-        const activeRaceId = char.illusionRaceId || char.raceId;
+        let activeRaceId = char.illusionRaceId || char.raceId;
         
+        // Custom EQMUD Override: Evil High Elves (Necro) and Evil Vah Shir (SK) flop to Human reputations
+        if (!char.illusionRaceId) {
+            if (activeRaceId === 5 && char.classId === 11) { // High Elf Necromancer
+                activeRaceId = 1; // Human
+            } else if (activeRaceId === 130 && char.classId === 5) { // Vah Shir Shadow Knight
+                activeRaceId = 1; // Human
+            }
+        }
+
         // Find modifiers for this faction ID
         const mods = caches.FACTION_LIST_MOD.filter(m => m.faction_id === factionId);
         

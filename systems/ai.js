@@ -62,7 +62,7 @@ function processMobRoaming(mob, dt, zoneId, api) {
     moved = true;
   } else {
     // Walk towards waypoint
-    const roamSpeed = 6.0; // Gentle walking pace
+    const roamSpeed = (mob.walkspeed || 0.4) * 12.0; // Scale authentic EQ walkspeed
     const moveAmount = roamSpeed * dt;
     const dist = Math.sqrt(distSq);
 
@@ -114,6 +114,7 @@ function processMobAI(zone, zoneId, dt, api) {
           if (debuff.tickTimer <= 0) {
             debuff.tickTimer = 6; // 6-second EQ tick
             mob.hp -= debuff.tickDamage;
+            if (api.breakMez) api.breakMez(mob);
             // Notify the caster if they're still in this zone
             for (const [, s] of api.sessions) {
               if (s.char && s.char.name === debuff.casterSession && s.char.zoneId === zoneId) {
@@ -137,6 +138,32 @@ function processMobAI(zone, zoneId, dt, api) {
           }
         }
         continue;
+      }
+    }
+
+    // Hate List Management
+    if (mob.hateList) {
+      mob.hateList.removeStaleEntries(); // Default 5 mins
+
+      const topHateName = mob.hateList.getMobWithMostHateOnList();
+      if (topHateName) {
+        let resolvedTarget = null;
+        for (const [, s] of api.sessions) {
+          if (s.char && s.char.name === topHateName && s.char.zoneId === zoneId && s.char.hp > 0 && s.char.state !== 'dead') {
+            resolvedTarget = s;
+            break;
+          }
+        }
+        
+        // If the top target is valid, they are our target. Otherwise we wipe them from the list.
+        if (resolvedTarget) {
+          mob.target = resolvedTarget;
+        } else {
+          mob.hateList.removeEntFromHateList(topHateName);
+          mob.target = null;
+        }
+      } else {
+        mob.target = null;
       }
     }
 
@@ -191,6 +218,7 @@ function processMobAI(zone, zoneId, dt, api) {
       
       if (closestAggroTarget) {
         mob.target = closestAggroTarget;
+        if (mob.hateList) mob.hateList.addEntToHateList(closestAggroTarget.char.name, 10, 0);
         api.sendCombatLog(closestAggroTarget, [{ event: 'MESSAGE', text: `[color=red]${mob.name} glares at you threateningly![/color]` }]);
       }
     }
@@ -233,16 +261,33 @@ function processMobAI(zone, zoneId, dt, api) {
         targetY = mob.target.char.y;
       }
 
-      // Check for slow debuffs on mob (SPA 11 with negative base)
-      let mobSlowMod = 1.0;
+      // Check for haste/slow and movement buffs/debuffs (SPA 11, SPA 3)
+      let maxHaste = 1.0;
+      let minSlow = 1.0;
+      let maxMoveBuff = 1.0;
+      let minMoveDebuff = 1.0;
+
       if (Array.isArray(mob.buffs)) {
         for (const debuff of mob.buffs) {
           if (Array.isArray(debuff.effects)) {
-            const slowEff = debuff.effects.find(e => e.spa === 11 && e.base < 0);
-            if (slowEff) mobSlowMod = Math.max(0.3, 1.0 + (slowEff.base / 100));
+            const atkEff = debuff.effects.find(e => e.spa === 11 && e.base !== 0);
+            if (atkEff) {
+              const mod = atkEff.base / 100.0;
+              if (mod > 1.0 && mod > maxHaste) maxHaste = mod;
+              if (mod < 1.0 && mod < minSlow) minSlow = mod;
+            }
+            
+            const moveEff = debuff.effects.find(e => e.spa === 3 && e.base !== 0);
+            if (moveEff) {
+              const mod = 1.0 + (moveEff.base / 100.0);
+              if (mod > 1.0 && mod > maxMoveBuff) maxMoveBuff = mod;
+              if (mod < 1.0 && mod < minMoveDebuff) minMoveDebuff = mod;
+            }
           }
         }
       }
+      const mobAtkSpeedMod = Math.min(2.0, Math.max(0.3, maxHaste * minSlow));
+      const mobMoveSpeedMod = Math.min(2.5, Math.max(0.1, maxMoveBuff * minMoveDebuff));
 
       // ── Range check & mob movement ──
       const MELEE_RANGE = 15;
@@ -268,8 +313,9 @@ function processMobAI(zone, zoneId, dt, api) {
 
       // If out of range, chase
       if (!inMeleeRange) {
-        const mobSpeed = 5 + (mob.level || 1) * 0.5;
-        const moveAmount = mobSpeed * mobSlowMod * dt;
+        // Scale authentic EQ runspeed (typically 1.25 -> 15.0 units/sec)
+        const mobSpeed = (mob.runspeed || 1.25) * 12.0;
+        const moveAmount = mobSpeed * mobMoveSpeedMod * dt;
         if (distSq > 0) {
           dist = Math.sqrt(distSq);
           const dx = targetX - mob.x;
@@ -281,9 +327,12 @@ function processMobAI(zone, zoneId, dt, api) {
         continue;
       }
 
+      if (isNaN(mob.attackTimer)) mob.attackTimer = 0;
+      if (isNaN(mob.attackDelay)) mob.attackDelay = 3.0;
+      
       mob.attackTimer -= dt;
       if (mob.attackTimer <= 0) {
-        mob.attackTimer = mob.attackDelay * (1 / mobSlowMod);
+        mob.attackTimer = mob.attackDelay / mobAtkSpeedMod;
 
         const events = [];
         let playerSession = targetIsPet ? null : mob.target;
@@ -306,7 +355,7 @@ function processMobAI(zone, zoneId, dt, api) {
 
               // Add hate for the pet's owner
               if (pet.ownerSession) {
-                api.sendCombatLog(pet.ownerSession, [{ event: 'MELEE_HIT', source: mob.name, target: pet.name, damage: dmgRoll }]);
+                api.sendCombatLog(pet.ownerSession, [{ event: 'MELEE_HIT', source: mob.name, target: pet.name, damage: dmgRoll, type: 'slash' }]);
               }
             }
           }
@@ -328,14 +377,38 @@ function processMobAI(zone, zoneId, dt, api) {
               const { damage, delay } = api.getWeaponStats(session.inventory);
               let ripoDmg = combat.calcPlayerDamage(session, damage, delay);
               mob.hp -= ripoDmg;
-              events.push({ event: 'MELEE_HIT', source: 'You', target: mob.name, damage: ripoDmg, text: 'Riposte' });
+              const wpnSkill = api.getWeaponSkillName ? api.getWeaponSkillName(session.inventory) : '1h_slashing';
+              events.push({ event: 'MELEE_HIT', source: 'You', target: mob.name, damage: ripoDmg, text: 'Riposte', type: wpnSkill });
             }
           } else {
             const mobHitChance = combat.calcMobHitChance(mob, session);
             if (combat.chance(mobHitChance)) {
               let dmgRoll = combat.calcMobDamage(mob, session.effectiveStats.mitigationAC);
-              session.char.hp -= dmgRoll;
-              events.push({ event: 'MELEE_HIT', source: mob.name, target: 'You', damage: dmgRoll });
+              
+              // Apply Runes (SPA 55) before subtracting HP
+              if (Array.isArray(session.buffs) && dmgRoll > 0) {
+                for (const buff of session.buffs) {
+                  if (buff.runeHealth && buff.runeHealth > 0) {
+                    if (dmgRoll <= buff.runeHealth) {
+                      buff.runeHealth -= dmgRoll;
+                      dmgRoll = 0;
+                      events.push({ event: 'MESSAGE', text: `Your ${buff.name} absorbed the damage.` });
+                      break;
+                    } else {
+                      dmgRoll -= buff.runeHealth;
+                      buff.runeHealth = 0;
+                      events.push({ event: 'MESSAGE', text: `Your ${buff.name} has shattered!` });
+                      buff.duration = 0; // Will be removed on next tick
+                    }
+                  }
+                }
+              }
+
+              if (dmgRoll > 0) {
+                session.char.hp -= dmgRoll;
+              }
+              const attackText = combat.getMobAttackText(mob);
+              events.push({ event: 'MELEE_HIT', source: mob.name, target: 'You', damage: dmgRoll, text: attackText, type: 'slash' });
 
               // Damage Shield reflection (SPA 59 = DS)
               if (Array.isArray(session.buffs)) {
@@ -354,7 +427,8 @@ function processMobAI(zone, zoneId, dt, api) {
               api.breakSneak(session);
               api.breakHide(session);
             } else {
-              events.push({ event: 'MELEE_MISS', source: mob.name, target: 'You' });
+              const attackText = combat.getMobAttackText(mob);
+              events.push({ event: 'MELEE_MISS', source: mob.name, target: 'You', text: `${attackText} miss`, type: 'slash' });
             }
           }
         

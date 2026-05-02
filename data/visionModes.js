@@ -142,8 +142,8 @@ const RACE_VISION = {
 // When a buff with these SPAs is active, it overrides the character's
 // racial vision with this mode (if it's better).
 const SPELL_VISION_MODES = {
-  68: { mode: 'infravision', bonus: 5 },   // SPA 68 = Infravision spell
-  69: { mode: 'ultravision', bonus: 10 },   // SPA 69 = Ultravision spell
+  65: { mode: 'infravision', bonus: 5 },   // SPA 65 = Infravision spell
+  66: { mode: 'ultravision', bonus: 10 },   // SPA 66 = Ultravision spell
 };
 
 // ── Ambient Light Levels ────────────────────────────────────────────

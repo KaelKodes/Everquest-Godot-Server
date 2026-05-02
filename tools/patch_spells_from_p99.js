@@ -2,12 +2,12 @@ const fs = require('fs');
 
 function patchSpells() {
     console.log("Loading spells_parsed.json...");
-    const jsonPath = './data/spells_parsed.json';
+    const jsonPath = '../data/spells_parsed.json';
     const data = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
     const spells = data.spells;
 
     console.log("Loading P99 spells_us.txt...");
-    const p99Path = '../P99FilesV62/spells_us.txt';
+    const p99Path = '../../P99FilesV62/spells_us.txt';
     const lines = fs.readFileSync(p99Path, 'utf8').split('\n');
 
     let updatedCount = 0;

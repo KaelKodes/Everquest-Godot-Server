@@ -2,6 +2,7 @@ const State = require('../state');
 const { zoneInstances } = State;
 const { NPC_TYPES } = require('../data/npcTypes');
 const { mapEqemuClassToNpcType } = require('../utils/npcUtils');
+const HateList = require('./hate');
 
 function pickFromPool(pool) {
   if (!pool || pool.length === 0) return null;
@@ -58,8 +59,12 @@ function spawnMob(zoneId, mobDef, forcedX = null, forcedY = null, forcedZ = null
     hp: mobDef.maxHp, maxHp: mobDef.maxHp,
     minDmg: mobDef.minDmg, maxDmg: mobDef.maxDmg,
     attackDelay: mobDef.attackDelay, attackTimer: 0,
+    attackType: mobDef.attackType || 0,
+    size: mobDef.size || 6, runspeed: mobDef.runspeed || 1.25, walkspeed: mobDef.walkspeed || 0.4,
+    textures: mobDef.textures || {},
     xpBase: mobDef.xpBase, loot: mobDef.loot || [],
     target: null,
+    hateList: new HateList(),
   };
 
   if (mobDef.pathgrid > 0 && zone.grids && zone.grids[mobDef.pathgrid]) {
@@ -99,8 +104,12 @@ function processRespawns(zoneId, TICK_RATE) {
               maxHp: picked.hp > 0 ? picked.hp : picked.level * 20,
               minDmg: picked.mindmg || Math.max(1, Math.floor(picked.level / 2)),
               maxDmg: picked.maxdmg || Math.max(4, picked.level * 2),
-              attackDelay: 3, xpBase: picked.level * picked.level * 15,
-              respawnTime: spawn.respawnTime
+              attackDelay: picked.attack_delay > 0 ? picked.attack_delay / 10.0 : 3.0, 
+              xpBase: picked.level * picked.level * 15,
+              respawnTime: spawn.respawnTime,
+              attackType: picked.prim_melee_type || 0,
+              size: picked.size || 6, runspeed: picked.runspeed || 1.25, walkspeed: picked.walkspeed || 0.4,
+              textures: picked.textures || {}
             };
             spawn.mobDef = mobDef;
             spawn.mobKey = mobDef.key;

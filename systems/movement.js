@@ -100,27 +100,6 @@ function handleUpdatePos(session, msg) {
     if (msg.y != null) session.char.y = msg.y;
     if (msg.z != null) session.char.z = msg.z;
 
-    // ── Teleporter Pad Logic (Stand on to teleport) ──
-    if (!session.teleportCooldown) {
-      const zoneDef = zoneInstances[session.char.zoneId];
-      if (zoneDef && zoneDef.doors) {
-        for (const d of zoneDef.doors) {
-          if (d.opentype === 15 || d.opentype === 58) {
-            const dx = session.char.x - d.pos_x;
-            const dy = session.char.y - d.pos_y;
-            const dz = session.char.z - d.pos_z;
-            const distSq = dx * dx + dy * dy + dz * dz;
-            
-            // If standing directly on the pad (within ~5 units)
-            if (distSq < 25) {
-              handleTeleporterPad(session, d);
-              break; // Only trigger one
-            }
-          }
-        }
-      }
-    }
-
     // Movement interrupts casting
     if (session.casting && session.casting.startPos) {
       const dx = session.char.x - session.casting.startPos.x;
@@ -130,6 +109,14 @@ function handleUpdatePos(session, msg) {
         interruptCasting(session, 'Your spell is interrupted!');
       }
     }
+
+    // Broadcast player movement to others in the zone
+    broadcastEntityState(session, 'MOB_MOVE', {
+      x: msg.x,
+      y: msg.y,
+      z: msg.z || 0,
+      heading: session.char.heading || 0
+    });
   }
 }
 

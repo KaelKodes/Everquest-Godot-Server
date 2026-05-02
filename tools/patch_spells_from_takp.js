@@ -1,10 +1,10 @@
-require('dotenv').config({ path: './.env' });
+require('dotenv').config({ path: '../.env' });
 const mysql = require('mysql2/promise');
 const fs = require('fs');
 
 async function patchSpells() {
     console.log("Loading spells_parsed.json...");
-    const jsonPath = './data/spells_parsed.json';
+    const jsonPath = '../data/spells_parsed.json';
     const data = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
     const spells = data.spells;
 

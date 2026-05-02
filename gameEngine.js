@@ -2,11 +2,11 @@ const fs = require('fs');
 const path = require('path');
 const ZONES = require('./data/zones');
 const SpellDB = require('./data/spellDatabase');
-let SPELLS; // Legacy proxy, initialized after SpellDB loads
+const SPELLS = SpellDB.createLegacyProxy(); // Legacy proxy for backwards compatibility
 const { Skills, RACIAL_STARTING_SKILLS } = require('./data/skills');
 const { STARTER_GEAR, SUMMON_ITEM_MAP } = require('./data/items');
 const ItemDB = require('./data/itemDatabase');
-let ITEMS; // Legacy proxy, initialized after ItemDB loads
+const ITEMS = ItemDB.createLegacyProxy(); // Legacy proxy for backwards compatibility
 const DB = require('./db');
 const combat = require('./combat');
 const { NPC_TYPES, HAIL_RANGE } = require('./data/npcTypes');
@@ -35,6 +35,11 @@ const { mapEqemuClassToNpcType, GUILD_MASTER_CLASS } = require('./utils/npcUtils
 // Bind stat calculation for spells and systems
 setTimeout(() => {
   SpellSystem.setCalcEffectiveStatsFn(StatsSystem.calcEffectiveStats);
+  SpellSystem.setDBFn(DB);
+  SpellSystem.setItemsFn(ITEMS);
+  SpellSystem.setSummonItemMapFn(SUMMON_ITEM_MAP);
+  SpellSystem.setSendInventoryFn(sendInventory);
+  SpellSystem.setZoneInstancesFn(State.zoneInstances);
   InventorySystem.setCalcEffectiveStatsFn(StatsSystem.calcEffectiveStats);
   InventorySystem.setSendCombatLogFn(sendCombatLog);
   InventorySystem.setSendInventoryFn(sendInventory);
@@ -86,9 +91,9 @@ try { ZONE_TRIGGERS = require('./data/zone_triggers.json'); } catch (e) { consol
  *   32=Magician_GM, 33=Necromancer_GM, 34=Enchanter_GM, 35=Shaman_GM, 63=LDoN_Recruiter
  */
 
-const TICK_RATE = 2000; // 2 second game ticks
+const TICK_RATE = 200; // 200ms game ticks (5hz)
 const VIEW_DISTANCE = 99999; // Disable proximity culling for authentic zone experience
-const SYNC_RATE = 10; // Sync world every 10 ticks (20s) to refresh state
+const SYNC_RATE = 100; // Sync world every 100 ticks (20s) to refresh state
 
 const State = require('./state');
 const sessions = State.sessions;
@@ -119,24 +124,35 @@ async function createSession(ws, char) {
     }
   }
 
-  // ── Racial Skill Migration ──
-  // Grant missing vision/starting skills from RACIAL_STARTING_SKILLS for this race
-  const raceKey = char.race.toLowerCase().replace(/ /g, '_');
-  const racialBonus = RACIAL_STARTING_SKILLS[raceKey];
-  
-  if (racialBonus) {
-    let migrated = false;
-    for (const [skillKey, value] of Object.entries(racialBonus)) {
-      if (skills[skillKey] === undefined) {
-        skills[skillKey] = value;
-        migrated = true;
+  // ── Skill Initialization / Migration ──
+  // Grant any missing skills that the character qualifies for based on class/level
+  let skillsChanged = false;
+  for (const [skillKey, skillDef] of Object.entries(Skills)) {
+    if (skills[skillKey] === undefined) {
+      const classReq = skillDef.classes[char.class];
+      // Languages and Tradeskills start at 1 if they are "universal" (handled in skills.js by inserting into all classes)
+      if (classReq && char.level >= classReq.levelGranted) {
+        skills[skillKey] = 1;
+        skillsChanged = true;
       }
     }
-    if (migrated) {
-      console.log(`[ENGINE] Migrated missing racial skills for ${char.name} (${char.race})`);
-      // Persist immediately so it's not lost
-      DB.saveCharacterSkills(char.id, skills);
+  }
+
+  // Racial Skill Migration
+  const raceKey = char.race.toLowerCase().replace(/ /g, '_');
+  const racialBonus = RACIAL_STARTING_SKILLS[raceKey];
+  if (racialBonus) {
+    for (const [skillKey, value] of Object.entries(racialBonus)) {
+      if (skills[skillKey] === undefined || skills[skillKey] < value) {
+        skills[skillKey] = Math.max(skills[skillKey] || 0, value);
+        skillsChanged = true;
+      }
     }
+  }
+
+  if (skillsChanged) {
+    console.log(`[ENGINE] Seeded missing skills for ${char.name} (${char.race} ${char.class})`);
+    DB.saveCharacterSkills(char.id, skills);
   }
 
   char.skills = skills;
@@ -152,6 +168,7 @@ async function createSession(ws, char) {
     autoFight: false,
     combatTarget: null,
     attackTimer: 0,
+    regenTimer: 6.0,
     buffs: [],
     casting: null,
     activeVisionMode: null,  // null = auto (racial/spell), or explicit mode key
@@ -220,6 +237,8 @@ async function handleMessage(ws, msg) {
     case 'START_COMBAT': return handleStartCombat(session);
     case 'ATTACK_TARGET': return handleAttackTarget(session, msg);
     case 'STOP_COMBAT': return handleStopCombat(session);
+    case 'START_RANGED': return handleStartRanged(session);
+    case 'STOP_RANGED': return handleStopRanged(session);
     case 'SET_TARGET': return handleSetTarget(session, msg);
     case 'CLEAR_TARGET': return handleClearTarget(session);
     case 'UPDATE_RANGE': 
@@ -227,6 +246,7 @@ async function handleMessage(ws, msg) {
       return;
     case 'CAST_SPELL': return handleCastSpell(session, msg);
     case 'SPELL_INSPECT': return handleSpellInspect(session, msg);
+    case 'REMOVE_BUFF': return require('./systems/spells').handleRemoveBuff(session, msg);
     case 'EQUIP_ITEM': return InventorySystem.handleEquipItem(session, msg);
     case 'UNEQUIP_ITEM': return InventorySystem.handleUnequipItem(session, msg);
     case 'ZONE': return MovementSystem.handleZone(session, msg);
@@ -234,12 +254,17 @@ async function handleMessage(ws, msg) {
     case 'UPDATE_POS': return MovementSystem.handleUpdatePos(session, msg);
     case 'UPDATE_SNEAK': return MovementSystem.handleUpdateSneak(session, msg);
     case 'USE_HIDE': return MovementSystem.handleHide(session, msg);
+    case 'SWIM_TICK': return MovementSystem.handleSwimTick(session, msg);
     case 'CAMP': return handleCamp(session);
     case 'TRAIN_SKILL': return handleTrainSkill(session, msg);
     case 'ABILITY': return handleAbility(session, msg);
     case 'SET_TACTIC': return handleTactic(session, msg);
     case 'HAIL': return handleHail(session, msg);
     case 'SAY': return ChatSystem.handleSay(session, msg);
+    case 'AUTO_INVENTORY': return handleAutoInventory(session);
+    case 'TARGET_NAME': return handleTargetName(session, msg);
+    case 'CORPSE_DRAG': return handleCorpseDrag(session);
+    case 'PET_COMMAND': return handlePetCommand(session, msg);
     case 'BUY': return InventorySystem.handleBuy(session, msg);
     case 'SELL': return InventorySystem.handleSell(session, msg);
     case 'BUY_RECOVER': return InventorySystem.handleBuyRecover(session, msg);
@@ -738,6 +763,23 @@ function handleSit(session) {
   sendStatus(session);
 }
 
+function handleStartCombat(session) {
+  if (session.char.state === 'medding') return;
+  session.combatTarget = { type: 'NPC', target: null };
+  sendCombatLog(session, [{ event: 'MESSAGE', text: `Auto attack is on.` }]);
+  CombatSystem.processPlayerCombatTurn(session);
+}
+
+function handleStartRanged(session) {
+  if (session.char.state === 'medding') return;
+  // Stub for ranged combat until fully implemented
+  sendCombatLog(session, [{ event: 'MESSAGE', text: `Auto fire on.` }]);
+}
+
+function handleStopRanged(session) {
+  sendCombatLog(session, [{ event: 'MESSAGE', text: `Auto fire off.` }]);
+}
+
 function handleStand(session) {
   session.char.state = 'standing';
   sendCombatLog(session, [{ event: 'MESSAGE', text: 'You stand up.' }]);
@@ -803,11 +845,19 @@ function handleSetTarget(session, msg) {
 
   let mob = zone.liveMobs.find(m => m.id === mobId || m.id === targetId);
   if (mob) {
-    // Only set as informational target — never starts combat
-    // combatTarget is set here for spells/info, but autoFight stays false
-    if (!session.autoFight) {
-      session.combatTarget = mob;
-    }
+    // Always update target, even during combat, so auto-attack switches
+    session.combatTarget = mob;
+    send(session.ws, {
+      type: 'TARGET_UPDATE',
+      target: {
+        id: mob.id,
+        name: mob.name,
+        hp: mob.hp,
+        maxHp: mob.maxHp,
+        level: mob.level,
+        type: mob.isPet ? 'pet' : (mob.npcType === NPC_TYPES.MOB ? 'enemy' : 'npc'),
+      },
+    });
     sendStatus(session);
   }
 }
@@ -895,6 +945,14 @@ function engageNextMob(session) {
 function handleSpellInspect(session, msg) {
   let targetSpellId = msg.spellId;
 
+  if (msg.spellName) {
+    const SpellDB = require('./data/spellDatabase');
+    const spellDef = SpellDB.getByName(msg.spellName);
+    if (spellDef) {
+      targetSpellId = spellDef.id;
+    }
+  }
+
   if (msg.itemId) {
     const def = ItemDB.getById(msg.itemId) || ITEMS[msg.itemId] || {};
     if (def.scrolleffect > 0) {
@@ -942,7 +1000,32 @@ async function handleCastSpell(session, msg) {
     return sendCombatLog(session, [{ event: 'MESSAGE', text: 'You are already casting a spell!' }]);
   }
 
-  if (session.char.mana < spellDef.manaCost) {
+  const spellsSystem = require('./systems/spells');
+  const eligibleFocuses = spellsSystem.getEligibleFocusEffects(session, spellDef);
+
+  let manaCostMod = 0;
+  let castTimeMod = 0;
+
+  for (const focus of eligibleFocuses) {
+     for (const e of focus.effects) {
+         if (e.spa === 104 && e.base > 0) { // Mana preservation
+             const val = Math.floor(Math.random() * e.base) + 1;
+             if (val > manaCostMod) manaCostMod = val;
+         }
+         else if (e.spa === 127 && e.base > 0) { // Spell Haste
+             const val = Math.floor(Math.random() * e.base) + 1;
+             if (val > castTimeMod) castTimeMod = val;
+         }
+     }
+  }
+
+  let finalManaCost = spellDef.manaCost || 0;
+  if (manaCostMod > 0) {
+      finalManaCost = Math.floor(finalManaCost * (1.0 - (manaCostMod / 100.0)));
+      if (finalManaCost < 1) finalManaCost = 1;
+  }
+
+  if (session.char.mana < finalManaCost) {
     return sendCombatLog(session, [{ event: 'MESSAGE', text: 'Insufficient mana.' }]);
   }
   if (session.char.state === 'medding') {
@@ -968,10 +1051,13 @@ async function handleCastSpell(session, msg) {
   }
 
   // Calculate cast time in seconds (EQ data stores milliseconds)
-  const castTimeSec = (spellDef.timing?.castTime || 1500) / 1000;
+  let castTimeSec = (spellDef.timing?.castTime || 1500) / 1000;
+  if (castTimeMod > 0) {
+      castTimeSec = castTimeSec * (1.0 - (castTimeMod / 100.0));
+  }
 
   // Deduct mana up front (classic EQ behavior)
-  session.char.mana -= spellDef.manaCost;
+  session.char.mana -= finalManaCost;
 
   // Casting breaks sneak and hide
   MovementSystem.breakSneak(session);
@@ -1004,6 +1090,7 @@ async function handleCastSpell(session, msg) {
     spellName: spellDef.name,
     castTime: castTimeSec,
     slot: slotIndex,
+    animType: spellDef.castingAnimation || 44
   }));
 
   sendCombatLog(session, [{ event: 'MESSAGE', text: `You begin casting ${spellDef.name}.` }]);
@@ -2175,6 +2262,60 @@ async function handleMobDeath(session, mob, events) {
   return CombatSystem.handleMobDeath(session, mob, events);
 }
 
+function handleAutoInventory(session) {
+  // In a full EQ implementation, this moves the cursor item to inventory.
+  // We don't simulate cursor items perfectly yet, so this acts as a stub or auto-loot command.
+  sendCombatLog(session, [{ event: 'MESSAGE', text: `You auto-inventory your items.` }]);
+}
+
+function handleTargetName(session, msg) {
+  if (!msg.name) return;
+  const targetNameLower = msg.name.toLowerCase();
+  
+  // Find closest entity matching name in session's zone
+  const zoneKey = session.char.zone;
+  const entities = Array.from(SpawnSystem.getActiveEntities(zoneKey));
+  
+  let bestMatch = null;
+  for (const entity of entities) {
+    if (entity.name && entity.name.toLowerCase().includes(targetNameLower)) {
+      bestMatch = entity;
+      break; // Just grab first match for now
+    }
+  }
+
+  if (bestMatch) {
+    handleSetTarget(session, { targetId: bestMatch.id });
+  } else {
+    sendCombatLog(session, [{ event: 'MESSAGE', text: `Target '${msg.name}' not found.` }]);
+  }
+}
+
+function handleCorpseDrag(session) {
+  sendCombatLog(session, [{ event: 'MESSAGE', text: `You attempt to drag the corpse.` }]);
+  // TODO: implement actual corpse drag logic when corpses are persistent entities.
+}
+
+function handlePetCommand(session, msg) {
+  const cmd = msg.command;
+  if (!session.pet) {
+    sendCombatLog(session, [{ event: 'MESSAGE', text: `You do not have a pet.` }]);
+    return;
+  }
+  
+  if (cmd === 'attack') {
+    if (session.target && session.target !== session.pet.id) {
+      sendCombatLog(session, [{ event: 'MESSAGE', text: `${session.pet.name} says, 'Attacking ${session.target} Master!'` }]);
+      // TODO: set pet combat target
+    } else {
+      sendCombatLog(session, [{ event: 'MESSAGE', text: `You must have a target to command your pet to attack.` }]);
+    }
+  } else if (cmd === 'back' || cmd === 'follow') {
+    sendCombatLog(session, [{ event: 'MESSAGE', text: `${session.pet.name} says, 'Following you Master.'` }]);
+    // TODO: clear pet combat target and resume follow state
+  }
+}
+
 function handleCamp(session) {
   // Must be sitting to camp
   if (session.char.state !== 'medding') {
@@ -2443,6 +2584,7 @@ function sendLoginOk(session) {
         dex: effective.dex, wis: effective.wis, intel: effective.intel,
         cha: effective.cha, ac: effective.ac,
       },
+      skills: char.skills,
       equipVisuals: getEquipVisuals(session),
     },
   });
@@ -2486,7 +2628,10 @@ function sendStatus(session) {
   }
 
   // Build Extended Targets list (only mobs actively in combat with this player)
+  // Uses a cached ID set so we only log on add/remove, not every tick.
   const extendedTargets = [];
+  if (!session._extTargetIds) session._extTargetIds = new Set();
+  const currentExtIds = new Set();
   const zoneInst = zoneInstances[char.zoneId];
   if (zoneInst && zoneInst.liveMobs) {
       for (const m of zoneInst.liveMobs) {
@@ -2495,17 +2640,48 @@ function sendStatus(session) {
           const isPlayerAttacking = session.inCombat && session.combatTarget === m;
           const isPetAttacking = session.pet && session.pet.target === m;
 
-          if ((isTargetingPlayer || isTargetingPet || isPlayerAttacking || isPetAttacking) && m.hp > 0) {
-              console.log(`[EXT] Pushing ${m.name} to extended targets for ${session.char.name} (isTargetingPlayer=${isTargetingPlayer}, isPlayerAttacking=${isPlayerAttacking})`);
+          const onHateList = m.hateList && m.hateList.entries.some(e => e.entityId === session.char.name);
+
+          if ((isTargetingPlayer || isTargetingPet || isPlayerAttacking || isPetAttacking || onHateList) && m.hp > 0) {
+              currentExtIds.add(m.id);
+              if (!session._extTargetIds.has(m.id)) {
+                  console.log(`[EXT] Added ${m.name} to extended targets for ${session.char.name}`);
+              }
+              const hatePercent = m.hateList ? m.hateList.getHateRatio(session.char.name) : 0;
               extendedTargets.push({
                   id: m.id,
                   name: m.name,
                   hp: m.hp,
                   maxHp: m.maxHp,
-                  level: m.level
+                  level: m.level,
+                  hatePercent: hatePercent
               });
           }
       }
+  }
+  // Log removals (mob died or lost aggro)
+  for (const oldId of session._extTargetIds) {
+      if (!currentExtIds.has(oldId)) {
+          console.log(`[EXT] Removed target (id=${oldId}) from extended targets for ${session.char.name}`);
+      }
+  }
+  session._extTargetIds = currentExtIds;
+
+  // Pre-compute combat animation data safely — any error here must NOT crash sendStatus
+  let _wpnSkill = '1h_slashing';
+  let _hasteMod = 1.0;
+  try {
+    if (session.inventory) _wpnSkill = StatsSystem.getWeaponSkillName(session.inventory);
+    if (Array.isArray(session.buffs)) {
+      for (const buff of session.buffs) {
+        if (Array.isArray(buff.effects)) {
+          const hasteEff = buff.effects.find(e => e.spa === 11 && e.base > 0);
+          if (hasteEff) _hasteMod = Math.min(2.0, 1.0 + (hasteEff.base / 100));
+        }
+      }
+    }
+  } catch (e) {
+    console.error('[ENGINE] Error computing combat anim data:', e.message);
   }
 
   send(session.ws, {
@@ -2527,6 +2703,9 @@ function sendStatus(session) {
       dly: effective.dly || 0,
       offhandDmg: effective.offhandDmg || 0,
       offhandDly: effective.offhandDly || 0,
+      speedMod: effective.speedMod || 1.0,
+      weaponSkill: _wpnSkill,
+      hasteMod: _hasteMod,
       state: char.state,
       inCombat: session.inCombat,
       autoFight: session.autoFight,
@@ -2545,6 +2724,7 @@ function sendStatus(session) {
       connections: zone && zone.connections ? zone.connections : [], // Legacy
       spawnPos: session.pendingTeleport || null,
       equipVisuals: getEquipVisuals(session),
+      skills: char.skills,
       mapData: mapData,
       worldAtlas: (() => {
         const atlas = WorldAtlas.getAtlasEntry(char.zoneId);
@@ -2576,7 +2756,15 @@ function sendStatus(session) {
         name: session.combatTarget.name,
         hp: session.combatTarget.hp,
         level: session.combatTarget.level,
-        maxHp: session.combatTarget.maxHp
+        maxHp: session.combatTarget.maxHp,
+        buffs: (session.combatTarget.buffs || []).map(b => ({
+          name: b.name,
+          duration: b.duration,
+          maxDuration: b.maxDuration,
+          beneficial: b.beneficial !== false,
+          icon: b.icon || 0,
+          memIcon: b.memIcon || 0
+        }))
       } : null,
       vision: (() => {
         const zoneInst = zoneInstances[session.char.zoneId];
@@ -2742,7 +2930,8 @@ function startGameLoop() {
     const aiApi = {
       broadcastMobMove, processPetAI, handlePetDeath, sendCombatLog,
       sessions, handleMobDeath, getWeaponStats: StatsSystem.getWeaponStats, tryInterruptCasting,
-      breakSneak: MovementSystem.breakSneak, breakHide: MovementSystem.breakHide, despawnPet
+      breakSneak: MovementSystem.breakSneak, breakHide: MovementSystem.breakHide, despawnPet,
+      breakMez: SpellSystem.breakMez
     };
 
     for (const zoneId of Object.keys(zoneInstances)) {
@@ -2823,10 +3012,19 @@ function handleLook(session, skipText = false) {
               mob.networkData = {
                   id: mob.id, name: mob.name, type: clientType, npcType: mob.npcType || NPC_TYPES.MOB,
                   race: mob.race || 1, gender: mob.gender || 0, appearance: mob.appearance,
-                  isPet: mob.isPet || false, ownerName: mob.ownerSession ? mob.ownerSession.char.name : null
+                  isPet: mob.isPet || false, ownerName: mob.ownerSession ? mob.ownerSession.char.name : null,
+                  size: mob.size || 6,
+                  maxHp: mob.maxHp,
+                  equipVisuals: {
+                      head: mob.textures?.h || 0, chest: mob.textures?.t || 0,
+                      arms: mob.textures?.a || 0, wrist: mob.textures?.b || 0,
+                      hands: mob.textures?.hnd || 0, legs: mob.textures?.l || 0,
+                      feet: mob.textures?.f || 0, primaryWeapon: mob.textures?.w1 ? `it${mob.textures.w1}` : '',
+                      secondaryWeapon: mob.textures?.w2 ? `it${mob.textures.w2}` : ''
+                  }
               };
           }
-          entities.push({ ...mob.networkData, x: mob.x, y: mob.y, z: mob.z || 0, heading: mob.heading || 0 });
+          entities.push({ ...mob.networkData, x: mob.x, y: mob.y, z: mob.z || 0, heading: mob.heading || 0, hp: mob.hp });
       }
 
       // ── Mining Nodes ──

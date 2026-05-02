@@ -54,6 +54,7 @@ function applyInstantEffect(session, target, spellDef, spa, value, events) {
             } else if (value < 0) {
                 target.hp -= Math.abs(value);
                 events.push({ event: 'SPELL_DAMAGE', source: session.char.name, target: target.name || target.char?.name || 'Unknown', spell: spellDef.name, damage: Math.abs(value) });
+                breakMez(target, events);
             }
             break;
         }
@@ -66,6 +67,24 @@ function applyInstantEffect(session, target, spellDef, spa, value, events) {
             break;
         }
     }
+}
+
+/**
+ * Breaks mesmerize effects if the entity takes damage.
+ */
+function breakMez(entity, events = null) {
+    if (!entity || !Array.isArray(entity.buffs)) return false;
+    let broke = false;
+    entity.buffs = entity.buffs.filter(b => {
+        if (b.isMez) {
+            broke = true;
+            const name = entity.name || entity.char?.name || 'Unknown';
+            if (events) events.push({ event: 'MESSAGE', text: `${name} has been awakened.` });
+            return false;
+        }
+        return true;
+    });
+    return broke;
 }
 
 /**
@@ -103,6 +122,38 @@ async function handleCastComplete(session, spellDef, spellKey, combatTarget) {
     const events = [];
     const isHostile = spellDef.target === 'enemy';
     
+    // Check for Summon Item (SPA 32)
+    const summonEffect = (spellDef.effects || []).find(e => e.spa === 32);
+    if (summonEffect) {
+        const eqItemId = summonEffect.base;
+        const SUMMON_ITEM_MAP = module.exports.SUMMON_ITEM_MAP || {};
+        const ITEMS = module.exports.ITEMS || {};
+        let itemKey = SUMMON_ITEM_MAP[eqItemId];
+        
+        // If no direct mapping, try to infer from spell name
+        if (!itemKey) {
+            const lname = spellDef.name.toLowerCase();
+            if (lname.includes('food') || lname.includes('cornucopia')) itemKey = 'summoned_food';
+            else if (lname.includes('drink') || lname.includes('everfount')) itemKey = 'summoned_drink';
+            else if (lname.includes('arrow')) itemKey = 'summoned_arrows';
+            else if (lname.includes('dagger') || lname.includes('fang')) itemKey = 'summoned_dagger';
+            else if (lname.includes('hammer') || lname.includes('mace')) itemKey = 'summoned_hammer';
+            else if (lname.includes('bandage')) itemKey = 'summoned_bandages';
+            else if (lname.includes('light') || lname.includes('shine') || lname.includes('glow') || lname.includes('firefl')) itemKey = 'summoned_light';
+        }
+        
+        if (itemKey && ITEMS[itemKey] && module.exports.DB) {
+            await module.exports.DB.addItem(session.char.id, itemKey, 0, 0);
+            session.inventory = await module.exports.DB.getInventory(session.char.id);
+            if (module.exports.sendInventoryFn) module.exports.sendInventoryFn(session);
+            events.push({ event: 'MESSAGE', text: `You summon ${ITEMS[itemKey].name}.` });
+        } else {
+            events.push({ event: 'MESSAGE', text: `${spellDef.name} conjures something, but it fizzles away.` });
+        }
+        if (module.exports.sendCombatLogFn) module.exports.sendCombatLogFn(session, events);
+        return;
+    }
+
     let target = isHostile ? combatTarget : session.char;
     // If the spell is a buff and target is an enemy, it shouldn't land unless it's a debuff.
     // For now, assume single target spells follow the isHostile flag.
@@ -139,6 +190,10 @@ async function handleCastComplete(session, spellDef, spellKey, combatTarget) {
                 spa: effect.spa,
                 value: val
             });
+            if (effect.spa === 31) {
+                buffObj.isMez = true;
+                if (target.target) target.target = null; // Drop combat target when mezzed
+            }
         }
 
         // Apply buff to target
@@ -194,6 +249,10 @@ function processBuffTicks(entity, dt, isPlayer = false, sendCombatLogFn = null, 
                         } else if (!isPlayer && sendCombatLogFn) {
                             sendCombatLogFn(session, [{ event: 'MESSAGE', text: `${entity.name} takes ${Math.abs(dmg)} damage from ${buff.name}.` }]);
                         }
+                        // Damage breaks Mez
+                        if (breakMez(entity)) {
+                            expired = true; // Force buff UI refresh
+                        }
                     }
                     ticked = true;
                 }
@@ -222,6 +281,11 @@ module.exports = {
     calcSpellDuration,
     handleCastComplete,
     processBuffTicks,
+    breakMez,
     setSendCombatLogFn: (fn) => { module.exports.sendCombatLogFn = fn; },
     setHandleMobDeathFn: (fn) => { module.exports.handleMobDeathFn = fn; },
+    setDBFn: (db) => { module.exports.DB = db; },
+    setSendInventoryFn: (fn) => { module.exports.sendInventoryFn = fn; },
+    setItemsFn: (items) => { module.exports.ITEMS = items; },
+    setSummonItemMapFn: (map) => { module.exports.SUMMON_ITEM_MAP = map; }
 };

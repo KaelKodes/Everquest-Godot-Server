@@ -1,6 +1,6 @@
-# ⚙️ Faydark MUD: Game Engine (Server)
+# ⚙️ Everquest.Godot: Game Engine (Server)
 
-The core authority of Faydark MUD. A high-performance, authoritative game engine built in Node.js and WebSockets, designed to handle the complex mathematics and persistent state of a classic MMO.
+The core authority of EQ.gd. A high-performance, authoritative game engine built in Node.js and WebSockets, designed to handle the complex mathematics and persistent state of a classic MMO.
 
 ### 🛠️ Architecture
 - **Language:** Node.js (Authoritative Server)
@@ -39,14 +39,4 @@ The core authority of Faydark MUD. A high-performance, authoritative game engine
 - `/utils`: Helper functions and protocol constants.
 
 ### 🧪 Communication Protocol
-The server uses a strictly JSON-based WebSocket protocol. 
-Example `STATUS` payload:
-```json
-{
-  "type": "STATUS",
-  "char": { "name": "Eres", "hp": 100, "maxHp": 100, "level": 1 },
-  "extendedTargets": [
-    { "id": "mob_skeleton_1", "name": "a skeleton", "hp": 50, "hatePercent": 100 }
-  ]
-}
-```
+The server uses a strictly JSON-based WebSocket protocol.

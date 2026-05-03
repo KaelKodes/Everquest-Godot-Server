@@ -493,6 +493,32 @@ async function updateCharacterState(char) {
     }
 }
 
+async function updateCharacterBind(char) {
+    if (!pool) return;
+    let zoneId = getZoneIdByShortName(char.bindZoneId);
+    if (!zoneId) {
+        const ZONES = require('./data/zones');
+        const def = ZONES[char.bindZoneId];
+        if (def && def.shortName) {
+            zoneId = getZoneIdByShortName(def.shortName);
+        }
+    }
+    if (!zoneId) {
+        console.warn(`[DB] updateCharacterBind: Can't resolve zone '${char.bindZoneId}'. Bind aborted.`);
+        return;
+    }
+
+    try {
+        await pool.query(
+            'INSERT INTO character_bind (id, slot, zone_id, instance_id, x, y, z, heading) VALUES (?, 0, ?, 0, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE zone_id = ?, x = ?, y = ?, z = ?, heading = ?',
+            [char.id, zoneId, char.bindX, char.bindY, char.bindZ, char.bindHeading, zoneId, char.bindX, char.bindY, char.bindZ, char.bindHeading]
+        );
+        console.log(`[DB] Updated bind point for char ${char.id} in zone ${zoneId}`);
+    } catch (e) {
+        console.error('[DB] updateCharacterBind Error:', e.message);
+    }
+}
+
 async function getZoneSpawns(shortName) {
     await init();
 
@@ -1106,7 +1132,8 @@ module.exports = {
     getFactionCaches,
     addBuybackItem,
     getBuybackItems,
-    removeBuybackItem
+    removeBuybackItem,
+    updateCharacterBind
 };
 
 

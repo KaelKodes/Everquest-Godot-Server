@@ -39,8 +39,53 @@ sub faction { emit('faction', { faction_id => $_[0], amount => $_[1] }); }
 sub depop { emit('depop', { timer => $_[0] || 0 }); }
 sub depop_withtimer { emit('depop', { timer => 1 }); }
 sub spawn2 { emit('spawn2', { npc_id => $_[0], grid => $_[1], unused => $_[2], x => $_[3], y => $_[4], z => $_[5], h => $_[6] }); }
+sub doanim { emit('anim', { anim => $_[0] }); }
+sub selfcast { emit('cast', { spellId => $_[0] }); }
+sub popup { emit('popup', { title => $_[0], text => $_[1] }); }
+sub givecash { emit('givecash', { copper => $_[0] || 0, silver => $_[1] || 0, gold => $_[2] || 0, platinum => $_[3] || 0 }); }
+sub setglobal { emit('setglobal', { name => $_[0], value => $_[1], options => $_[2], duration => $_[3] }); }
+sub targlobal { 1; }
 
 package plugin;
+
+# Provide access to global quest variables (EQEmu plugin compat)
+sub val {
+    my $varname = shift;
+    if ($varname eq '$text') { return $main::text; }
+    if ($varname eq '$name') { return $main::name; }
+    if ($varname eq '$class') { return $main::class; }
+    if ($varname eq '$race') { return $main::race; }
+    if ($varname eq '$ulevel') { return $main::ulevel; }
+    # Return stub proxy objects for $client and $npc
+    if ($varname eq '$client') {
+        return bless { name => $main::name }, 'ClientProxy';
+    }
+    if ($varname eq '$npc') {
+        return bless {}, 'NPCProxy';
+    }
+    return '';
+}
+sub nullzero { return $_[0] || 0; }
+sub random { return $_[int(rand(scalar @_))]; }
+sub assocName { return $main::name; }
+sub fixNPCName { return ''; }
+sub cityName { return ''; }
+
+# Soulbinder plugin (from plugins/soulbinders.pl)
+sub soulbinder_say {
+    my $text = shift;
+    my $pname = $main::name;
+
+    if ($text =~ /hail/i) {
+        quest::say("Greetings, ${pname}. When a hero of our world is slain, their soul returns to the place it was last bound and the body is reincarnated. As a member of the Order of Eternity, it is my duty to [bind your soul] to this location if that is your wish.");
+    }
+    elsif ($text =~ /bind.*soul/i) {
+        quest::doanim(42);
+        quest::selfcast(2049);
+        quest::emit('message', { color => 4, text => "You feel yourself bind to the area." });
+    }
+}
+
 sub return_items {
     my $items = shift;
     my @returned = ();
@@ -57,6 +102,13 @@ sub return_items {
         quest::emit('return_items', { returned => \@returned });
     }
 }
+
+sub returnUnusedItems { return_items(\%main::itemcount); }
+
+# Stub proxy for $client->GetName(), $client->Message(), etc.
+package ClientProxy;
+sub GetName { return $_[0]->{name}; }
+sub Message { quest::emit('message', { color => $_[1], text => $_[2] }); }
 
 package main;
 

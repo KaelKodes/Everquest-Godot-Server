@@ -50,7 +50,7 @@ function spawnMob(zoneId, mobDef, forcedX = null, forcedY = null, forcedZ = null
   const npcType = mobDef.type || NPC_TYPES.MOB;
   const newMob = {
     id: `${mobDef.key}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-    roomId, key: mobDef.key, name: mobDef.name, level: mobDef.level,
+    zoneId: zoneId, roomId, key: mobDef.key, name: mobDef.name, level: mobDef.level,
     race: mobDef.race || 1, gender: mobDef.gender || 0, npcType,
     eqClass: mobDef.eqClass || 0,
     x: spawnX, y: spawnY, z: (forcedZ !== null) ? forcedZ : 0,

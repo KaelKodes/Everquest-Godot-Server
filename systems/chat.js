@@ -52,6 +52,31 @@ async function handleSay(session, msg) {
       return; // NPCs don't talk to enemies
     }
 
+    // Guildmaster / Trainer "Hire" Hook
+    if (target.npcType === NPC_TYPES.TRAINER && text.toLowerCase().includes('hire')) {
+      // Must be Apprehensive or better (-100+)
+      if (standing.value < -100) {
+        sendCombatLog(session, [{ event: 'NPC_SAY', npcName: target.name, text: "You must prove your dedication to our cause before I trust you with a student." }]);
+        return;
+      }
+
+      // We derive the classes/races this trainer teaches based on their own class/race.
+      const validClasses = [target.class || 1];
+      const validRaces = [target.race || 1];
+
+      sendCombatLog(session, [{ event: 'NPC_SAY', npcName: target.name, text: `Ah yes, I have a few eager students I could spare for someone like you, ${char.name}!` }]);
+      
+      // Send the packet to pop the new "Hire Student" UI
+      send(session.ws, {
+        type: 'OPEN_HIRE_STUDENT',
+        trainerName: target.name,
+        validClasses: validClasses,
+        validRaces: validRaces,
+        playerLevel: char.level || 1
+      });
+      return;
+    }
+
     const eData = { message: text, joined: false, trade: {} };
     const actions = await QuestManager.triggerEvent(zoneShortName, target, char, 'EVENT_SAY', eData);
     
@@ -97,7 +122,7 @@ async function handleSay(session, msg) {
 function broadcastChat(session, channel, text, radius) {
   const char = session.char;
   for (const [ws, other] of sessions) {
-    if (other !== session && other.char.zoneId === char.zoneId) {
+    if (other.char.id !== char.id && other.char.zoneId === char.zoneId) {
       const pDistSq = getDistanceSq(other.char.x, other.char.y, char.x, char.y);
       if (pDistSq <= radius * radius) {
         send(other.ws, { type: 'CHAT', channel: channel, sender: char.name, text: text });

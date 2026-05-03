@@ -33,6 +33,7 @@ const MiningSystem = require('./systems/mining');
 const ZoneSystem = require('./systems/zones');
 const CombatSystem = require('./systems/combat');
 const SurvivalSystem = require('./systems/survival');
+const ClericBot = require('./systems/botAI/profiles/cleric');
 const { mapEqemuClassToNpcType, GUILD_MASTER_CLASS } = require('./utils/npcUtils');
 
 // Bind stat calculation for spells and systems
@@ -275,6 +276,7 @@ async function handleMessage(ws, msg) {
     case 'CORPSE_DRAG': return handleCorpseDrag(session);
     case 'PET_COMMAND': return handlePetCommand(session, msg);
     case 'MERCENARY_ACTION': return handleMercenaryAction(session, msg);
+    case 'HIRE_STUDENT_CONFIG': return handleHireStudentConfig(session, msg);
     case 'BUY': return InventorySystem.handleBuy(session, msg);
     case 'SELL': return InventorySystem.handleSell(session, msg);
     case 'BUY_RECOVER': return InventorySystem.handleBuyRecover(session, msg);
@@ -619,6 +621,12 @@ async function handleLogin(ws, msg) {
   if (visionChanged) {
     await DB.saveCharacterSkills(char.id, char.skills);
     console.log(`[ENGINE] Migrated missing vision skills for ${char.name}.`);
+  }
+
+  // Mercenaries will be populated via the Hire NPC system later.
+  // For now, ensure the array exists with empty slots.
+  if (!session.char.mercenaries) {
+    session.char.mercenaries = [null, null];
   }
 
   console.log(`[ENGINE] ${char.name} logged in (level ${char.level} ${char.class}).`);
@@ -1803,7 +1811,12 @@ async function handleHail(session, msg) {
   if (newHeading < 0) newHeading += 512;
   target.heading = newHeading;
 
-  // All non-KOS NPCs will wave back (currently all are indifferent)
+  const events = [];
+  
+  // Send Player's Hail text FIRST so it appears before the NPC responds
+  sendCombatLog(session, [{ event: 'MESSAGE', text: `You say, 'Hail, ${target.name}!'` }]);
+
+  // All non-KOS NPCs will wave back
   send(session.ws, {
     type: 'EMOTE',
     charName: target.name,
@@ -1811,22 +1824,18 @@ async function handleHail(session, msg) {
     heading: target.heading
   });
 
-  const events = [];
-  events.push({ event: 'MESSAGE', text: `You say, 'Hail, ${target.name}!'` });
-
   // Fire Quest Engine for 'Hail' text
   const zoneShortName = char.zoneId;
   const eData = { message: 'hail', joined: false, trade: {} };
   const actions = await QuestManager.triggerEvent(zoneShortName, target, char, 'EVENT_SAY', eData);
   
-  let questHijackedDialog = false;
   if (actions && actions.length > 0) {
     processQuestActions(session, target, actions);
-    questHijackedDialog = true;
+    return; // STOP execution here so we don't fall through to legacy handlers
   }
 
   // If it's a regular mob and no quest triggered, just regard indifferently
-  if (!questHijackedDialog && (!target.npcType || target.npcType === NPC_TYPES.MOB)) {
+  if (!target.npcType || target.npcType === NPC_TYPES.MOB) {
     events.push({ event: 'MESSAGE', text: `${target.name} regards you indifferently.` });
     sendCombatLog(session, events);
     return;
@@ -1950,10 +1959,12 @@ function processQuestActions(session, npc, actions) {
       case 'say':
       case 'shout':
       case 'emote':
-        // Send to the triggering player's UI
+        // Send to the triggering player's UI (white text with clickable brackets)
         events.push({ event: 'NPC_SAY', npcName: npc.name, text: act.msg || act.text, keywords: [] });
-        // Broadcast to spatial channel
-        const mockSession = { char: { name: npc.name, zoneId: npc.zoneId, x: npc.x, y: npc.y }, ws: null };
+        
+        // Broadcast to spatial channel for bystanders to overhear (blue text, no brackets)
+        // We set id to session.char.id so broadcastChat will skip the triggering player!
+        const mockSession = { char: { id: session.char.id, name: npc.name, zoneId: npc.zoneId, x: npc.x, y: npc.y }, ws: null };
         ChatSystem.broadcastChat(mockSession, act.action === 'shout' ? 'shout' : 'say', act.msg || act.text, act.action === 'shout' ? 600 : 200);
         break;
       case 'message':
@@ -1971,6 +1982,44 @@ function processQuestActions(session, npc, actions) {
       case 'anim':
         // Broadcast animation to zone
         broadcastToZone(npc.zoneId, { type: 'NPC_ANIM', id: npc.id, anim: act.anim });
+        break;
+      case 'cast':
+        // Handle Soulbinder Bind Affinity (Spell ID: 2049)
+        if (act.spellId === 2049) {
+          session.char.bindX = session.char.x;
+          session.char.bindY = session.char.y;
+          session.char.bindZ = session.char.z;
+          session.char.bindZoneId = session.char.zoneId;
+          session.char.bindHeading = session.char.heading || 0;
+          DB.updateCharacterBind(session.char);
+          events.push({ event: 'MESSAGE', text: `You feel your soul bound to this location.` });
+          
+          broadcastToZone(npc.zoneId, { type: 'EMOTE', charName: npc.name, emote: 't04' });
+          
+          // Send particles to the player
+          send(session.ws, { type: 'SPELL_ANIMATION', casterId: npc.id.toString(), targetId: 'You', spellAnimId: 42, isAura: false });
+          // Broadcast particles to the rest of the zone
+          const spellPayload = JSON.stringify({ type: 'SPELL_ANIMATION', casterId: npc.id.toString(), targetId: `player_${session.char.id}`, spellAnimId: 42, isAura: false });
+          for (const [ws, other] of sessions) {
+            if (other !== session && other.char && other.char.zoneId === npc.zoneId) {
+              try { ws.send(spellPayload); } catch(e) {}
+            }
+          }
+          
+          // Force an instant save to DB
+          DB.updateCharacterState(session.char);
+        } else {
+          // General NPC casting (assuming SpellSystem has a way, otherwise stub it)
+          events.push({ event: 'MESSAGE', text: `${npc.name} begins to cast a spell.` });
+          broadcastToZone(npc.zoneId, { type: 'EMOTE', charName: npc.name, emote: 't04' });
+          send(session.ws, { type: 'SPELL_ANIMATION', casterId: npc.id.toString(), targetId: 'You', spellAnimId: 42, isAura: false });
+          const spellPayload = JSON.stringify({ type: 'SPELL_ANIMATION', casterId: npc.id.toString(), targetId: `player_${session.char.id}`, spellAnimId: 42, isAura: false });
+          for (const [ws, other] of sessions) {
+            if (other !== session && other.char && other.char.zoneId === npc.zoneId) {
+              try { ws.send(spellPayload); } catch(e) {}
+            }
+          }
+        }
         break;
     }
   }
@@ -1998,6 +2047,15 @@ function broadcastEntityState(session, msgType, extraFields) {
   });
   for (const [ws, other] of sessions) {
     if (other !== session && other.char && other.char.zoneId === session.char.zoneId) {
+      try { ws.send(payload); } catch(e) {}
+    }
+  }
+}
+
+function broadcastToZone(zoneId, msg) {
+  const payload = JSON.stringify(msg);
+  for (const [ws, session] of sessions) {
+    if (session.char && session.char.zoneId === zoneId) {
       try { ws.send(payload); } catch(e) {}
     }
   }
@@ -2414,6 +2472,13 @@ function handleMercenaryAction(session, msg) {
     sendCombatLog(session, [{ event: 'MESSAGE', text: `You release ${merc.name} from your contract.` }]);
     session.char.mercenaries[index] = null;
     sendMercenaries(session);
+  }
+  else if (action === "set_stance") {
+    const newStance = msg.stance;
+    if (session.pet && session.pet.isMercenary && session.pet.botAI) {
+      session.pet.botAI.stance = newStance;
+      sendCombatLog(session, [{ event: 'MESSAGE', text: `You instruct your mercenary to adopt a ${newStance} stance.` }]);
+    }
   }
 }
 
@@ -3383,6 +3448,7 @@ function startGameLoop() {
 
     for (const [ws, session] of sessions) {
       StatsSystem.processRegen(session, dt);
+      if (session.bot) session.bot.tick();
       processCasting(session, dt);
       CombatSystem.processCombatTick(session, dt);
       StatsSystem.processBuffs(session, dt);
@@ -3997,6 +4063,51 @@ function handleSetTrackingTarget(session, msg) {
 
 function handleClearTracking(session) {
   session.trackingTargetId = null;
+}
+
+async function handleHireStudentConfig(session, msg) {
+  // msg has: name, raceId, classId, level
+  const char = {
+    id: 'bot_' + Math.floor(Math.random() * 1000000),
+    name: msg.name,
+    class: msg.classId,
+    race: msg.raceId,
+    level: msg.level,
+    hp: 100, maxHp: 100, mana: 100, maxMana: 100,
+    zoneId: session.char.zoneId,
+    x: session.char.x,
+    y: session.char.y,
+    z: session.char.z || 0,
+    heading: session.char.heading || 0,
+  };
+  
+  // Fake WebSocket for the bot
+  const fakeWs = { id: char.id, send: () => {}, on: () => {} };
+  const botSession = await createSession(fakeWs, char);
+  botSession.isBot = true;
+  
+  // Create AI profile
+  if (msg.classId === 2) { // Cleric
+    botSession.bot = new ClericBot(botSession);
+  } else {
+    // Fallback to ClericBot for now
+    botSession.bot = new ClericBot(botSession);
+  }
+  
+  // Join the inviter's group
+  GroupManager.handleInvite(session, botSession.char.name);
+  GroupManager.handleInviteResponse(botSession, true);
+  
+  // Broadcast entity state to the zone
+  const ZoneSystem = require('./systems/zones');
+  const zoneDef = ZoneSystem.getZoneDef(char.zoneId);
+  const zoneInstances = State.zoneInstances;
+  if (!zoneInstances[char.zoneId]) zoneInstances[char.zoneId] = { mobs: {}, pvs: {} };
+  
+  const MovementSystem = require('./systems/movement');
+  MovementSystem.broadcastEntityState(botSession.char, 'spawn');
+  
+  sendCombatLog(session, [{ event: 'MESSAGE', text: `You have successfully hired ${msg.name}!` }]);
 }
 
 module.exports = {

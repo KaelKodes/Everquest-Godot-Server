@@ -202,6 +202,14 @@ const SOFT_CAPS = {
   shadow_knight: { cap: 488, mult: 0.33 }, warrior: { cap: 510, mult: 0.35 }
 };
 
+function getMonkWeightLimit(level) {
+  if (level <= 14) return 14;
+  if (level <= 29) return 15;
+  if (level <= 44) return 16;
+  if (level <= 59) return 17;
+  return 18;
+}
+
 function calcAvoidanceAC(char, effectiveStats) {
   const defenseSkill = getCharSkill(char, 'defense');
   const step1 = Math.floor((defenseSkill * 400) / 225);
@@ -223,6 +231,16 @@ function calcAvoidanceAC(char, effectiveStats) {
   if (reduction > 1.0) reduction = 1.0;
   
   let computedDefense = Math.floor((step1 + agiBonus + itemAvoidance) * reduction);
+
+  // Monk Weight Penalty for Avoidance
+  if (char.class === 'monk' && effectiveStats.weight !== undefined) {
+    const limit = getMonkWeightLimit(char.level);
+    if (effectiveStats.weight > limit) {
+      const penalty = Math.floor(effectiveStats.weight - limit);
+      computedDefense = Math.max(1, computedDefense - penalty);
+    }
+  }
+
   return Math.max(1, computedDefense);
 }
 
@@ -271,6 +289,15 @@ function calcACSum(char, inventory, effectiveStats, buffAC) {
   // Agility Bonus (Step 17)
   if (effectiveStats.agi > 70) {
     acSum += Math.floor(effectiveStats.agi / 20);
+  }
+  
+  // Monk Weight Penalty
+  if (char.class === 'monk' && effectiveStats.weight !== undefined) {
+    const limit = getMonkWeightLimit(char.level);
+    if (effectiveStats.weight > limit) {
+      const penalty = Math.floor((effectiveStats.weight - limit) * 2); 
+      acSum = Math.max(1, acSum - penalty);
+    }
   }
   
   return { acSum, shieldAC };
@@ -589,65 +616,64 @@ function checkFizzle(casterLevel, spellLevel) {
 // HP scales with level and stamina using class-specific multipliers.
 
 const CLASS_HP_TABLE = {
-  // { baseHP, staMult, levelMult } — baseHP is level 1 starting HP before STA
-  warrior:       { baseHP: 20, staMult: 0.20, levelMult: 14 },
-  paladin:       { baseHP: 18, staMult: 0.18, levelMult: 13 },
-  shadow_knight: { baseHP: 18, staMult: 0.18, levelMult: 13 },
-  ranger:        { baseHP: 16, staMult: 0.17, levelMult: 12 },
-  monk:          { baseHP: 18, staMult: 0.18, levelMult: 13 },
-  rogue:         { baseHP: 15, staMult: 0.16, levelMult: 12 },
-  bard:          { baseHP: 15, staMult: 0.16, levelMult: 12 },
-  cleric:        { baseHP: 14, staMult: 0.15, levelMult: 10 },
-  druid:         { baseHP: 12, staMult: 0.14, levelMult: 9 },
-  shaman:        { baseHP: 14, staMult: 0.15, levelMult: 10 },
-  wizard:        { baseHP: 10, staMult: 0.10, levelMult: 7 },
-  magician:      { baseHP: 10, staMult: 0.10, levelMult: 7 },
-  necromancer:   { baseHP: 10, staMult: 0.10, levelMult: 7 },
-  enchanter:     { baseHP: 10, staMult: 0.10, levelMult: 7 },
-  beastlord:     { baseHP: 16, staMult: 0.17, levelMult: 12 },
+  // baseHP is level 1 starting HP. levelMult is flat HP per level.
+  // staFactor is the amount of HP gained per 1 STA per 1 Level.
+  warrior:       { baseHP: 20, levelMult: 14, staFactor: 0.1000 },
+  paladin:       { baseHP: 18, levelMult: 13, staFactor: 0.0933 },
+  shadow_knight: { baseHP: 18, levelMult: 13, staFactor: 0.0933 },
+  ranger:        { baseHP: 16, levelMult: 12, staFactor: 0.0800 },
+  monk:          { baseHP: 18, levelMult: 13, staFactor: 0.0800 },
+  rogue:         { baseHP: 15, levelMult: 12, staFactor: 0.0800 },
+  bard:          { baseHP: 15, levelMult: 12, staFactor: 0.0800 },
+  beastlord:     { baseHP: 16, levelMult: 12, staFactor: 0.0800 },
+  cleric:        { baseHP: 14, levelMult: 10, staFactor: 0.0666 },
+  druid:         { baseHP: 12, levelMult: 9,  staFactor: 0.0666 },
+  shaman:        { baseHP: 14, levelMult: 10, staFactor: 0.0666 },
+  wizard:        { baseHP: 10, levelMult: 7,  staFactor: 0.0400 },
+  magician:      { baseHP: 10, levelMult: 7,  staFactor: 0.0400 },
+  necromancer:   { baseHP: 10, levelMult: 7,  staFactor: 0.0400 },
+  enchanter:     { baseHP: 10, levelMult: 7,  staFactor: 0.0400 },
 };
 
 function calcMaxHP(charClass, level, stamina) {
   const entry = CLASS_HP_TABLE[charClass] || CLASS_HP_TABLE.warrior;
-  // Level 1: baseHP + floor(sta * staMult)
-  // Level 2+: adds levelMult per additional level
-  const baseHP = entry.baseHP + Math.floor(stamina * entry.staMult);
+  const baseHP = entry.baseHP;
   const levelHP = Math.max(0, (level - 1)) * entry.levelMult;
-  return baseHP + levelHP;
+  // Stamina effect scales directly with level (e.g. 3 HP per 1 STA at level 45 for monks)
+  const staHP = Math.floor(stamina * level * entry.staFactor);
+  return baseHP + levelHP + staHP;
 }
 
 // ── Classic EQ Max Mana Calculation ─────────────────────────────────
 // Only caster/hybrid classes get mana. Pure melee = 0.
 // Mana scales from primary casting stat (WIS for priests, INT for casters).
 
-const CLASS_MANA_TABLE = {
-  warrior:       null,
-  rogue:         null,
-  monk:          null,
-  // Priests (WIS-based)
-  cleric:        { baseMana: 20, statMult: 0.20, levelMult: 10, stat: 'wis' },
-  druid:         { baseMana: 20, statMult: 0.20, levelMult: 10, stat: 'wis' },
-  shaman:        { baseMana: 20, statMult: 0.20, levelMult: 10, stat: 'wis' },
-  // Casters (INT-based)
-  wizard:        { baseMana: 25, statMult: 0.25, levelMult: 12, stat: 'intel' },
-  magician:      { baseMana: 25, statMult: 0.25, levelMult: 12, stat: 'intel' },
-  necromancer:   { baseMana: 25, statMult: 0.25, levelMult: 12, stat: 'intel' },
-  enchanter:     { baseMana: 25, statMult: 0.25, levelMult: 12, stat: 'intel' },
-  // Hybrids
-  paladin:       { baseMana: 10, statMult: 0.10, levelMult: 6, stat: 'wis' },
-  shadow_knight: { baseMana: 10, statMult: 0.10, levelMult: 6, stat: 'intel' },
-  ranger:        { baseMana: 10, statMult: 0.10, levelMult: 6, stat: 'wis' },
-  bard:          { baseMana: 10, statMult: 0.08, levelMult: 5, stat: 'intel' },
-  beastlord:     { baseMana: 10, statMult: 0.10, levelMult: 6, stat: 'wis' },
+const CLASS_MANA_STAT = {
+  warrior: null, rogue: null, monk: null, berserker: null,
+  cleric: 'wis', druid: 'wis', shaman: 'wis', paladin: 'wis', ranger: 'wis', beastlord: 'wis',
+  wizard: 'intel', magician: 'intel', necromancer: 'intel', enchanter: 'intel', shadow_knight: 'intel', bard: 'intel'
 };
 
 function calcMaxMana(charClass, level, stats) {
-  const entry = CLASS_MANA_TABLE[charClass];
-  if (!entry) return 0; // Pure melee
-  const castingStat = stats[entry.stat] || 75;
-  const baseMana = entry.baseMana + Math.floor(castingStat * entry.statMult);
-  const levelMana = Math.max(0, (level - 1)) * entry.levelMult;
-  return baseMana + levelMana;
+  const statName = CLASS_MANA_STAT[charClass];
+  if (!statName) return 0; // Pure melee
+
+  const castingStat = stats[statName] || 75;
+  let mana = 0;
+
+  // Classic EQ / P99 Formula:
+  // Below 200: ((80 * LEVEL) / 425) * STAT
+  // Above 200: (((80 * LEVEL) / 425) * 200) + (((40 * LEVEL) / 425) * (STAT - 200))
+  if (castingStat <= 200) {
+    mana = Math.floor((80 * level * castingStat) / 425);
+  } else {
+    const baseStatMana = Math.floor((80 * level * 200) / 425);
+    const extraStatMana = Math.floor((40 * level * (castingStat - 200)) / 425);
+    mana = baseStatMana + extraStatMana;
+  }
+
+  // Adding a tiny base mana buffer so level 1 chars with low stats aren't completely at 0
+  return mana + 10;
 }
 
 module.exports = {

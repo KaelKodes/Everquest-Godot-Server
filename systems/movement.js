@@ -114,7 +114,12 @@ function handleUpdatePos(session, msg) {
       // Max expected speed (e.g. Bard/Mount) is roughly 60 units/sec
       const dt = session.lastMoveTime ? (now - session.lastMoveTime) / 1000.0 : 0;
       
-      if (dt > 0.05) { // Only check if enough time has passed (prevent divide-by-zero jitters)
+      // Bypass GM accounts from rubberbanding (e.g., GMKael)
+      const auth = State.authSessions.get(session.ws);
+      const isGM = (auth && auth.accountName && auth.accountName.toLowerCase().startsWith('gm')) ||
+                   (session.char && session.char.name.toLowerCase().startsWith('gm'));
+
+      if (dt > 0.05 && !isGM) { // Only check if enough time has passed (prevent divide-by-zero jitters)
         // Allow a generous buffer for lag spikes (e.g., 2 seconds of buffered movement max)
         const maxDt = Math.min(dt, 2.0); 
         const maxSpeedSq = (60.0 * maxDt) * (60.0 * maxDt);

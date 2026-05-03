@@ -87,4 +87,5 @@ module.exports = {
   addBuybackItem: eqemuDB.addBuybackItem,
   getBuybackItems: eqemuDB.getBuybackItems,
   removeBuybackItem: eqemuDB.removeBuybackItem,
+  updateCharacterBind: eqemuDB.updateCharacterBind,
 };

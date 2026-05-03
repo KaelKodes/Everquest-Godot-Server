@@ -136,6 +136,33 @@ function calcEffectiveStats(char, inventory, buffs = []) {
     stats.speedMod = 1.0 + (maxSPA3 / 100); // Hasted
   }
 
+  // 2.5 Calculate Weight and Encumbrance Penalties
+  let totalWeight = 0;
+  totalWeight += ((char.copper || 0) + (char.silver || 0) + (char.gold || 0) + (char.platinum || 0)) * 0.1;
+  for (const row of inventory) {
+    const itemDef = ItemDB.getById(row.item_key) || ITEMS[row.item_key];
+    if (itemDef && itemDef.weight) {
+      totalWeight += (itemDef.weight / 10) * (row.quantity || 1);
+    }
+  }
+  stats.weight = totalWeight;
+
+  // Encumbrance check
+  const maxWeight = stats.str; // Basic classic ratio
+  let encumbranceSnare = 0;
+  if (totalWeight > maxWeight) {
+    const overage = totalWeight - maxWeight;
+    // Snare penalty (drops to 0 if extremely overweight)
+    encumbranceSnare = -Math.min(100, Math.floor((overage / 10) * 5)); // Lose 5% speed per 10 weight over limit
+    // Agility penalty
+    stats.agi = Math.max(1, stats.agi - Math.floor(overage));
+  }
+
+  // Apply Encumbrance Snare ONLY if they don't have magical Haste/Snare overriding it
+  if (minSPA3 >= 0 && maxSPA3 === 0 && encumbranceSnare < 0) {
+    stats.speedMod = Math.max(0.1, 1.0 + (encumbranceSnare / 100));
+  }
+
   // 3. AC Calculation (Mitigation/Avoidance Split)
   const { acSum, shieldAC } = combat.calcACSum(char, inventory, stats, buffAC);
   stats.mitigationAC = combat.calcMitigationAC(char, acSum, shieldAC);

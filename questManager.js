@@ -56,7 +56,9 @@ class QuestManager {
                 Shout: (msg) => actions.push({ action: 'shout', source: npc.id, msg }),
                 Emote: (msg) => actions.push({ action: 'emote', source: npc.id, msg }),
                 DoAnim: (anim) => actions.push({ action: 'anim', source: npc.id, anim }),
+                CastSpell: (spellId, targetId, slot, unk) => actions.push({ action: 'cast', source: npc.id, spellId, targetId }),
                 GetName: () => npc.name,
+                GetID: () => npc.id,
                 GetCleanName: () => npc.name.replace(/_/g, ' '),
                 GetX: () => npc.x,
                 GetY: () => npc.y,
@@ -101,6 +103,7 @@ class QuestManager {
             },
             other: {
                 GetName: () => player.name,
+                GetID: () => player.id,
                 GetCleanName: () => player.name.replace(/_/g, ' '),
                 GetClass: () => player.class || 1,
                 Class: () => {

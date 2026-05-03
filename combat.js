@@ -18,6 +18,21 @@ function chance(pct) {
   return Math.random() * 100 < pct;
 }
 
+// Helper: sum all buff effect base values for a given SPA on a session
+function getBuffSpaTotal(session, spaId) {
+  let total = 0;
+  if (Array.isArray(session.buffs)) {
+    for (const buff of session.buffs) {
+      if (Array.isArray(buff.effects)) {
+        for (const eff of buff.effects) {
+          if (eff.spa === spaId) total += Math.abs(eff.base);
+        }
+      }
+    }
+  }
+  return total;
+}
+
 // ── Skill System ────────────────────────────────────────────────────
 
 function getMaxSkill(charClassId, skillName, level, charRaceId) {
@@ -107,7 +122,8 @@ function calcPlayerATK(session, weaponSkillName = '1h_slashing') {
   const offSkill = getCharSkill(char, 'offense');
   const wpnSkill = getCharSkill(char, weaponSkillName);
   const strBonus = Math.floor((session.effectiveStats.str - 75) / 2);
-  return Math.floor((offSkill + wpnSkill) / 2) + strBonus;
+  const atkBonus = session.effectiveStats.atkBonus || 0; // SPA 2
+  return Math.floor((offSkill + wpnSkill) / 2) + strBonus + atkBonus;
 }
 
 function calcMobDefense(mob) {
@@ -135,8 +151,16 @@ function checkAvoidance(session) {
   const char = session.char;
   const agiBonus = Math.floor((session.effectiveStats.agi - 75) / 10);
 
+  // SPA 172: Avoid Melee Chance (e.g., Voiddance Discipline = 10000 = guaranteed)
+  const avoidAllBonus = getBuffSpaTotal(session, 172);
+  if (avoidAllBonus > 0 && chance(avoidAllBonus / 100)) {
+    return 'DODGE'; // Treated as a dodge for messaging
+  }
+
+  // SPA 173: Riposte Chance bonus (e.g., Whirlwind Discipline = 10000 = guaranteed)
+  const riposteBonus = getBuffSpaTotal(session, 173);
   const riposteSkill = getCharSkill(char, 'riposte');
-  if (riposteSkill > 0 && chance(riposteSkill / 4.5 + agiBonus)) {
+  if (riposteSkill > 0 && chance(riposteSkill / 4.5 + agiBonus + riposteBonus / 100)) {
     trySkillUp(session, 'riposte');
     return 'RIPOSTE';
   }
@@ -147,14 +171,18 @@ function checkAvoidance(session) {
     return 'BLOCK';
   }
 
+  // SPA 175: Parry Chance bonus (e.g., Improved Parry)
+  const parryBonus = getBuffSpaTotal(session, 175);
   const parrySkill = getCharSkill(char, 'parry');
-  if (parrySkill > 0 && chance(parrySkill / 4.5 + agiBonus)) {
+  if (parrySkill > 0 && chance(parrySkill / 4.5 + agiBonus + parryBonus)) {
     trySkillUp(session, 'parry');
     return 'PARRY';
   }
 
+  // SPA 174: Dodge Chance bonus (e.g., Improved Dodge)
+  const dodgeBonus = getBuffSpaTotal(session, 174);
   const dodgeSkill = getCharSkill(char, 'dodge');
-  if (dodgeSkill > 0 && chance(dodgeSkill / 5.0 + agiBonus)) {
+  if (dodgeSkill > 0 && chance(dodgeSkill / 5.0 + agiBonus + dodgeBonus)) {
     trySkillUp(session, 'dodge');
     return 'DODGE';
   }
@@ -326,16 +354,21 @@ function getMobAttackText(mob) {
 
 // ── Critical Hits ───────────────────────────────────────────────────
 
-function checkCritical(charClass, level) {
-  const critChance = (charClass === 'warrior') ? 1 + Math.floor(level / 20)
+function checkCritical(charClass, level, session) {
+  let critChance = (charClass === 'warrior') ? 1 + Math.floor(level / 20)
                    : (charClass === 'rogue')   ? 1
                    : 0;
+  // SPA 169: Critical Hit Chance bonus from buffs (e.g., Cleave)
+  if (session) critChance += getBuffSpaTotal(session, 169) / 10;
   return chance(critChance);
 }
 
-function checkCripplingBlow(charLevel, mobLevel) {
-  if (charLevel - mobLevel >= 5) return chance(2);
-  return false;
+function checkCripplingBlow(charLevel, mobLevel, session) {
+  let crippleChance = 0;
+  if (charLevel - mobLevel >= 5) crippleChance = 2;
+  // SPA 171: Crippling Blow Chance bonus from buffs (e.g., Holyforge)
+  if (session) crippleChance += getBuffSpaTotal(session, 171) / 10;
+  return crippleChance > 0 && chance(crippleChance);
 }
 
 // ── Double Attack ───────────────────────────────────────────────────
@@ -388,9 +421,18 @@ function calcBackstabDamage(session, weaponDmg) {
 
 const RESIST_TYPES = ['fire', 'cold', 'magic', 'poison', 'disease'];
 
-function calcSpellResist(mob, casterLevel, spellResistType, spellResistAdjust) {
+function calcSpellResist(mob, casterLevel, spellResistType, spellResistAdjust, defenderStats) {
   const resistType = spellResistType || 'magic';
-  const mobResist = (mob.resists && mob.resists[resistType]) || (mob.level * 2);
+  let mobResist = (mob.resists && mob.resists[resistType]) || (mob.level * 2);
+
+  // If the defender has effective stats (player), use their actual resist values
+  if (defenderStats) {
+    const RESIST_MAP = { fire: 'resistFire', cold: 'resistCold', magic: 'resistMagic', poison: 'resistPoison', disease: 'resistDisease' };
+    const statKey = RESIST_MAP[resistType];
+    if (statKey && defenderStats[statKey] !== undefined) {
+      mobResist = defenderStats[statKey];
+    }
+  }
 
   const effectiveResist = mobResist - (casterLevel * 1.5) + (spellResistAdjust || 0);
   const resistRoll = roll(0, 200);
@@ -497,25 +539,32 @@ const CLASS_REGEN = {
   rogue:   { hpSit: (lv, sta) => Math.ceil(lv / 3 + sta / 25 + 2), hpStand: (lv, sta) => Math.ceil(lv / 8 + sta / 50 + 1), manaSit: () => 0, manaStand: () => 0 },
   cleric:  { hpSit: (lv, sta) => Math.ceil(lv / 4 + sta / 30 + 1), hpStand: (lv, sta) => Math.ceil(lv / 10 + sta / 60 + 1), manaSit: (lv, wis) => Math.ceil(lv / 3 + wis / 20 + 2), manaStand: (lv, wis) => Math.ceil(lv / 15 + 1) },
   wizard:  { hpSit: (lv, sta) => Math.ceil(lv / 5 + sta / 35 + 1), hpStand: (lv, sta) => Math.ceil(lv / 12 + 1), manaSit: (lv, intel) => Math.ceil(lv / 3 + intel / 20 + 2), manaStand: (lv, intel) => Math.ceil(lv / 15 + 1) },
+  hybrid:  { hpSit: (lv, sta) => Math.ceil(lv / 4 + sta / 30 + 1), hpStand: (lv, sta) => Math.ceil(lv / 10 + sta / 60 + 1), manaSit: (lv, stat) => Math.ceil(lv / 4 + stat / 25 + 1), manaStand: (lv, stat) => Math.ceil(lv / 15 + 1) },
 };
 
-CLASS_REGEN.paladin = CLASS_REGEN.warrior;
-CLASS_REGEN.shadow_knight = CLASS_REGEN.warrior;
-CLASS_REGEN.ranger = CLASS_REGEN.rogue;
+CLASS_REGEN.paladin = CLASS_REGEN.hybrid;
+CLASS_REGEN.shadow_knight = CLASS_REGEN.hybrid;
+CLASS_REGEN.ranger = CLASS_REGEN.hybrid;
 CLASS_REGEN.monk = CLASS_REGEN.rogue;
 CLASS_REGEN.druid = CLASS_REGEN.cleric;
 CLASS_REGEN.shaman = CLASS_REGEN.cleric;
 CLASS_REGEN.necromancer = CLASS_REGEN.wizard;
 CLASS_REGEN.magician = CLASS_REGEN.wizard;
 CLASS_REGEN.enchanter = CLASS_REGEN.wizard;
-CLASS_REGEN.bard = CLASS_REGEN.rogue;
+CLASS_REGEN.bard = CLASS_REGEN.hybrid;
+CLASS_REGEN.beastlord = CLASS_REGEN.hybrid;
 
 function getRegenRates(charClass, level, stats) {
   const regen = CLASS_REGEN[charClass] || CLASS_REGEN.warrior;
   const sta = stats.sta || 75;
   const wis = stats.wis || 75;
   const intel = stats.intel || 75;
-  const castStat = (charClass === 'cleric') ? wis : intel;
+  
+  // Properly determine if the class uses Wisdom or Intelligence for mana
+  let castStat = wis;
+  if (['wizard', 'magician', 'necromancer', 'enchanter', 'shadow_knight', 'bard'].includes(charClass)) {
+      castStat = intel;
+  }
 
   return {
     hpSitting:  regen.hpSit(level, sta),

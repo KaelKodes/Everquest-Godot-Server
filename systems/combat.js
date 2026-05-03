@@ -298,8 +298,8 @@ async function processCombatTick(session, dt) {
           }
 
           let dmgRoll = combat.calcPlayerDamage(session, damage, delay);
-          const isCrit = combat.checkCritical(session.char.class, charLvl);
-          const isCripple = combat.checkCripplingBlow(charLvl, tLevel);
+          const isCrit = combat.checkCritical(session.char.class, charLvl, session);
+          const isCripple = combat.checkCripplingBlow(charLvl, tLevel, session);
           
           if (isCrit || isCripple) dmgRoll *= 2;
           
@@ -310,8 +310,63 @@ async function processCombatTick(session, dt) {
               }
           } else {
               mob.hp -= dmgRoll;
-              if (mob.hateList) mob.hateList.addEntToHateList(session.char.name, dmgRoll, dmgRoll);
+              // SPA 92: Hate/Aggro Modifier — scales melee-generated hate
+              let hateMod = 1.0;
+              if (Array.isArray(session.buffs)) {
+                for (const buff of session.buffs) {
+                  if (Array.isArray(buff.effects)) {
+                    const hateEff = buff.effects.find(e => e.spa === 92 && e.base !== 0);
+                    if (hateEff) hateMod += (hateEff.base / 100);
+                  }
+                }
+              }
+              hateMod = Math.max(0.01, hateMod); // Never go to 0
+              const hateAmt = Math.floor(dmgRoll * hateMod);
+              if (mob.hateList) mob.hateList.addEntToHateList(session.char.name, hateAmt, dmgRoll);
               SpellSystem.breakMez(mob, events);
+
+              // SPA 85: Check for weapon proc buffs
+              if (Array.isArray(session.buffs)) {
+                for (const buff of session.buffs) {
+                  if (buff.procSpellId && buff.procRate) {
+                    // Base proc chance ~5% modified by procRate
+                    const procChance = Math.min(50, 5 * (buff.procRate / 100));
+                    if (combat.chance(procChance)) {
+                      // Fire the proc spell as bonus damage
+                      const procSpell = SpellDB ? SpellDB.getById(buff.procSpellId) : null;
+                      if (procSpell) {
+                        const procDmg = procSpell.effects?.find(e => e.spa === 0 && e.base < 0);
+                        if (procDmg) {
+                          const dmg = Math.abs(procDmg.base);
+                          mob.hp -= dmg;
+                          if (mob.hateList) mob.hateList.addEntToHateList(session.char.name, dmg, dmg);
+                          events.push({ event: 'SPELL_DAMAGE', source: 'You', target: tName, spell: buff.name, damage: dmg });
+                        }
+                      } else {
+                        // Fallback: small flat damage proc
+                        const flatProc = Math.floor(session.char.level / 2) + 5;
+                        mob.hp -= flatProc;
+                        if (mob.hateList) mob.hateList.addEntToHateList(session.char.name, flatProc, flatProc);
+                        events.push({ event: 'SPELL_DAMAGE', source: 'You', target: tName, spell: buff.name, damage: flatProc });
+                      }
+                    }
+                  }
+                }
+              }
+
+              // SPA 121: Reverse Damage Shield — mob deals damage back to attacker on hit
+              if (Array.isArray(mob.buffs)) {
+                for (const mbuff of mob.buffs) {
+                  if (Array.isArray(mbuff.effects)) {
+                    const rdsEff = mbuff.effects.find(e => e.spa === 121 && e.base !== 0);
+                    if (rdsEff) {
+                      const rdsDmg = Math.abs(rdsEff.base);
+                      session.char.hp -= rdsDmg;
+                      events.push({ event: 'SPELL_DAMAGE', source: mbuff.name, target: 'You', spell: 'Reverse DS', damage: rdsDmg });
+                    }
+                  }
+                }
+              }
           }
 
           let txt = isOffhand ? '' : null;

@@ -5,6 +5,8 @@ const { NPC_TYPES, HAIL_RANGE } = require('../data/npcTypes');
 const QuestDialogs = require('../data/npcs/quests');
 const QuestManager = require('../questManager');
 const FactionSystem = require('./faction');
+const GroupManager = require('./groups');
+
 
 function getDistanceSq(x1, y1, x2, y2) {
   return (x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1);
@@ -196,22 +198,32 @@ function handleWhisper(session, msg) {
   send(session.ws, { type: 'CHAT', channel: 'whisper', sender: targetName, text: text, direction: 'to' });
 }
 
-// ── /group — global (stub: not implemented) ─────────────────────────
+// ── /group — broadcast to party ────────────────────────────────────
 function handleGroup(session, msg) {
   const text = (msg.text || '').trim();
   if (!text) return;
+  GroupManager.handleGroupChat(session, text);
+}
 
-  // TODO: Implement group system
-  // For now, check if player is in a group
-  if (!session.group) {
-    send(session.ws, { type: 'CHAT', channel: 'system', sender: '', text: 'You are not in a group.' });
+// ── /invite — invite player to group ────────────────────────────────
+function handleInvite(session, msg) {
+  const targetName = (msg.text || '').trim();
+  if (!targetName) {
+    send(session.ws, { type: 'CHAT', channel: 'system', text: 'Usage: /invite <name>' });
     return;
   }
+  GroupManager.handleInvite(session, targetName);
+}
 
-  // When groups are implemented, broadcast to group members:
-  // for (const member of session.group.members) {
-  //   send(member.ws, { type: 'CHAT', channel: 'group', sender: session.char.name, text: text });
-  // }
+// ── /disband — leave current group ──────────────────────────────────
+function handleDisband(session, msg) {
+  GroupManager.handleDisband(session);
+}
+
+// ── /grouproles — manage roles ─────────────────────────────────────
+function handleGrouproles(session, msg) {
+  const parts = (msg.text || '').split(' ');
+  GroupManager.handleRoles(session, parts);
 }
 
 // ── /guild — global (stub: not implemented) ─────────────────────────
@@ -262,6 +274,9 @@ module.exports = {
   handleYell,
   handleWhisper,
   handleGroup,
+  handleInvite,
+  handleDisband,
+  handleGrouproles,
   handleGuild,
   handleRaid,
   handleAnnouncement,

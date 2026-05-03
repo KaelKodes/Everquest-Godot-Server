@@ -61,6 +61,7 @@ function spawnMob(zoneId, mobDef, forcedX = null, forcedY = null, forcedZ = null
     attackDelay: mobDef.attackDelay, attackTimer: 0,
     attackType: mobDef.attackType || 0,
     size: mobDef.size || 6, runspeed: mobDef.runspeed || 1.25, walkspeed: mobDef.walkspeed || 0.4,
+    seeInvis: mobDef.see_invis || 0, seeInvisUndead: mobDef.see_invis_undead || 0,
     textures: mobDef.textures || {},
     xpBase: mobDef.xpBase, loot: mobDef.loot || [],
     target: null,

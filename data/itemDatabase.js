@@ -102,6 +102,7 @@ class ItemDatabase {
           bagsize: rawItem.bagsize || 0,
           bagwr: rawItem.bagwr || 0,
           bagtype: rawItem.bagtype || 0,
+          bookText: rawItem.bookText || '',
         };
 
         const legacyKey = this.generateKey(rawItem.name);

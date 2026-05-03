@@ -93,6 +93,7 @@ async function ensureZoneLoaded(zoneKey, spawnMobFn, spawnMiningNodesFn, spawnMi
         race: row.race || 1, gender: row.gender || 0, npcClass: row.class || 1, chance: row.chance || 0,
         prim_melee_type: row.prim_melee_type, size: row.size || 6,
         runspeed: row.runspeed, walkspeed: row.walkspeed, attack_delay: row.attack_delay,
+        see_invis: row.see_invis, see_invis_undead: row.see_invis_undead,
         textures: {
             t: row.texture, h: row.helmtexture, w1: row.d_melee_texture1, w2: row.d_melee_texture2,
             a: row.armtexture, b: row.bracertexture, hnd: row.handtexture, l: row.legtexture, f: row.feettexture
@@ -119,6 +120,7 @@ async function ensureZoneLoaded(zoneKey, spawnMobFn, spawnMiningNodesFn, spawnMi
         xpBase: picked.level * picked.level * 15, respawnTime: point.respawntime,
         attackType: picked.prim_melee_type || 0,
         size: picked.size || 6, runspeed: picked.runspeed || 1.25, walkspeed: picked.walkspeed || 0.4,
+        see_invis: picked.see_invis || 0, see_invis_undead: picked.see_invis_undead || 0,
         textures: picked.textures
       };
 

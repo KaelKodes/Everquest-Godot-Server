@@ -98,9 +98,48 @@ async function handleZone(session, msg) {
 function handleUpdatePos(session, msg) {
   if (session.char) {
     if (session.tickDistance === undefined) session.tickDistance = 0;
-    let dx = 0, dy = 0;
-    if (msg.x != null && session.char.x != null) dx = msg.x - session.char.x;
-    if (msg.y != null && session.char.y != null) dy = msg.y - session.char.y;
+    
+    const now = Date.now();
+    let dx = 0, dy = 0, dz = 0;
+
+    // Movement Validation (Anti-Cheat / Speed Hack Prevention)
+    if (session.char.x != null && session.char.y != null) {
+      dx = (msg.x != null ? msg.x : session.char.x) - session.char.x;
+      dy = (msg.y != null ? msg.y : session.char.y) - session.char.y;
+      dz = (msg.z != null ? msg.z : session.char.z || 0) - (session.char.z || 0);
+      
+      const distSq = dx * dx + dy * dy; // Horizontal distance only
+      
+      // Calculate allowable distance based on time delta
+      // Max expected speed (e.g. Bard/Mount) is roughly 60 units/sec
+      const dt = session.lastMoveTime ? (now - session.lastMoveTime) / 1000.0 : 0;
+      
+      if (dt > 0.05) { // Only check if enough time has passed (prevent divide-by-zero jitters)
+        // Allow a generous buffer for lag spikes (e.g., 2 seconds of buffered movement max)
+        const maxDt = Math.min(dt, 2.0); 
+        const maxSpeedSq = (60.0 * maxDt) * (60.0 * maxDt);
+        
+        // Exclude huge dt jumps (like logging in or zoning) where lastMoveTime might be stale
+        // Additionally, check if they are "flying" up (dz > 0) faster than a jump would allow
+        const jumpSpeed = (20.0 * maxDt);
+        if (dt < 10.0 && (distSq > maxSpeedSq || dz > jumpSpeed)) {
+          console.log(`[ENGINE] Rubberbanding ${session.char.name} (Speed hack or heavy lag detected). HorizDistSq: ${distSq.toFixed(1)}, dz: ${dz.toFixed(1)}, Dt: ${dt.toFixed(2)}`);
+          if (session.ws) {
+            session.ws.send(JSON.stringify({
+              type: 'TELEPORT',
+              x: session.char.x,
+              y: session.char.y,
+              z: session.char.z,
+              heading: session.char.heading,
+              zoneId: session.char.zoneId
+            }));
+          }
+          return; // Reject movement
+        }
+      }
+    }
+
+    session.lastMoveTime = now;
     session.tickDistance += Math.sqrt(dx*dx + dy*dy);
 
     if (msg.x != null) session.char.x = msg.x;
@@ -109,10 +148,11 @@ function handleUpdatePos(session, msg) {
 
     // Movement interrupts casting
     if (session.casting && session.casting.startPos) {
-      const dx = session.char.x - session.casting.startPos.x;
-      const dy = session.char.y - session.casting.startPos.y;
-      const distSq = dx * dx + dy * dy;
-      if (distSq > 25) { // Small threshold to avoid jitter false-positives
+      const isBardSong = session.casting.spellDef?.derived?.isBardSong === true;
+      const cdx = session.char.x - session.casting.startPos.x;
+      const cdy = session.char.y - session.casting.startPos.y;
+      const cdistSq = cdx * cdx + cdy * cdy;
+      if (cdistSq > 25 && !isBardSong) { // Small threshold to avoid jitter false-positives
         interruptCasting(session, 'Your spell is interrupted!');
       }
     }

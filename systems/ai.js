@@ -202,11 +202,39 @@ function processMobAI(zone, zoneId, dt, api) {
           if (!isSitting && !UNDEAD_RACES.includes(mob.race) && (session.char.level > mob.level + 5)) {
             shouldAggro = false;
           }
-          
-          // Sneaking from behind
-          if (shouldAggro && session.char.isSneaking) {
-            // Very simplified behind check (In EQ sneak only works from behind)
-            shouldAggro = false; 
+
+          // Sneaking / Invisibility / Hide Checks
+          if (shouldAggro) {
+            // Helper to check player's buffs for a specific SPA
+            const hasBuffSpa = (spaId) => session.buffs && session.buffs.some(b => b.effects && b.effects.some(e => e.spa === spaId));
+            
+            // SPA 12 (Invis), SPA 28 (Invis vs Undead), SPA 29 (Invis vs Animals)
+            const hasInvis = session.char.isHidden || hasBuffSpa(12) || hasBuffSpa(29); // Roll animals into general invis for now
+            const hasInvisUndead = hasBuffSpa(28);
+
+            const isUndead = UNDEAD_RACES.includes(mob.race);
+            const mobSeesInvis = mob.seeInvis > 0;
+            const mobSeesInvisUndead = mob.seeInvisUndead > 0; // Though usually undead always see normal invis anyway
+
+            if (isUndead) {
+              // Undead naturally see through regular invis
+              if (hasInvisUndead && !mobSeesInvisUndead && !mobSeesInvis) {
+                shouldAggro = false; // Player is invis to undead, and mob doesn't see through it
+              }
+            } else {
+              // Normal mobs
+              if (hasInvis && !mobSeesInvis) {
+                shouldAggro = false; // Player is invis, and mob doesn't see through it
+              }
+            }
+
+            // Sneaking from behind (only matters if they aren't fully invisible)
+            if (shouldAggro && session.char.isSneaking) {
+              // Very simplified behind check (In EQ sneak only works from behind)
+              // If the player is behind the mob, shouldAggro = false
+              // TODO: Add directional math check using mob.heading
+              shouldAggro = false; 
+            }
           }
           
           if (shouldAggro && distSq < closestDistSq) {
@@ -224,10 +252,44 @@ function processMobAI(zone, zoneId, dt, api) {
     }
 
     if (mob.hp > 0 && mob.target) {
-      // Check if mob is CC'd (mez/stun/fear) — skip attack if so
+      // Check if mob is CC'd (mez/stun/fear/root/charm) — skip attack if so
       if (Array.isArray(mob.buffs)) {
-        const isCCd = mob.buffs.some(b => b.isMez || b.isStun || b.isFear);
-        if (isCCd) continue; // Mob can't act while CC'd
+        const isMezOrStun = mob.buffs.some(b => b.isMez || b.isStun);
+        if (isMezOrStun) continue; // Mob can't act while mez'd or stunned
+
+        // Fear: mob flees randomly instead of fighting
+        const isFeared = mob.buffs.some(b => b.isFear);
+        if (isFeared) {
+          // Feared mobs run in a random direction
+          const fearSpeed = (mob.runspeed || 1.25) * 12.0;
+          const fearMove = fearSpeed * dt;
+          if (!mob.fearAngle || Math.random() < 0.05) {
+            mob.fearAngle = Math.random() * Math.PI * 2;
+          }
+          mob.x += Math.cos(mob.fearAngle) * fearMove;
+          mob.y += Math.sin(mob.fearAngle) * fearMove;
+          api.broadcastMobMove(mob, zoneId);
+          continue;
+        }
+
+        // Charm: charmed mobs don't attack their owner
+        const isCharmed = mob.buffs.some(b => b.isCharm);
+        if (isCharmed) {
+          // Check if charm expired this tick
+          const charmBuff = mob.buffs.find(b => b.isCharm);
+          if (charmBuff && charmBuff.duration <= 0) {
+            // Charm broke — mob turns hostile to owner
+            mob.isCharmed = false;
+            const owner = mob.charmOwner;
+            mob.charmOwner = null;
+            if (owner && owner.char && owner.char.hp > 0) {
+              mob.target = owner;
+              if (mob.hateList) mob.hateList.addEntToHateList(owner.char.name, 1000, 0);
+              api.sendCombatLog(owner, [{ event: 'MESSAGE', text: `[color=red]${mob.name} is no longer under your control![/color]` }]);
+            }
+          }
+          continue; // Don't process normal AI while charmed
+        }
       }
 
       // Determine if target is a pet or a player session
@@ -311,8 +373,13 @@ function processMobAI(zone, zoneId, dt, api) {
         continue;
       }
 
-      // If out of range, chase
+      // If out of range, chase (unless rooted)
+      const isRooted = Array.isArray(mob.buffs) && mob.buffs.some(b => b.isRoot);
       if (!inMeleeRange) {
+        if (isRooted) {
+          // Rooted mobs can't move but keep trying to attack if in range
+          continue;
+        }
         // Scale authentic EQ runspeed (typically 1.25 -> 15.0 units/sec)
         const mobSpeed = (mob.runspeed || 1.25) * 12.0;
         const moveAmount = mobSpeed * mobMoveSpeedMod * dt;
@@ -355,7 +422,7 @@ function processMobAI(zone, zoneId, dt, api) {
 
               // Add hate for the pet's owner
               if (pet.ownerSession) {
-                api.sendCombatLog(pet.ownerSession, [{ event: 'MELEE_HIT', source: mob.name, target: pet.name, damage: dmgRoll, type: 'slash' }]);
+                api.sendCombatLog(pet.ownerSession, [{ event: 'MELEE_HIT', sourceId: `mob_${mobId}`, targetId: `pet_${pet.id}`, source: mob.name, target: pet.name, damage: dmgRoll, type: 'slash' }]);
               }
             }
           }
@@ -378,12 +445,28 @@ function processMobAI(zone, zoneId, dt, api) {
               let ripoDmg = combat.calcPlayerDamage(session, damage, delay);
               mob.hp -= ripoDmg;
               const wpnSkill = api.getWeaponSkillName ? api.getWeaponSkillName(session.inventory) : '1h_slashing';
-              events.push({ event: 'MELEE_HIT', source: 'You', target: mob.name, damage: ripoDmg, text: 'Riposte', type: wpnSkill });
+              events.push({ event: 'MELEE_HIT', sourceId: `player_${session.char.id}`, targetId: `mob_${mobId}`, source: 'You', target: mob.name, damage: ripoDmg, text: 'Riposte', type: wpnSkill });
             }
           } else {
             const mobHitChance = combat.calcMobHitChance(mob, session);
-            if (combat.chance(mobHitChance)) {
+            // Blind: halve hit chance (SPA 20)
+            const isBlinded = Array.isArray(mob.buffs) && mob.buffs.some(b => b.isBlind);
+            const effectiveHitChance = isBlinded ? Math.floor(mobHitChance / 2) : mobHitChance;
+            if (combat.chance(effectiveHitChance)) {
               let dmgRoll = combat.calcMobDamage(mob, session.effectiveStats.mitigationAC);
+
+              // SPA 168: Melee Mitigation — reduce incoming melee damage by %
+              if (Array.isArray(session.buffs) && dmgRoll > 0) {
+                for (const buff of session.buffs) {
+                  if (Array.isArray(buff.effects)) {
+                    const mitEff = buff.effects.find(e => e.spa === 168 && e.base < 0);
+                    if (mitEff) {
+                      const reduction = Math.abs(mitEff.base) / 100;
+                      dmgRoll = Math.max(1, Math.floor(dmgRoll * (1 - reduction)));
+                    }
+                  }
+                }
+              }
               
               // Apply Runes (SPA 55) before subtracting HP
               if (Array.isArray(session.buffs) && dmgRoll > 0) {
@@ -408,7 +491,7 @@ function processMobAI(zone, zoneId, dt, api) {
                 session.char.hp -= dmgRoll;
               }
               const attackText = combat.getMobAttackText(mob);
-              events.push({ event: 'MELEE_HIT', source: mob.name, target: 'You', damage: dmgRoll, text: attackText, type: 'slash' });
+              events.push({ event: 'MELEE_HIT', sourceId: `mob_${mobId}`, targetId: `player_${session.char.id}`, source: mob.name, target: 'You', damage: dmgRoll, text: attackText, type: 'slash' });
 
               // Damage Shield reflection (SPA 59 = DS)
               if (Array.isArray(session.buffs)) {
@@ -428,7 +511,7 @@ function processMobAI(zone, zoneId, dt, api) {
               api.breakHide(session);
             } else {
               const attackText = combat.getMobAttackText(mob);
-              events.push({ event: 'MELEE_MISS', source: mob.name, target: 'You', text: `${attackText} miss`, type: 'slash' });
+              events.push({ event: 'MELEE_MISS', sourceId: `mob_${mobId}`, targetId: `player_${session.char.id}`, source: mob.name, target: 'You', text: `${attackText} miss`, type: 'slash' });
             }
           }
         

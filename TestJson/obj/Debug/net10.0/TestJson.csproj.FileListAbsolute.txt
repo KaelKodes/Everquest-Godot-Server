@@ -1,0 +1,5 @@
+D:\Kael Kodes\EQMUD\server\TestJson\obj\Debug\net10.0\TestJson.GeneratedMSBuildEditorConfig.editorconfig
+D:\Kael Kodes\EQMUD\server\TestJson\obj\Debug\net10.0\TestJson.AssemblyInfoInputs.cache
+D:\Kael Kodes\EQMUD\server\TestJson\obj\Debug\net10.0\TestJson.AssemblyInfo.cs
+D:\Kael Kodes\EQMUD\server\TestJson\obj\Debug\net10.0\TestJson.csproj.CoreCompileInputs.cache
+D:\Kael Kodes\EQMUD\server\TestJson\obj\Debug\net10.0\TestJson.sourcelink.json

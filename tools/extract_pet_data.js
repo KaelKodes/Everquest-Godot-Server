@@ -16,7 +16,8 @@ const mysql = require('mysql2/promise');
            n.class, n.attack_delay, n.attack_speed,
            n.STR, n.STA, n.DEX, n.AGI, n.WIS, n.CHA,
            n.MR, n.FR, n.CR, n.DR, n.PR, n.AC,
-           n.runspeed, n.hp_regen_rate, n.mana_regen_rate
+           n.runspeed, n.hp_regen_rate, n.mana_regen_rate,
+           n.d_melee_texture1, n.d_melee_texture2
     FROM pets p
     JOIN npc_types n ON p.npcID = n.id
     ORDER BY p.type, p.petpower, n.level
@@ -38,7 +39,7 @@ const mysql = require('mysql2/promise');
     if (type.startsWith('#')) continue; // Skip expansion-specific
     console.log(`=== ${type} (${pets.length} variants) ===`);
     for (const r of pets) {
-      console.log(`  pw=${r.petpower} L${r.level} HP=${r.hp} DMG=${r.mindmg}-${r.maxdmg} DLY=${r.attack_delay} race=${r.race} AC=${r.AC} regen=${r.hp_regen_rate} class=${r.class} name=${r.name} npcID=${r.npcID}`);
+      console.log(`  pw=${r.petpower} L${r.level} HP=${r.hp} DMG=${r.mindmg}-${r.maxdmg} DLY=${r.attack_delay} race=${r.race} AC=${r.AC} eqSet=${r.equipmentset} tex1=${r.d_melee_texture1} tex2=${r.d_melee_texture2} class=${r.class} name=${r.name} npcID=${r.npcID}`);
     }
     console.log('');
   }

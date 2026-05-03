@@ -64,10 +64,14 @@ function calcEffectiveStats(char, inventory, buffs = []) {
     dex: char.dex, wis: char.wis, intel: char.intel, cha: char.cha,
     ac: 0, mitigationAC: 0, avoidanceAC: 0,
     hp: 0, mana: 0,
-    dmg: 2, dly: 30, offhandDmg: 0, offhandDly: 0
+    dmg: 2, dly: 30, offhandDmg: 0, offhandDly: 0,
+    // Resists (SPA 46-50)
+    resistFire: 0, resistCold: 0, resistPoison: 0, resistDisease: 0, resistMagic: 0,
+    // ATK bonus (SPA 2)
+    atkBonus: 0
   };
 
-  // 1. Equipment Stat Bonuses (Primary Stats)
+  // 1. Equipment Stat Bonuses (Primary Stats + Resists + ATK)
   for (const row of inventory) {
     if (row.equipped !== 1) continue;
     const itemDef = ItemDB.getById(row.item_key) || ITEMS[row.item_key];
@@ -80,6 +84,14 @@ function calcEffectiveStats(char, inventory, buffs = []) {
     if (itemDef.wis) stats.wis += itemDef.wis;
     if (itemDef.intel) stats.intel += itemDef.intel;
     if (itemDef.cha) stats.cha += itemDef.cha;
+    // Resists from gear
+    if (itemDef.fr) stats.resistFire += itemDef.fr;
+    if (itemDef.cr) stats.resistCold += itemDef.cr;
+    if (itemDef.pr) stats.resistPoison += itemDef.pr;
+    if (itemDef.dr) stats.resistDisease += itemDef.dr;
+    if (itemDef.mr) stats.resistMagic += itemDef.mr;
+    // ATK from gear
+    if (itemDef.attack) stats.atkBonus += itemDef.attack;
   }
 
   // 2. Buff Stat Bonuses (SPAs 3-10)
@@ -95,6 +107,7 @@ function calcEffectiveStats(char, inventory, buffs = []) {
       for (const eff of buff.effects) {
         switch (eff.spa) {
           case 1:  buffAC    += eff.base; break;
+          case 2:  stats.atkBonus += eff.base; break; // ATK
           case 3: 
             if (eff.base < 0 && eff.base < minSPA3) minSPA3 = eff.base;
             if (eff.base > 0 && eff.base > maxSPA3) maxSPA3 = eff.base;
@@ -106,6 +119,12 @@ function calcEffectiveStats(char, inventory, buffs = []) {
           case 8:  stats.intel += eff.base; break;
           case 9:  stats.wis += eff.base; break;
           case 10: stats.cha += eff.base; break;
+          // Resists from buffs (SPA 46-50)
+          case 46: stats.resistFire += eff.base; break;
+          case 47: stats.resistCold += eff.base; break;
+          case 48: stats.resistPoison += eff.base; break;
+          case 49: stats.resistDisease += eff.base; break;
+          case 50: stats.resistMagic += eff.base; break;
         }
       }
     }
@@ -283,15 +302,18 @@ function processRegen(session, dt) {
         session.effectiveStats = calcEffectiveStats(char, session.inventory, session.buffs);
     }
 
+    const SurvivalSystem = require('./survival');
+    const penalty = SurvivalSystem.getRegenPenalty(char);
+
     if (char.state === 'medding') {
-      char.hp = combat.clamp(char.hp + rates.hpSitting, 0, effective.hp);
+      char.hp = combat.clamp(char.hp + Math.max(0, Math.floor(rates.hpSitting * penalty)), 0, effective.hp);
       if (effective.mana > 0) {
-        char.mana = combat.clamp(char.mana + rates.manaSitting, 0, effective.mana);
+        char.mana = combat.clamp(char.mana + Math.max(0, Math.floor(rates.manaSitting * penalty)), 0, effective.mana);
       }
     } else if (!session.inCombat) {
-      char.hp = combat.clamp(char.hp + rates.hpStanding, 0, effective.hp);
+      char.hp = combat.clamp(char.hp + Math.max(0, Math.floor(rates.hpStanding * penalty)), 0, effective.hp);
       if (effective.mana > 0) {
-        char.mana = combat.clamp(char.mana + rates.manaStanding, 0, effective.mana);
+        char.mana = combat.clamp(char.mana + Math.max(0, Math.floor(rates.manaStanding * penalty)), 0, effective.mana);
       }
     }
   }
@@ -304,6 +326,7 @@ function processBuffs(session, dt) {
     buff.duration -= dt;
 
     if (Array.isArray(buff.effects)) {
+      // HoT (SPA 0 positive = heal over time, e.g. Chloroplast/Regeneration)
       const hotEffect = buff.effects.find(e => e.spa === 0 && e.base > 0);
       if (hotEffect) {
         if (!buff.tickTimer) buff.tickTimer = 6;
@@ -315,10 +338,51 @@ function processBuffs(session, dt) {
           sendCombatLog(session, [{ event: 'SPELL_HEAL', source: buff.name, target: 'You', spell: buff.name, amount: healAmt }]);
         }
       }
+
+      // Mana Regen over time (SPA 15 positive = mana per tick, e.g. Clarity/Breeze)
+      const manaRegenEffect = buff.effects.find(e => e.spa === 15 && e.base > 0);
+      if (manaRegenEffect && buff.duration > 0) {
+        if (!buff.manaTickTimer) buff.manaTickTimer = 6;
+        buff.manaTickTimer -= dt;
+        if (buff.manaTickTimer <= 0) {
+          buff.manaTickTimer = 6;
+          const manaAmt = manaRegenEffect.base;
+          const maxMana = session.effectiveStats.mana || session.char.maxMana || 0;
+          if (maxMana > 0) {
+            session.char.mana = Math.min(session.char.mana + manaAmt, maxMana);
+          }
+        }
+      }
+
+      // HP Regen (SPA 100 = flat HP regen per tick, stacks with SPA 0)
+      const hpRegenEffect = buff.effects.find(e => e.spa === 100 && e.base > 0);
+      if (hpRegenEffect && buff.duration > 0) {
+        if (!buff.hpRegenTickTimer) buff.hpRegenTickTimer = 6;
+        buff.hpRegenTickTimer -= dt;
+        if (buff.hpRegenTickTimer <= 0) {
+          buff.hpRegenTickTimer = 6;
+          const hpAmt = hpRegenEffect.base;
+          session.char.hp = Math.min(session.char.hp + hpAmt, session.effectiveStats.hp);
+        }
+      }
     }
 
     if (buff.duration <= 0) {
       sendCombatLog(session, [{ event: 'MESSAGE', text: `${buff.name} has worn off.` }]);
+      // Clean up state flags tied to specific buff types
+      if (buff.isLevitate) session.char.isLevitating = false;
+      if (buff.isWaterBreathing) session.char.canWaterBreathe = false;
+      if (buff.isSizeMod) {
+        session.char.sizeMod = 100;
+        if (session.char.networkData) session.char.networkData = null;
+      }
+      if (buff.isBindSight) {
+        session.bindSightTarget = null;
+        session.bindSightTargetId = null;
+        // Notify client to return camera to player
+        const { send } = require('../utils');
+        if (session.ws) send(session.ws, { type: 'BIND_SIGHT', active: false });
+      }
       session.buffs.splice(i, 1);
       changed = true;
     }

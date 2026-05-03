@@ -286,6 +286,8 @@ async function getCharacter(name) {
             wis: char.wis,
             intel: char.int,
             cha: char.cha,
+            hunger: char.hunger_level != null ? char.hunger_level : 100,
+            thirst: char.thirst_level != null ? char.thirst_level : 100,
             zoneId: INV_ZONES[char.zone_id] || ZONE_ID_TO_SHORT[char.zone_id] || `zone_${char.zone_id}`,
             roomId: null,
             state: 'standing',
@@ -352,10 +354,55 @@ async function createCharacter(accountId, name, className, raceName, deityId, st
 
     try {
         const [result] = await pool.query(query, params);
+        const charId = result.insertId;
+
+        // --- GRANT STARTING ITEMS ---
+        try {
+            const [starterItems] = await pool.query(
+                `SELECT item_id, item_charges, inventory_slot FROM starting_items 
+                 WHERE status = 0 
+                 AND (class_list = '0' OR FIND_IN_SET(?, class_list))
+                 AND (race_list = '0' OR FIND_IN_SET(?, race_list))
+                 AND (deity_list = '0' OR FIND_IN_SET(?, deity_list))
+                 AND (zone_id_list = '0' OR FIND_IN_SET(?, zone_id_list))`,
+                [classId.toString(), raceId.toString(), (deityId || 396).toString(), start.zone_id.toString()]
+            );
+            
+            const itemsToGive = starterItems.map(item => ({
+                id: item.item_id,
+                charges: Math.max(1, item.item_charges),
+                slot: item.inventory_slot
+            }));
+            
+            // Add custom requested universal items
+            itemsToGive.push({ id: 17005, charges: 1, slot: -1 }); // Backpack
+            itemsToGive.push({ id: 13002, charges: 1, slot: -1 }); // Torch
+            
+            const occupiedSlots = new Set(itemsToGive.filter(i => i.slot >= 0).map(i => i.slot));
+            
+            for (const item of itemsToGive) {
+                let targetSlot = item.slot;
+                if (targetSlot < 0) {
+                    targetSlot = 22; // Start at first bag slot
+                    while (occupiedSlots.has(targetSlot) && targetSlot <= 29) {
+                        targetSlot++;
+                    }
+                    if (targetSlot > 29) targetSlot = 30; // Cursor fallback
+                    occupiedSlots.add(targetSlot);
+                }
+                await pool.query(
+                    'INSERT INTO inventory (character_id, slot_id, item_id, charges) VALUES (?, ?, ?, ?)',
+                    [charId, targetSlot, item.id, item.charges]
+                );
+            }
+            console.log(`[DB] Granted ${itemsToGive.length} starting items to new character ${formattedName}`);
+        } catch(e) {
+            console.error('[DB] Starting items error:', e.message);
+        }
         
         // Return the mapped schema object exactly as getCharacter would
         return {
-            id: result.insertId,
+            id: charId,
             name: formattedName,
             class: className.toLowerCase(),
             race: raceName.toLowerCase(),
@@ -374,6 +421,8 @@ async function createCharacter(accountId, name, className, raceName, deityId, st
             wis: wis,
             intel: intel,
             cha: cha,
+            hunger: 100,
+            thirst: 100,
             zoneId: start.zone_short || INV_ZONES[start.zone_id] || `zone_${start.zone_id}`,
             roomId: null,
             state: 'standing',
@@ -422,8 +471,8 @@ async function updateCharacterState(char) {
         console.warn(`[DB] updateCharacterState: Can't resolve zone '${char.zoneId}' to numeric ID. Skipping zone_id update to preserve character location.`);
         try {
             await pool.query(
-                'UPDATE character_data SET x = ?, y = ?, z = ?, cur_hp = ?, mana = ?, exp = ?, level = ?, training_points = ? WHERE id = ?',
-                [char.x, char.y, char.z || 0, char.hp, char.mana, char.experience, char.level, char.practices || 0, char.id]
+                'UPDATE character_data SET x = ?, y = ?, z = ?, cur_hp = ?, mana = ?, exp = ?, level = ?, training_points = ?, hunger_level = ?, thirst_level = ? WHERE id = ?',
+                [char.x, char.y, char.z || 0, char.hp, char.mana, char.experience, char.level, char.practices || 0, char.hunger, char.thirst, char.id]
             );
             await saveCharacterCurrency(char.id, char.copper || 0);
         } catch (e) {
@@ -434,8 +483,8 @@ async function updateCharacterState(char) {
 
     try {
         await pool.query(
-            'UPDATE character_data SET x = ?, y = ?, z = ?, zone_id = ?, cur_hp = ?, mana = ?, exp = ?, level = ?, training_points = ? WHERE id = ?',
-            [char.x, char.y, char.z || 0, zoneId, char.hp, char.mana, char.experience, char.level, char.practices || 0, char.id]
+            'UPDATE character_data SET x = ?, y = ?, z = ?, zone_id = ?, cur_hp = ?, mana = ?, exp = ?, level = ?, training_points = ?, hunger_level = ?, thirst_level = ? WHERE id = ?',
+            [char.x, char.y, char.z || 0, zoneId, char.hp, char.mana, char.experience, char.level, char.practices || 0, char.hunger, char.thirst, char.id]
         );
         // Save currency to the separate table
         await saveCharacterCurrency(char.id, char.copper || 0);
@@ -452,7 +501,7 @@ async function getZoneSpawns(shortName) {
                se.chance, 
                n.id as npc_id, n.name, n.level, n.hp, n.mindmg, n.maxdmg, n.race, n.gender, n.class, n.npc_faction_id, n.prim_melee_type,
                n.size, n.texture, n.helmtexture, n.d_melee_texture1, n.d_melee_texture2, n.armtexture, n.bracertexture, n.handtexture, n.legtexture, n.feettexture,
-               n.runspeed, n.walkspeed, n.attack_delay,
+               n.runspeed, n.walkspeed, n.attack_delay, n.see_invis, n.see_invis_undead,
                sg.dist as wander_dist
         FROM spawn2 s 
         JOIN spawnentry se ON s.spawngroupID = se.spawngroupID 
@@ -505,16 +554,18 @@ async function getAllItems() {
     await init();
 
     const query = `
-        SELECT id as item_key, Name as name, 
-               aagi, acha, adex, aint, asta, astr, awis, 
-               ac, hp, mana, damage, delay, price, 
-               itemtype, slots, classes, races, weight, icon, material, idfile,
-               reclevel, reqlevel, scrolllevel, scrolleffect, focuseffect, light,
-               lore, magic, nodrop, norent, size, endur, fr, cr, mr, pr, dr,
-               elemdmgtype, elemdmgamt, banedmgrace, banedmgamt, placeable,
-               augslot1type, augslot2type, augslot3type, augslot4type, augslot5type, augslot6type,
-               bagslots, bagsize, bagwr, bagtype
-        FROM items
+        SELECT i.id as item_key, i.Name as name, 
+               i.aagi, i.acha, i.adex, i.aint, i.asta, i.astr, i.awis, 
+               i.ac, i.hp, i.mana, i.damage, i.delay, i.price, 
+               i.itemtype, i.slots, i.classes, i.races, i.weight, i.icon, i.material, i.idfile,
+               i.reclevel, i.reqlevel, i.scrolllevel, i.scrolleffect, i.focuseffect, i.light,
+               i.lore, i.magic, i.nodrop, i.norent, i.size, i.endur, i.fr, i.cr, i.mr, i.pr, i.dr,
+               i.elemdmgtype, i.elemdmgamt, i.banedmgrace, i.banedmgamt, i.placeable,
+               i.augslot1type, i.augslot2type, i.augslot3type, i.augslot4type, i.augslot5type, i.augslot6type,
+               i.bagslots, i.bagsize, i.bagwr, i.bagtype,
+               b.txtfile as bookText
+        FROM items i
+        LEFT JOIN books b ON i.filename = b.name
     `;
 
     const [rows] = await pool.query(query);
@@ -560,12 +611,16 @@ async function addItem(charId, itemKey, equipped, slot, qty = 1) {
     } catch(e) { console.error('[DB] addItem error:', e.message); }
 }
 
-async function updateItemQuantity(id, charId, qty) {
+async function updateItemQuantity(id, charId, qty, slotId = null) {
     // ID in our old db was a row ID. In EQEmu, the primary key is charId + slotId.
     // We will assume `id` argument is now `item_id`.
     if (!pool) return;
     try {
-        await pool.query('UPDATE inventory SET charges = charges + ? WHERE character_id = ? AND item_id = ?', [qty, charId, id]);
+        if (slotId !== null) {
+            await pool.query('UPDATE inventory SET charges = charges + ? WHERE character_id = ? AND item_id = ? AND slot_id = ? LIMIT 1', [qty, charId, id, slotId]);
+        } else {
+            await pool.query('UPDATE inventory SET charges = charges + ? WHERE character_id = ? AND item_id = ?', [qty, charId, id]);
+        }
     } catch(e) { console.error('[DB] update qty error:', e.message); }
 }
 

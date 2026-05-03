@@ -220,6 +220,127 @@ async function handleNPCGiveItems(session, msg) {
     return;
   }
 
+  // Pet specific logic
+  if (target.isPet && target.ownerId === char.id) {
+    let itemsToConsume = [];
+    let itemsRejected = [];
+    let isFull = false;
+
+    // Slot mapping for easy access
+    const eqToSlot = {
+      0: 'charm', 1: 'ear1', 2: 'head', 3: 'face', 4: 'ear2', 5: 'neck', 6: 'shoulders',
+      7: 'arms', 8: 'back', 9: 'wrists1', 10: 'wrists2', 11: 'ranged', 12: 'hands',
+      13: 'primary', 14: 'secondary', 15: 'fingers1', 16: 'fingers2', 17: 'chest',
+      18: 'legs', 19: 'feet', 20: 'waist', 21: 'ammo'
+    };
+
+    // Calculate item "score" to determine BiS (simple sum of stats + ac + damage)
+    const getItemScore = (itemDef) => {
+      if (!itemDef) return 0;
+      return (itemDef.hp || 0) + (itemDef.ac || 0) * 2 + (itemDef.damage || 0) * 5 + 
+             (itemDef.astr || 0) + (itemDef.asta || 0) + (itemDef.adex || 0) + (itemDef.aagi || 0);
+    };
+
+    for (const it of items) {
+      const itemDef = ItemDB.getById(it.item_id) || ITEMS[it.item_id] || {};
+      
+      // Can the pet use it? (Assuming pets are class 1 Warrior by default)
+      const classId = 1;
+      const canEquipClass = itemDef.classes === 65535 || (itemDef.classes & (1 << (classId - 1)));
+      
+      if (!canEquipClass) {
+        itemsRejected.push(it);
+        continue;
+      }
+
+      // Determine slot
+      let targetSlotName = eqToSlot[itemDef.slot];
+      if (!targetSlotName) targetSlotName = 'primary'; // fallback
+
+      // Handle duplicate slot types (ear, wrist, fingers)
+      let slotNamesToCheck = [targetSlotName];
+      if (itemDef.slot === 1 || itemDef.slot === 4) slotNamesToCheck = ['ear1', 'ear2'];
+      if (itemDef.slot === 9 || itemDef.slot === 10) slotNamesToCheck = ['wrists1', 'wrists2'];
+      if (itemDef.slot === 15 || itemDef.slot === 16) slotNamesToCheck = ['fingers1', 'fingers2'];
+      if (itemDef.itemtype === 1) slotNamesToCheck = ['primary', 'secondary']; // Weapons
+      if (itemDef.itemtype === 4) slotNamesToCheck = ['secondary']; // Shield
+
+      let equippedSlot = null;
+      let isUpgrade = false;
+
+      // Find if we have an empty slot or an upgrade
+      for (const sName of slotNamesToCheck) {
+        const currentItem = target.equipment[sName];
+        if (!currentItem) {
+          equippedSlot = sName;
+          isUpgrade = true;
+          break;
+        } else {
+          const currentDef = ItemDB.getById(currentItem.item_id) || ITEMS[currentItem.item_id] || {};
+          if (getItemScore(itemDef) > getItemScore(currentDef)) {
+            equippedSlot = sName;
+            isUpgrade = true;
+            break;
+          }
+        }
+      }
+
+      if (isUpgrade) {
+        // Equip it! Move existing item to inventory if any
+        if (target.equipment[equippedSlot]) {
+          const oldItem = target.equipment[equippedSlot];
+          if (target.inventory.length < 8) {
+            target.inventory.push(oldItem);
+          } else {
+            // No room for the old item! We must reject the new one
+            isFull = true;
+            itemsRejected.push(it);
+            continue;
+          }
+        }
+        target.equipment[equippedSlot] = it;
+        itemsToConsume.push(it);
+      } else {
+        // Not BiS, put in inventory if space
+        if (target.inventory.length < 8) {
+          target.inventory.push(it);
+          itemsToConsume.push(it);
+        } else {
+          isFull = true;
+          itemsRejected.push(it);
+        }
+      }
+    }
+
+    if (itemsRejected.length > 0) {
+      const fallbackActions = [
+        { action: 'say', source: target.id, msg: isFull ? `Master, my inventory is full. Please take some items first.` : `I have no use for this, master.` }
+      ];
+      processQuestActions(session, target, fallbackActions);
+    } else {
+      processQuestActions(session, target, [{ action: 'say', source: target.id, msg: `Thank you, master.` }]);
+    }
+
+    // Delete consumed items from player
+    for (const it of itemsToConsume) {
+      if (it.inst_id) {
+        await DB.pool.query('DELETE FROM inventory WHERE id = ? AND char_id = ?', [it.inst_id, char.id]);
+      }
+    }
+
+    session.inventory = await DB.getInventory(char.id);
+    session.effectiveStats = calcEffectiveStats(char, session.inventory, session.buffs);
+    sendInventory(session);
+    
+    // Send pet inventory update
+    send(session.ws, { 
+      type: 'PET_INVENTORY_UPDATE', 
+      equipment: target.equipment, 
+      inventory: target.inventory 
+    });
+    return;
+  }
+
   // Trigger Event
   const zoneShortName = char.zoneId;
   const trade = {};
@@ -340,6 +461,111 @@ async function getChaSellMod(session, npcId) {
       }
   }
   return Math.max(0.7, Math.min(1.5, mod));
+}
+
+async function handlePetInventoryAction(session, msg) {
+  const char = session.char;
+  const pet = session.pet;
+
+  if (!pet || !pet.alive || pet.ownerId !== char.id) return;
+
+  const { action, location, destination } = msg;
+
+  const getItemAt = (loc) => {
+    if (!loc) return null;
+    if (loc.type === 'equip') return pet.equipment[loc.slot];
+    if (loc.type === 'inventory') return pet.inventory[loc.slot];
+    return null;
+  };
+
+  const setItemAt = (loc, item) => {
+    if (loc.type === 'equip') {
+      if (item) pet.equipment[loc.slot] = item;
+      else delete pet.equipment[loc.slot];
+    } else if (loc.type === 'inventory') {
+      pet.inventory[loc.slot] = item;
+    }
+  };
+
+  if (action === 'take') {
+    const item = getItemAt(location);
+    if (!item) return;
+
+    // Check player inventory space
+    const emptySlot = getFirstEmptySlot(session.inventory);
+    if (emptySlot === -1) {
+      sendCombatLog(session, [{ event: 'MESSAGE', text: 'Your inventory is full!' }]);
+      return;
+    }
+
+    // Add to DB
+    await DB.addItem(char.id, item.item_id, 0, emptySlot);
+    
+    // Remove from pet
+    if (location.type === 'inventory') {
+      pet.inventory.splice(location.slot, 1);
+    } else {
+      setItemAt(location, null);
+    }
+
+    session.inventory = await DB.getInventory(char.id);
+    session.effectiveStats = calcEffectiveStats(char, session.inventory, session.buffs);
+    sendInventory(session);
+    
+    send(session.ws, { 
+      type: 'PET_INVENTORY_UPDATE', 
+      equipment: pet.equipment, 
+      inventory: pet.inventory 
+    });
+  } else if (action === 'move') {
+    const srcItem = getItemAt(location);
+    if (!srcItem) return;
+
+    // If moving from inventory to inventory, we just swap or shift
+    if (location.type === 'inventory' && destination.type === 'inventory') {
+      const destItem = getItemAt(destination);
+      pet.inventory[location.slot] = destItem;
+      pet.inventory[destination.slot] = srcItem;
+      // Filter out nulls to keep it packed
+      pet.inventory = pet.inventory.filter(i => i);
+    } else {
+      const destItem = getItemAt(destination);
+      
+      // If equipping, check constraints? 
+      // The user is manually equipping it, we can enforce class/race but MVP just swaps
+      
+      if (location.type === 'inventory') {
+        // we are moving FROM inventory TO equip
+        setItemAt(destination, srcItem);
+        if (destItem) {
+          pet.inventory[location.slot] = destItem; // swap
+        } else {
+          pet.inventory.splice(location.slot, 1); // remove
+        }
+      } else if (destination.type === 'inventory') {
+        // moving FROM equip TO inventory
+        setItemAt(location, destItem); // might be null
+        // If destination slot is out of bounds, just push
+        if (destination.slot >= pet.inventory.length) {
+           pet.inventory.push(srcItem);
+        } else {
+           pet.inventory[destination.slot] = srcItem;
+        }
+      } else {
+        // equip to equip swap
+        setItemAt(destination, srcItem);
+        setItemAt(location, destItem);
+      }
+      
+      pet.inventory = pet.inventory.filter(i => i);
+    }
+
+    send(session.ws, { 
+      type: 'PET_INVENTORY_UPDATE', 
+      equipment: pet.equipment, 
+      inventory: pet.inventory 
+    });
+  }
 }
 
 async function handleEquipItem(session, msg) {
@@ -875,6 +1101,7 @@ module.exports = {
   handleRightClick,
   handleSell,
   handleNPCGiveItems,
+  handlePetInventoryAction,
   handleDestroyItem,
   handleEquipItem,
   handleUnequipItem,

@@ -1,4 +1,4 @@
-﻿const Skills = {
+const Skills = {
     // Vision Abilities
   'normal_vision': {
     name: 'Normal Vision',
@@ -237,7 +237,7 @@
   },
   'double_attack': {
     name: 'Double Attack',
-    type: 'ability',
+    type: 'combat',
     classes: {
       warrior: { levelGranted: 15, capFormula: (level) => (level * 5) + 5, maxCap: 255 },
       monk: { levelGranted: 15, capFormula: (level) => (level * 5) + 5, maxCap: 255 },
@@ -251,7 +251,7 @@
   },
   'dual_wield': {
     name: 'Dual Wield',
-    type: 'ability',
+    type: 'combat',
     classes: {
       warrior: { levelGranted: 13, capFormula: (level) => (level * 5) + 5, maxCap: 255 },
       monk: { levelGranted: 1, capFormula: (level) => (level * 5) + 5, maxCap: 255 },

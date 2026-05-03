@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { execFile } = require('child_process');
 const { LuaFactory } = require('wasmoon');
+const FactionSystem = require('./systems/faction');
 
 const factory = new LuaFactory();
 
@@ -111,9 +112,22 @@ class QuestManager {
                     return CLASS_NAMES[player.class || 1] || "Unknown";
                 },
                 GetLevel: () => player.level || 1,
+                GetFaction: (target) => {
+                    // target here is usually e.self, which is npc in this scope
+                    const standing = FactionSystem.getStanding(player, npc);
+                    return FactionSystem.getRank(standing.value);
+                },
+                HasItem: (itemId) => {
+                    // Check if player has item in inventory (sessions are needed, but player object here is char)
+                    const State = require('./state');
+                    const session = Array.from(State.sessions.values()).find(s => s.char.id === player.id);
+                    if (!session || !session.inventory) return false;
+                    return session.inventory.some(i => i.item_key === itemId || i.id === itemId);
+                },
                 Message: (color, text) => actions.push({ action: 'message', target: player.id, color, text }),
                 QuestReward: (self, cop, sil, gld, plat, item_id, exp) => 
                     actions.push({ action: 'reward', target: player.id, item_id, exp, cop, sil, gld, plat }),
+                SummonItem: (itemId) => actions.push({ action: 'reward', target: player.id, item_id: itemId }),
                 AddEXP: (amt) => actions.push({ action: 'exp', target: player.id, amount: amt })
             },
             message: eData.message || '',
@@ -130,6 +144,7 @@ class QuestManager {
             depop: () => actions.push({ action: 'depop', source: npc.id, timer: 0 }),
             depop_with_timer: () => actions.push({ action: 'depop', source: npc.id, timer: 1 }),
             set_timer: (name, ms) => actions.push({ action: 'timer', source: npc.id, name, ms }),
+            set_proximity: (minX, maxX, minY, maxY, minZ, maxZ) => {}, // Stub for now
             zone_emote: (color, text) => actions.push({ action: 'zone_emote', color, text })
         };
 

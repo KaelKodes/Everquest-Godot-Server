@@ -88,4 +88,6 @@ module.exports = {
   getBuybackItems: eqemuDB.getBuybackItems,
   removeBuybackItem: eqemuDB.removeBuybackItem,
   updateCharacterBind: eqemuDB.updateCharacterBind,
+  getCharacterStudents: eqemuDB.getCharacterStudents,
+  createCharacterStudent: eqemuDB.createCharacterStudent,
 };

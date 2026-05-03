@@ -11,8 +11,22 @@ const ZONES = {
     levelRange: [1, 65],
     mapSize: { width: 500, length: 500 },
     centerOffset: { x: 0, y: 0 },
-    mobs: [],
-  },
+    mobs: [
+      {
+        id: "light_tuner_1",
+        key: "light_tuner_1",
+        name: "Light Tuner",
+        x: 0,
+        y: 0,
+        z: 0,
+        race: "capsule",
+        eqClass: "warrior",
+        level: 1,
+        hp: 1000,
+        maxHp: 1000
+      }
+    ]
+  }
 };
 
 module.exports = ZONES;

@@ -580,7 +580,7 @@ async function handleEquipItem(session, msg) {
   if (targetSlot <= 0) return;
 
   // Class/Race restriction check (EQEmu bitmask: bit N = class/race ID N+1; 65535 = all)
-  const CLASSES_MAP = { warrior:1, cleric:2, paladin:3, ranger:4, shadow_knight:5, druid:6, monk:7, bard:8, rogue:9, shaman:10, necromancer:11, wizard:12, magician:13, enchanter:14, beastlord:15, berserker:16 };
+  const CLASSES_MAP = { warrior:1, cleric:2, paladin:3, ranger:4, shadowknight:5, druid:6, monk:7, bard:8, rogue:9, shaman:10, necromancer:11, wizard:12, magician:13, enchanter:14, beastlord:15, berserker:16 };
   const RACES_MAP = { human:1, barbarian:2, erudite:3, wood_elf:4, high_elf:5, dark_elf:6, half_elf:7, dwarf:8, troll:9, ogre:10, halfling:11, gnome:12, iksar:128, vah_shir:130, froglok:330 };
   if (itemDef.classes && itemDef.classes !== 65535) {
     const classId = CLASSES_MAP[session.char.class] || 1;
@@ -716,7 +716,7 @@ async function handleAutoEquip(session, msg) {
   }
 
   // Class/Race restriction check
-  const CLASSES_MAP = { warrior:1, cleric:2, paladin:3, ranger:4, shadow_knight:5, druid:6, monk:7, bard:8, rogue:9, shaman:10, necromancer:11, wizard:12, magician:13, enchanter:14, beastlord:15, berserker:16 };
+  const CLASSES_MAP = { warrior:1, cleric:2, paladin:3, ranger:4, shadowknight:5, druid:6, monk:7, bard:8, rogue:9, shaman:10, necromancer:11, wizard:12, magician:13, enchanter:14, beastlord:15, berserker:16 };
   const RACES_MAP = { human:1, barbarian:2, erudite:3, wood_elf:4, high_elf:5, dark_elf:6, half_elf:7, dwarf:8, troll:9, ogre:10, halfling:11, gnome:12, iksar:128, vah_shir:130, froglok:330 };
   if (def.classes && def.classes !== 65535) {
     const classId = CLASSES_MAP[session.char.class] || 1;

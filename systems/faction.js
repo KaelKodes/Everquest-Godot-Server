@@ -35,10 +35,25 @@ function getTierInfo(value) {
     return { name: 'Scowls', text: 'scowls at you, ready to attack' };
 }
 
+function getFactionRank(value) {
+    if (value >= 1101) return 1; // Ally
+    if (value >= 701) return 2;  // Warmly
+    if (value >= 401) return 3;  // Kindly
+    if (value >= 101) return 4;  // Amiable
+    if (value >= 0) return 5;    // Indifferent
+    if (value >= -100) return 6; // Apprehensive
+    if (value >= -700) return 7; // Dubious
+    if (value >= -999) return 8; // Threateningly
+    return 9;                    // Scowls
+}
+
 class FactionSystem {
     /**
      * Get the player's numerical standing and tier with a specific NPC.
      */
+    static getRank(value) {
+        return getFactionRank(value);
+    }
     static getStanding(char, npc) {
         // Char state must have: raceId, classId, deityId, factionValues (fetched on login), and status flags like isSneaking, isInvis
         

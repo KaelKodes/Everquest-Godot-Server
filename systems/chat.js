@@ -6,6 +6,7 @@ const QuestDialogs = require('../data/npcs/quests');
 const QuestManager = require('../questManager');
 const FactionSystem = require('./faction');
 const GroupManager = require('./groups');
+const { GUILD_MASTER_CLASS, getTaughtClassId, CLASSES_MAP } = require('../utils/npcUtils');
 
 
 function getDistanceSq(x1, y1, x2, y2) {
@@ -23,6 +24,39 @@ function handleHail(session, msg) {
   if (module.exports.handleHailFn) return module.exports.handleHailFn(session, msg);
 }
 
+const RP_CHAR_THRESHOLD = 60; // Characters needed to trigger a tick check
+const RP_TICK_CHANCE = 0.33;  // 33% chance to actually receive the exp on tick
+
+function processRPExperience(session, text) {
+  if (!text) return;
+  
+  // Initialize character buffer if it doesn't exist
+  if (session.rpCharBuffer === undefined) {
+    session.rpCharBuffer = 0;
+  }
+  
+  // Accumulate non-whitespace characters
+  const charCount = text.replace(/\s+/g, '').length;
+  if (charCount === 0) return;
+  
+  session.rpCharBuffer += charCount;
+
+  // Once they hit the threshold
+  if (session.rpCharBuffer >= RP_CHAR_THRESHOLD) {
+    // Reset buffer (or you could subtract the threshold if you want rollover)
+    session.rpCharBuffer = 0;
+    
+    // 33% chance to get an RP tick
+    if (Math.random() <= RP_TICK_CHANCE) {
+      const rpExp = Math.floor(Math.random() * 20) + 10; // 10-30 exp
+      if (module.exports.awardExpFn) {
+         module.exports.awardExpFn(session, rpExp, null);
+         sendCombatLog(session, [{ event: 'MESSAGE', text: `[color=yellow]You feel a sense of immersion. You gained ${rpExp} experience for roleplaying.[/color]` }]);
+      }
+    }
+  }
+}
+
 async function handleSay(session, msg) {
   const char = session.char;
   const text = (msg.text || '').trim();
@@ -30,6 +64,8 @@ async function handleSay(session, msg) {
 
   // Echo the player's speech via CHAT
   send(session.ws, { type: 'CHAT', channel: 'say', sender: char.name, text: text });
+  
+  processRPExperience(session, text);
 
   // If we have a targeted NPC, check for keyword responses
   if (session.combatTarget && session.combatTarget.npcType) {
@@ -52,19 +88,46 @@ async function handleSay(session, msg) {
       return; // NPCs don't talk to enemies
     }
 
+    const eData = { message: text, joined: false, trade: {} };
+    const actions = await QuestManager.triggerEvent(zoneShortName, target, char, 'EVENT_SAY', eData);
+    let handledByQuest = false;
+
+    if (actions && actions.length > 0) {
+      processQuestActions(session, target, actions);
+      handledByQuest = true;
+    }
+
     // Guildmaster / Trainer "Hire" Hook
     if (target.npcType === NPC_TYPES.TRAINER && text.toLowerCase().includes('hire')) {
       // Must be Apprehensive or better (-100+)
       if (standing.value < -100) {
-        sendCombatLog(session, [{ event: 'NPC_SAY', npcName: target.name, text: "You must prove your dedication to our cause before I trust you with a student." }]);
+        if (!handledByQuest) {
+          sendCombatLog(session, [{ event: 'NPC_SAY', npcName: target.name, text: "You must prove your dedication to our cause before I trust you with a student." }]);
+        }
         return;
       }
 
       // We derive the classes/races this trainer teaches based on their own class/race.
-      const validClasses = [target.class || 1];
-      const validRaces = [target.race || 1];
+      const taughtClassId = getTaughtClassId(target.eqClass);
+      const playerClassId = CLASSES_MAP[char.class] || 1;
+      
+      let validClasses = taughtClassId ? [taughtClassId] : [playerClassId];
+      let validRaces = [target.race || 1];
+      let maxLevel = char.level || 1;
 
-      sendCombatLog(session, [{ event: 'NPC_SAY', npcName: target.name, text: `Ah yes, I have a few eager students I could spare for someone like you, ${char.name}!` }]);
+      // Special handling for Generic Trainers (Class 63)
+      if (target.eqClass === 63) {
+        const eqemuDB = require('../eqemu_db');
+        const data = await eqemuDB.getCharCreateData(target.race || 1);
+        if (data && data.classes && data.classes.length > 0) {
+          validClasses = data.classes.map(c => c.classId);
+        }
+        maxLevel = 1; // Generic trainers only offer level 1 students
+      }
+
+      if (!handledByQuest) {
+        sendCombatLog(session, [{ event: 'NPC_SAY', npcName: target.name, text: `Ah yes, I have a few eager students I could spare for someone like you, ${char.name}!` }]);
+      }
       
       // Send the packet to pop the new "Hire Student" UI
       send(session.ws, {
@@ -72,18 +135,12 @@ async function handleSay(session, msg) {
         trainerName: target.name,
         validClasses: validClasses,
         validRaces: validRaces,
-        playerLevel: char.level || 1
+        playerLevel: maxLevel
       });
       return;
     }
 
-    const eData = { message: text, joined: false, trade: {} };
-    const actions = await QuestManager.triggerEvent(zoneShortName, target, char, 'EVENT_SAY', eData);
-    
-    if (actions && actions.length > 0) {
-      processQuestActions(session, target, actions);
-      return; // Handled by quest engine
-    }
+    if (handledByQuest) return;
 
     // Quest NPCs and merchants with dialog respond to keywords (Legacy Fallback)
     if (target.npcType === NPC_TYPES.QUEST || target.npcType === NPC_TYPES.MERCHANT) {
@@ -138,6 +195,7 @@ function handleShout(session, msg) {
   if (!text) return;
   send(session.ws, { type: 'CHAT', channel: 'shout', sender: char.name, text: text });
   broadcastChat(session, 'shout', text, 600);
+  processRPExperience(session, text);
 }
 
 // ── /ooc — same as say radius (200u), local only ────────────────────
@@ -306,7 +364,9 @@ module.exports = {
   handleRaid,
   handleAnnouncement,
   broadcastChat,
+  processRPExperience,
   setSendCombatLogFn: (fn) => { module.exports.sendCombatLogFn = fn; },
   setProcessQuestActionsFn: (fn) => { module.exports.processQuestActionsFn = fn; },
-  setHandleHailFn: (fn) => { module.exports.handleHailFn = fn; }
+  setHandleHailFn: (fn) => { module.exports.handleHailFn = fn; },
+  setAwardExpFn: (fn) => { module.exports.awardExpFn = fn; }
 };

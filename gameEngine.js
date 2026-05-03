@@ -53,6 +53,7 @@ setTimeout(() => {
   ChatSystem.setSendCombatLogFn(sendCombatLog);
   ChatSystem.setProcessQuestActionsFn(processQuestActions);
   ChatSystem.setHandleHailFn(handleHail);
+  ChatSystem.setAwardExpFn(CombatSystem.awardExp);
   
   MovementSystem.setGetZoneDefFn(ZoneSystem.getZoneDef);
   MovementSystem.setHandleStopCombatFn(handleStopCombat);
@@ -117,15 +118,19 @@ async function createSession(ws, char) {
   // Ensure the player's zone is loaded (dynamically loads spawns if needed)
   await ZoneSystem.ensureZoneLoaded(char.zoneId, SpawningSystem.spawnMob, MiningSystem.spawnMiningNodes, MiningSystem.spawnMiningNPCs);
 
-  const inventory = await DB.getInventory(char.id);
-  const spells = await DB.getSpells(char.id);
-  const skillsList = await DB.getSkills(char.id);
-
   const skills = {};
-  if (Array.isArray(skillsList)) {
-    for (const row of skillsList) {
-      skills[row.skill_id] = row.value;
+  let inventory = [];
+  let spells = [];
+
+  if (char.id && !char.id.toString().startsWith('bot_')) {
+    const skillsList = await DB.getSkills(char.id);
+    if (Array.isArray(skillsList)) {
+      for (const row of skillsList) {
+        skills[row.skill_id] = row.value;
+      }
     }
+    inventory = await DB.getInventory(char.id);
+    spells = await DB.getSpells(char.id);
   }
 
   // ── Skill Initialization / Migration ──
@@ -179,10 +184,11 @@ async function createSession(ws, char) {
   };
 
   // Load spellbook from file
-  SpellSystem.loadSpellbookFromFile(session);
-
-  // Load persisted buffs (with elapsed-time calculation)
-  SpellSystem.loadBuffsFromFile(session);
+  if (!char.id.toString().startsWith('bot_')) {
+    SpellSystem.loadSpellbookFromFile(session);
+    // Load persisted buffs (with elapsed-time calculation)
+    SpellSystem.loadBuffsFromFile(session);
+  }
 
   const zoneDef = ZoneSystem.getZoneDef(char.zoneId);
   if (!session.char.roomId && zoneDef && zoneDef.defaultRoom) {
@@ -213,6 +219,15 @@ function removeSession(ws) {
     if (session.pet) {
       despawnPet(session);
     }
+    
+    // Despawn all students owned by this player
+    for (const [botWs, botSession] of sessions) {
+      if (botSession.isBot && botSession.char.ownerId === session.char.id) {
+        broadcastEntityState(botSession, 'despawn');
+        sessions.delete(botWs);
+      }
+    }
+    
     sessions.delete(ws);
   }
   authSessions.delete(ws);
@@ -237,6 +252,10 @@ async function handleMessage(ws, msg) {
   if (!session) return send(ws, { type: 'ERROR', message: 'Not logged in.' });
 
   switch (msg.type) {
+    case 'REQUEST_SYNC': 
+      sendStatus(session);
+      sendMercenaries(session);
+      return handleLook(session, true);
     case 'SIT': return handleSit(session);
     case 'STAND': return handleStand(session);
     case 'START_COMBAT': return handleStartCombat(session);
@@ -250,6 +269,7 @@ async function handleMessage(ws, msg) {
       session.isOutOfRange = msg.outOfRange;
       return;
     case 'CAST_SPELL': return handleCastSpell(session, msg);
+    case 'SERVER_COMMAND': return handleServerCommand(session, msg);
     case 'SPELL_INSPECT': return handleSpellInspect(session, msg);
     case 'ITEM_INSPECT': return handleItemInspect(session, msg);
     case 'REMOVE_BUFF': return require('./systems/spells').handleRemoveBuff(session, msg);
@@ -276,7 +296,8 @@ async function handleMessage(ws, msg) {
     case 'CORPSE_DRAG': return handleCorpseDrag(session);
     case 'PET_COMMAND': return handlePetCommand(session, msg);
     case 'MERCENARY_ACTION': return handleMercenaryAction(session, msg);
-    case 'HIRE_STUDENT_CONFIG': return handleHireStudentConfig(session, msg);
+    case 'HIRE_STUDENT': return handleHireStudent(session, msg);
+    case 'CHAT': return; // Client-side system messages
     case 'BUY': return InventorySystem.handleBuy(session, msg);
     case 'SELL': return InventorySystem.handleSell(session, msg);
     case 'BUY_RECOVER': return InventorySystem.handleBuyRecover(session, msg);
@@ -623,10 +644,71 @@ async function handleLogin(ws, msg) {
     console.log(`[ENGINE] Migrated missing vision skills for ${char.name}.`);
   }
 
-  // Mercenaries will be populated via the Hire NPC system later.
-  // For now, ensure the array exists with empty slots.
-  if (!session.char.mercenaries) {
-    session.char.mercenaries = [null, null];
+  // Load any hired students from the database
+  const RACES = {
+    1: 'human', 2: 'barbarian', 3: 'erudite', 4: 'wood elf', 5: 'high elf',
+    6: 'dark elf', 7: 'half elf', 8: 'dwarf', 9: 'troll', 10: 'ogre',
+    11: 'halfling', 12: 'gnome', 128: 'iksar', 130: 'vah shir', 330: 'froglok'
+  };
+  const CLASSES = {
+    1: 'warrior', 2: 'cleric', 3: 'paladin', 4: 'ranger', 5: 'shadowknight',
+    6: 'druid', 7: 'monk', 8: 'bard', 9: 'rogue', 10: 'shaman',
+    11: 'necromancer', 12: 'wizard', 13: 'magician', 14: 'enchanter',
+    15: 'beastlord', 16: 'berserker'
+  };
+
+  const students = await DB.getCharacterStudents(char.id);
+  if (students && students.length > 0) {
+    for (const st of students) {
+      const studentChar = {
+        id: 'bot_' + st.id,
+        name: st.name,
+        class: CLASSES[st.class_id] || 'cleric',
+        classId: st.class_id,
+        race: RACES[st.race_id] || 'human',
+        raceId: st.race_id,
+        level: st.level,
+        hp: st.hp, maxHp: 100, mana: st.mana, maxMana: 100,
+        zoneId: session.char.zoneId,
+        x: session.char.x, y: session.char.y, z: session.char.z || 0, heading: session.char.heading || 0,
+        ownerId: session.char.id,
+        gender: st.gender || 0,
+        face: st.face || 0,
+        deityId: st.deity_id || 396,
+        str: st.str || 0,
+        sta: st.sta || 0,
+        agi: st.agi || 0,
+        dex: st.dex || 0,
+        wis: st.wis || 0,
+        intel: st.intel || 0,
+        cha: st.cha || 0
+      };
+      
+      const fakeWs = { id: studentChar.id, send: () => {}, on: () => {} };
+      const botSession = await createSession(fakeWs, studentChar);
+      botSession.isBot = true;
+      const ClericBot = require('./systems/botAI/profiles/cleric');
+      botSession.bot = new ClericBot(botSession); // using ClericBot as base for now
+      
+      GroupManager.handleInvite(session, studentChar.name);
+      GroupManager.handleInviteResponse(botSession, true);
+      
+      broadcastEntityState(botSession, 'spawn');
+      
+      // Add to mercenaries list so it shows in Student Manager UI
+      if (!session.char.mercenaries) session.char.mercenaries = [null, null];
+      let slotIndex = session.char.mercenaries.findIndex(m => m === null);
+      if (slotIndex !== -1) {
+        session.char.mercenaries[slotIndex] = {
+          id: studentChar.id,
+          name: studentChar.name,
+          race: studentChar.race,
+          class: studentChar.class,
+          raceStr: studentChar.race,
+          classStr: studentChar.class
+        };
+      }
+    }
   }
 
   console.log(`[ENGINE] ${char.name} logged in (level ${char.level} ${char.class}).`);
@@ -870,7 +952,7 @@ function handleStartCombat(session) {
   if (session.char.state === 'medding') return;
   session.combatTarget = { type: 'NPC', target: null };
   sendCombatLog(session, [{ event: 'MESSAGE', text: `Auto attack is on.` }]);
-  CombatSystem.processPlayerCombatTurn(session);
+  session.inCombat = true;
 }
 
 function handleStartRanged(session) {
@@ -946,14 +1028,17 @@ function handleSetTarget(session, msg) {
 
   session.miningTarget = null; // Clear mining target when targeting a mob
 
-  // Check if targeting a player
+  // Check if targeting a player or bot
   if (targetId.startsWith('player_')) {
-    const pId = parseInt(targetId.substring(7));
+    const pIdStr = targetId.substring(7);
+    const pIdNum = parseInt(pIdStr);
     let targetSession = null;
     for (const [, s] of sessions) {
-      if (s.char && s.char.id === pId && s.char.zoneId === session.char.zoneId) {
-        targetSession = s;
-        break;
+      if (s.char && s.char.zoneId === session.char.zoneId) {
+        if (s.char.id === pIdNum || s.char.id === pIdStr) {
+          targetSession = s;
+          break;
+        }
       }
     }
     
@@ -1091,7 +1176,7 @@ function handleAttackTarget(session, msg) {
   // when the player's first melee swing actually goes through in range.
   
   sendCombatLog(session, [{ event: 'MESSAGE', text: `Auto attack is on.` }]);
-  CombatSystem.processPlayerCombatTurn(session);
+  session.inCombat = true;
 
 }
 
@@ -1283,6 +1368,7 @@ async function handleCastSpell(session, msg) {
     castTime: castTimeSec,
     elapsed: 0,
     startPos: castStartPos,
+    melodyDelay: msg.melodyDelay
   };
 
   // Notify client to show cast bar
@@ -1309,7 +1395,7 @@ async function processCasting(session, dt) {
 
   // Check if cast is complete
   if (session.casting.elapsed >= session.casting.castTime) {
-    const { spellDef, spellKey, slotIndex } = session.casting;
+    const { spellDef, spellKey, slotIndex, melodyDelay } = session.casting;
     session.casting = null;
 
     await applySpellEffect(session, spellDef, spellKey);
@@ -1319,24 +1405,30 @@ async function processCasting(session, dt) {
     // Auto-recast bard songs (twisting pulse)
     if (spellDef.derived?.isBardSong && session.char.state !== 'sitting' && session.char.state !== 'medding') {
         if (session.melody && session.melody.active) {
-            playNextMelodySong(session);
-        } else {
-            const nextCastTime = 3.0; // Standard 3 second pulse
-            session.casting = {
-                spellDef,
-                spellKey,
-                slotIndex: slotIndex !== undefined ? slotIndex : -1,
-                castTime: nextCastTime,
-                elapsed: 0,
-                startPos: { x: session.char.x, y: session.char.y, z: session.char.z }
-            };
-            session.ws.send(JSON.stringify({
-                type: 'CAST_START',
-                spellName: spellDef.name,
-                castTime: nextCastTime,
-                slot: slotIndex !== undefined ? slotIndex : -1,
-                animType: spellDef.castingAnimation || 44
-            }));
+            let waitTimeSec = 0;
+            if (melodyDelay === 'Auto') {
+                let buffDurationSec = spellDef.duration ? spellDef.duration * 6 : 0;
+                let nextCastTimeSec = 3.0;
+                const nextItem = session.melody.playlist[session.melody.currentIndex];
+                const nextSpellRow = session.spells.find(s => s.slot === nextItem.slot);
+                if (nextSpellRow) {
+                    const nextDef = SPELLS[nextSpellRow.spell_key];
+                    if (nextDef && nextDef.timing) {
+                        nextCastTimeSec = (nextDef.timing.castTime || 3000) / 1000;
+                    }
+                }
+                waitTimeSec = Math.max(0, buffDurationSec - nextCastTimeSec);
+            } else if (melodyDelay === 'Twist') {
+                waitTimeSec = 0;
+            } else {
+                waitTimeSec = parseFloat(melodyDelay) || 0;
+            }
+
+            if (waitTimeSec > 0) {
+                session.melody.waitTimer = waitTimeSec;
+            } else {
+                playNextMelodySong(session);
+            }
         }
     }
   }
@@ -1347,18 +1439,50 @@ async function handleMelody(session, msg) {
     return sendCombatLog(session, [{ event: 'MESSAGE', text: 'Only bards can use /melody.' }]);
   }
   
-  const parts = msg.slots.split(' ').map(s => parseInt(s, 10) - 1).filter(s => !isNaN(s) && s >= 0 && s < 8);
+  const parts = msg.slots.split(' ').filter(s => s.trim().length > 0);
   if (parts.length === 0) {
-    return sendCombatLog(session, [{ event: 'MESSAGE', text: 'Usage: /melody <slot1> <slot2> ... (e.g. /melody 1 2 3 4)' }]);
+    return sendCombatLog(session, [{ event: 'MESSAGE', text: 'Usage: /melody <slot1> [delay1] <slot2> [delay2] ... (e.g. /melody 1 Twist 2 Auto 3 2.5)' }]);
+  }
+
+  const playlist = [];
+  let i = 0;
+  while (i < parts.length) {
+      let slotRaw = parseInt(parts[i], 10);
+      if (!isNaN(slotRaw) && slotRaw >= 1 && slotRaw <= 8) {
+          let delay = 'Auto';
+          if (i + 1 < parts.length) {
+              let nextPart = parts[i+1].toLowerCase();
+              if (nextPart === 'auto') {
+                  delay = 'Auto';
+                  i++;
+              } else if (nextPart === 'twist') {
+                  delay = 'Twist';
+                  i++;
+              } else {
+                  let nextFloat = parseFloat(parts[i+1]);
+                  if (!isNaN(nextFloat)) {
+                      delay = nextFloat;
+                      i++;
+                  }
+              }
+          }
+          playlist.push({ slot: slotRaw - 1, delay: delay });
+      }
+      i++;
+  }
+
+  if (playlist.length === 0) {
+    return sendCombatLog(session, [{ event: 'MESSAGE', text: 'Invalid melody slots. Use numbers 1-8.' }]);
   }
 
   session.melody = {
     active: true,
-    playlist: parts,
-    currentIndex: 0
+    playlist: playlist,
+    currentIndex: 0,
+    waitTimer: 0
   };
 
-  sendCombatLog(session, [{ event: 'MESSAGE', text: `Melody started: ${parts.map(p => p + 1).join(', ')}` }]);
+  sendCombatLog(session, [{ event: 'MESSAGE', text: `Melody started: ${playlist.map(p => (p.slot + 1) + (p.delay !== 'Auto' ? '(' + p.delay + 's)' : '')).join(', ')}` }]);
 
   if (!session.casting) {
     playNextMelodySong(session);
@@ -1385,10 +1509,10 @@ async function playNextMelodySong(session) {
      return;
   }
   
-  const nextSlot = session.melody.playlist[session.melody.currentIndex];
+  const nextItem = session.melody.playlist[session.melody.currentIndex];
   session.melody.currentIndex = (session.melody.currentIndex + 1) % session.melody.playlist.length;
   
-  await handleCastSpell(session, { slot: nextSlot, isMelody: true });
+  await handleCastSpell(session, { slot: nextItem.slot, isMelody: true, melodyDelay: nextItem.delay });
 }
 
 /**
@@ -1860,11 +1984,13 @@ async function handleHail(session, msg) {
 
     case NPC_TYPES.TRAINER: {
       // Determine which class this trainer teaches
-      const trainerClass = GUILD_MASTER_CLASS[target.eqClass];
+      const TRAINER_OVERRIDES = { 'Ann_Oma': 'enchanter' }; // Add more class 63 GMs here as needed
+      const trainerClass = TRAINER_OVERRIDES[target.name] || GUILD_MASTER_CLASS[target.eqClass];
       const playerClass = session.char.class;
 
       if (trainerClass && trainerClass !== playerClass) {
         events.push({ event: 'MESSAGE', text: `${target.name} says, 'I have nothing to teach you, ${session.char.name}. You should seek out your own guild master.'` });
+        send(ws, { type: 'CLOSE_UI', uiName: 'trainer' }); // Ensure previous stuck UI closes
         break;
       }
 
@@ -1874,7 +2000,7 @@ async function handleHail(session, msg) {
       const skillList = [];
       const charSkills = session.char.skills || {};
       for (const [key, skillDef] of Object.entries(Skills)) {
-        const classData = skillDef.classes[playerClass];
+        const classData = skillDef.classes[trainerClass || playerClass];
         if (!classData) continue;
 
         const currentValue = charSkills[key] || 0;
@@ -2413,7 +2539,16 @@ function sendMercenaries(session) {
   });
 }
 
-function handleMercenaryAction(session, msg) {
+function findBotSession(ownerSession, mercId) {
+  for (const [ws, s] of sessions) {
+    if (s.isBot && s.char && s.char.id === mercId && s.char.ownerId === ownerSession.char.id) {
+      return s;
+    }
+  }
+  return null;
+}
+
+async function handleMercenaryAction(session, msg) {
   if (!session.char.mercenaries) session.char.mercenaries = [null, null];
   
   const action = msg.action;
@@ -2424,60 +2559,100 @@ function handleMercenaryAction(session, msg) {
 
   if (action === "switch") {
     if (!merc) {
-      sendCombatLog(session, [{ event: 'MESSAGE', text: 'No mercenary contract in that slot.' }]);
+      sendCombatLog(session, [{ event: 'MESSAGE', text: 'No student in that slot.' }]);
       return;
     }
-    // Activate this mercenary. If there's already a pet/merc out, suspend it first.
-    if (session.pet) {
-      sendCombatLog(session, [{ event: 'MESSAGE', text: `You suspend your current companion.` }]);
-      despawnPet(session);
+    
+    let botSess = findBotSession(session, merc.id);
+    if (botSess) {
+      sendCombatLog(session, [{ event: 'MESSAGE', text: `Your student ${merc.name} is already with you.` }]);
+      return;
     }
-    // Spawn the new merc
-    sendCombatLog(session, [{ event: 'MESSAGE', text: `You call upon ${merc.name} the ${merc.raceStr}/${merc.classStr}.` }]);
-    // Use spawnPet but mark it as mercenary
-    spawnPet(session, {
-      name: merc.name,
-      hpRange: [merc.maxHp || 100, merc.maxHp || 100],
-      ac: merc.ac || 10,
-      minDmg: merc.minDmg || 1, maxDmg: merc.maxDmg || 10,
-      attackDelay: merc.attackDelay || 3,
-      levelRange: [merc.level || 1, merc.level || 1],
-      race: merc.raceId || 1,
-      npcClass: merc.classId || 1
-    });
-    if (session.pet) {
-      session.pet.isMercenary = true;
-      session.pet.raceStr = merc.raceStr || "Human";
-      session.pet.classStr = merc.classStr || "Warrior";
-      session.pet.mercIndex = index;
+
+    sendCombatLog(session, [{ event: 'MESSAGE', text: `You summon your student ${merc.name} the ${merc.raceStr}/${merc.classStr}.` }]);
+    
+    const students = await DB.getCharacterStudents(session.char.id);
+    const st = students.find(s => 'bot_' + s.id === merc.id);
+    if (st) {
+      const CLASSES = { 1: 'warrior', 2: 'cleric', 3: 'paladin', 4: 'ranger', 5: 'shadowknight', 6: 'druid', 7: 'monk', 8: 'bard', 9: 'rogue', 10: 'shaman', 11: 'necromancer', 12: 'wizard', 13: 'magician', 14: 'enchanter', 15: 'beastlord', 16: 'berserker' };
+      const RACES = { 1: 'human', 2: 'barbarian', 3: 'erudite', 4: 'wood_elf', 5: 'high_elf', 6: 'dark_elf', 7: 'half_elf', 8: 'dwarf', 9: 'troll', 10: 'ogre', 11: 'halfling', 12: 'gnome', 128: 'iksar', 130: 'vah_shir', 330: 'froglok' };
+      
+      const studentChar = {
+        id: 'bot_' + st.id,
+        name: st.name,
+        class: CLASSES[st.class_id] || 'cleric',
+        classId: st.class_id,
+        race: RACES[st.race_id] || 'human',
+        raceId: st.race_id,
+        level: st.level,
+        hp: st.hp, maxHp: 100, mana: st.mana, maxMana: 100,
+        zoneId: session.char.zoneId,
+        x: session.char.x, y: session.char.y, z: session.char.z || 0, heading: session.char.heading || 0,
+        ownerId: session.char.id,
+        gender: st.gender || 0,
+        face: st.face || 0,
+        deityId: st.deity_id || 396,
+        str: st.str || 0, sta: st.sta || 0, agi: st.agi || 0, dex: st.dex || 0,
+        wis: st.wis || 0, intel: st.intel || 0, cha: st.cha || 0
+      };
+      
+      const fakeWs = { id: studentChar.id, send: () => {}, on: () => {} };
+      const newBot = await createSession(fakeWs, studentChar);
+      newBot.isBot = true;
+      const ClericBot = require('./systems/botAI/profiles/cleric');
+      newBot.bot = new ClericBot(newBot);
+      
+      GroupManager.handleInvite(session, studentChar.name);
+      GroupManager.handleInviteResponse(newBot, true);
+      broadcastEntityState(newBot, 'spawn');
     }
-    sendStatus(session);
   }
   else if (action === "suspend") {
     if (!merc) return;
-    if (session.pet && session.pet.isMercenary && session.pet.mercIndex === index) {
-      sendCombatLog(session, [{ event: 'MESSAGE', text: `You suspend ${merc.name}'s services.` }]);
-      despawnPet(session);
-      sendStatus(session);
+    const botSess = findBotSession(session, merc.id);
+    if (botSess) {
+      sendCombatLog(session, [{ event: 'MESSAGE', text: `You dismiss ${merc.name} from the group.` }]);
+      GroupManager.handleLeave(botSess);
+      broadcastEntityState(botSess, 'despawn');
+      sessions.delete(botSess.ws);
     } else {
-      sendCombatLog(session, [{ event: 'MESSAGE', text: 'That mercenary is not currently active.' }]);
+      sendCombatLog(session, [{ event: 'MESSAGE', text: 'That student is not currently active.' }]);
+    }
+  }
+  else if (action === "suspend_active") {
+    let dismissed = false;
+    for (const [ws, s] of sessions) {
+      if (s.isBot && s.char && s.char.ownerId === session.char.id) {
+        sendCombatLog(session, [{ event: 'MESSAGE', text: `You dismiss ${s.char.name} from the group.` }]);
+        GroupManager.handleLeave(s);
+        broadcastEntityState(s, 'despawn');
+        sessions.delete(ws);
+        dismissed = true;
+      }
+    }
+    if (!dismissed) {
+      sendCombatLog(session, [{ event: 'MESSAGE', text: 'You have no active students to dismiss.' }]);
     }
   }
   else if (action === "release") {
     if (!merc) return;
-    if (session.pet && session.pet.isMercenary && session.pet.mercIndex === index) {
-      despawnPet(session);
-      sendStatus(session);
+    const botSess = findBotSession(session, merc.id);
+    if (botSess) {
+      GroupManager.handleLeave(botSess);
+      broadcastEntityState(botSess, 'despawn');
+      sessions.delete(botSess.ws);
     }
-    sendCombatLog(session, [{ event: 'MESSAGE', text: `You release ${merc.name} from your contract.` }]);
+    sendCombatLog(session, [{ event: 'MESSAGE', text: `You release ${merc.name} from your mentorship.` }]);
     session.char.mercenaries[index] = null;
     sendMercenaries(session);
   }
   else if (action === "set_stance") {
+    if (!merc) return;
     const newStance = msg.stance;
-    if (session.pet && session.pet.isMercenary && session.pet.botAI) {
-      session.pet.botAI.stance = newStance;
-      sendCombatLog(session, [{ event: 'MESSAGE', text: `You instruct your mercenary to adopt a ${newStance} stance.` }]);
+    const botSess = findBotSession(session, merc.id);
+    if (botSess && botSess.bot) {
+      botSess.bot.stance = newStance;
+      sendCombatLog(session, [{ event: 'MESSAGE', text: `You instruct your student to adopt a ${newStance} stance.` }]);
     }
   }
 }
@@ -3450,6 +3625,15 @@ function startGameLoop() {
       StatsSystem.processRegen(session, dt);
       if (session.bot) session.bot.tick();
       processCasting(session, dt);
+      if (session.melody && session.melody.active && session.melody.waitTimer > 0) {
+          session.melody.waitTimer -= dt;
+          if (session.melody.waitTimer <= 0) {
+              session.melody.waitTimer = 0;
+              if (!session.casting) {
+                  playNextMelodySong(session);
+              }
+          }
+      }
       CombatSystem.processCombatTick(session, dt);
       StatsSystem.processBuffs(session, dt);
       SurvivalSystem.processSurvival(session, dt, sendCombatLog, sendStatus);
@@ -3989,6 +4173,11 @@ function handleEmote(session, msg) {
       });
     }
   }
+
+  // RP Exp for social emotes
+  if (ChatSystem.processRPExperience) {
+    ChatSystem.processRPExperience(session, "emote " + emote + " command"); // Provide 3 words so it counts
+  }
 }
 
 // ── Admin Succor (F8) — teleport to zone safe point ──────────────────
@@ -4065,22 +4254,65 @@ function handleClearTracking(session) {
   session.trackingTargetId = null;
 }
 
-async function handleHireStudentConfig(session, msg) {
-  // msg has: name, raceId, classId, level
+async function handleHireStudent(session, msg) {
+  const RACES = {
+    1: 'human', 2: 'barbarian', 3: 'erudite', 4: 'wood elf', 5: 'high elf',
+    6: 'dark elf', 7: 'half elf', 8: 'dwarf', 9: 'troll', 10: 'ogre',
+    11: 'halfling', 12: 'gnome', 128: 'iksar', 130: 'vah shir', 330: 'froglok'
+  };
+  const CLASSES = {
+    1: 'warrior', 2: 'cleric', 3: 'paladin', 4: 'ranger', 5: 'shadowknight',
+    6: 'druid', 7: 'monk', 8: 'bard', 9: 'rogue', 10: 'shaman',
+    11: 'necromancer', 12: 'wizard', 13: 'magician', 14: 'enchanter',
+    15: 'beastlord', 16: 'berserker'
+  };
+
+  const studentDbId = await DB.createCharacterStudent(
+      session.char.id, msg.name, msg.classId, msg.raceId, msg.level,
+      session.char.zoneId, session.char.x, session.char.y, session.char.z || 0, session.char.heading || 0,
+      msg.gender, msg.face, msg.deityId, msg.stats
+  );
+
+  // msg has: name, raceId, classId, level, gender, face, deityId, stats
   const char = {
-    id: 'bot_' + Math.floor(Math.random() * 1000000),
+    id: 'bot_' + (studentDbId || Math.floor(Math.random() * 1000000)),
     name: msg.name,
-    class: msg.classId,
-    race: msg.raceId,
+    class: CLASSES[msg.classId] || 'cleric',
+    classId: msg.classId,
+    race: RACES[msg.raceId] || 'human',
+    raceId: msg.raceId,
+    gender: msg.gender || 0,
+    face: msg.face || 0,
+    deityId: msg.deityId || 396,
     level: msg.level,
     hp: 100, maxHp: 100, mana: 100, maxMana: 100,
+    str: msg.stats ? msg.stats.str : 0,
+    sta: msg.stats ? msg.stats.sta : 0,
+    agi: msg.stats ? msg.stats.agi : 0,
+    dex: msg.stats ? msg.stats.dex : 0,
+    wis: msg.stats ? msg.stats.wis : 0,
+    intel: msg.stats ? msg.stats.int : 0,
+    cha: msg.stats ? msg.stats.cha : 0,
+    inventory: [],
+    buffs: [],
+    skills: {},
     zoneId: session.char.zoneId,
     x: session.char.x,
     y: session.char.y,
     z: session.char.z || 0,
     heading: session.char.heading || 0,
+    ownerId: session.char.id
   };
   
+  // Initialize effective stats
+  char.inventory = [];
+  char.buffs = [];
+  char.effectiveStats = StatsSystem.calcEffectiveStats(char, char.inventory, char.buffs);
+  char.maxHp = char.effectiveStats.hp;
+  char.maxMana = char.effectiveStats.mana;
+  char.hp = char.maxHp;
+  char.mana = char.maxMana;
+
   // Fake WebSocket for the bot
   const fakeWs = { id: char.id, send: () => {}, on: () => {} };
   const botSession = await createSession(fakeWs, char);
@@ -4104,10 +4336,115 @@ async function handleHireStudentConfig(session, msg) {
   const zoneInstances = State.zoneInstances;
   if (!zoneInstances[char.zoneId]) zoneInstances[char.zoneId] = { mobs: {}, pvs: {} };
   
-  const MovementSystem = require('./systems/movement');
-  MovementSystem.broadcastEntityState(botSession.char, 'spawn');
+  broadcastEntityState(botSession, 'spawn');
+  
+  // Add to mercenaries list so it shows in Student Manager UI
+  if (!session.char.mercenaries) session.char.mercenaries = [null, null];
+  let slotIndex = session.char.mercenaries.findIndex(m => m === null);
+  if (slotIndex === -1) slotIndex = 0; // fallback overwrite
+  
+  session.char.mercenaries[slotIndex] = {
+    id: char.id,
+    name: char.name,
+    race: char.race,
+    class: char.class,
+    raceStr: char.race,
+    classStr: char.class
+  };
+  
+  sendMercenaries(session);
+  
+  // Tell the client student was created successfully
+  session.ws.send(JSON.stringify({ type: 'HIRE_STUDENT_SUCCESS' }));
   
   sendCombatLog(session, [{ event: 'MESSAGE', text: `You have successfully hired ${msg.name}!` }]);
+}
+
+function handleServerCommand(session, msg) {
+  const auth = authSessions.get(session.ws);
+  if (!auth || auth.status < 200) {
+    sendCombatLog(session, [{ event: 'MESSAGE', text: `[color=red]Unknown command: ${msg.command}[/color]` }]);
+    return;
+  }
+
+  const cmd = (msg.command || '').toLowerCase();
+  const args = (msg.args || '').trim().split(' ');
+
+  switch (cmd) {
+    case '/summon': {
+      if (args.length === 0 || args[0] === '') return sendCombatLog(session, [{ event: 'MESSAGE', text: `Usage: /summon <player_name>` }]);
+      const tName = args[0].toLowerCase();
+      for (const [, s] of sessions) {
+        if (s.char && s.char.name.toLowerCase() === tName) {
+          s.char.zoneId = session.char.zoneId;
+          s.char.x = session.char.x;
+          s.char.y = session.char.y;
+          s.char.z = session.char.z;
+          MovementSystem.handleZone(s, { zoneId: session.char.zoneId, x: s.char.x, y: s.char.y, z: s.char.z, force: true });
+          sendCombatLog(session, [{ event: 'MESSAGE', text: `Summoned ${s.char.name} to you.` }]);
+          return;
+        }
+      }
+      sendCombatLog(session, [{ event: 'MESSAGE', text: `Player not found.` }]);
+      break;
+    }
+    case '/goto': {
+      if (args.length === 0 || args[0] === '') return sendCombatLog(session, [{ event: 'MESSAGE', text: `Usage: /goto <player_name>` }]);
+      const tName = args[0].toLowerCase();
+      for (const [, s] of sessions) {
+        if (s.char && s.char.name.toLowerCase() === tName) {
+          MovementSystem.handleZone(session, { zoneId: s.char.zoneId, x: s.char.x, y: s.char.y, z: s.char.z, force: true });
+          return;
+        }
+      }
+      sendCombatLog(session, [{ event: 'MESSAGE', text: `Player not found.` }]);
+      break;
+    }
+    case '/succor': {
+      MovementSystem.handleSuccor(session);
+      break;
+    }
+    case '/item': {
+      if (args.length === 0 || args[0] === '') return sendCombatLog(session, [{ event: 'MESSAGE', text: `Usage: /item <item_id>` }]);
+      const itemKey = args[0];
+      if (ITEMS[itemKey]) {
+        require('./systems/inventory').giveItem(session, itemKey, 1);
+        sendCombatLog(session, [{ event: 'MESSAGE', text: `Spawned item: ${itemKey}` }]);
+      } else {
+        sendCombatLog(session, [{ event: 'MESSAGE', text: `Item ${itemKey} not found in DB.` }]);
+      }
+      break;
+    }
+    case '/exp': {
+      if (args.length === 0 || args[0] === '') return sendCombatLog(session, [{ event: 'MESSAGE', text: `Usage: /exp <amount>` }]);
+      const amt = parseInt(args[0], 10);
+      if (!isNaN(amt)) {
+        CombatSystem.awardExp(session, amt, null);
+      }
+      break;
+    }
+    case '/spawn': {
+      if (args.length === 0 || args[0] === '') return sendCombatLog(session, [{ event: 'MESSAGE', text: `Usage: /spawn <mob_key>` }]);
+      const mobKey = args[0];
+      SpawningSystem.spawnMob(session.char.zoneId, mobKey, session.char.x, session.char.y, session.char.z, session.char.heading);
+      sendCombatLog(session, [{ event: 'MESSAGE', text: `Attempted to spawn: ${mobKey}` }]);
+      break;
+    }
+    case '/npcsay': {
+      const text = (msg.args || '').trim();
+      if (!session.combatTarget || !session.combatTarget.isNpc) {
+        return sendCombatLog(session, [{ event: 'MESSAGE', text: `You must target an NPC to speak as them.` }]);
+      }
+      const npc = session.combatTarget;
+      const mockSession = { char: { id: -1, name: npc.name, zoneId: npc.zoneId, x: npc.x, y: npc.y }, ws: null };
+      ChatSystem.broadcastChat(mockSession, 'say', text, 200);
+      sendCombatLog(session, [{ event: 'MESSAGE', text: `[color=cyan]You (as ${npc.name}) say, '${text}'[/color]` }]);
+      break;
+    }
+    default:
+      sendCombatLog(session, [{ event: 'MESSAGE', text: `[color=red]Unknown GM command: ${cmd}[/color]` }]);
+      break;
+  }
 }
 
 module.exports = {

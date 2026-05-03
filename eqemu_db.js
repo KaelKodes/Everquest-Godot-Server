@@ -598,7 +598,69 @@ async function getAllItems() {
     return rows;
 }
 
+// ── Student / Bot Functions ───────────────────────────────────────────────
+
+async function getCharacterStudents(charId) {
+    if (!pool) return [];
+    try {
+        const [rows] = await pool.query('SELECT * FROM character_students WHERE owner_id = ?', [charId]);
+        return rows;
+    } catch(e) {
+        console.error('[DB] getCharacterStudents error:', e.message);
+        return [];
+    }
+}
+
+async function createCharacterStudent(ownerId, name, classId, raceId, level, zoneId, x, y, z, heading, gender = 0, face = 0, deityId = 396, stats = {}) {
+    if (!pool) return null;
+    try {
+        try {
+            await pool.query(`
+                CREATE TABLE IF NOT EXISTS character_students (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    owner_id INT,
+                    name VARCHAR(64),
+                    class_id INT,
+                    race_id INT,
+                    level INT,
+                    zone_id INT,
+                    x FLOAT,
+                    y FLOAT,
+                    z FLOAT,
+                    heading FLOAT,
+                    hp INT DEFAULT 100,
+                    mana INT DEFAULT 100,
+                    gender INT DEFAULT 0,
+                    face INT DEFAULT 0,
+                    deity_id INT DEFAULT 396,
+                    str INT DEFAULT 0,
+                    sta INT DEFAULT 0,
+                    agi INT DEFAULT 0,
+                    dex INT DEFAULT 0,
+                    wis INT DEFAULT 0,
+                    intel INT DEFAULT 0,
+                    cha INT DEFAULT 0
+                )
+            `);
+        } catch(e) { console.error('[DB] create table character_students error:', e.message); }
+        
+        try {
+            await pool.query('ALTER TABLE character_students ADD COLUMN gender INT DEFAULT 0, ADD COLUMN face INT DEFAULT 0, ADD COLUMN deity_id INT DEFAULT 396, ADD COLUMN str INT DEFAULT 0, ADD COLUMN sta INT DEFAULT 0, ADD COLUMN agi INT DEFAULT 0, ADD COLUMN dex INT DEFAULT 0, ADD COLUMN wis INT DEFAULT 0, ADD COLUMN intel INT DEFAULT 0, ADD COLUMN cha INT DEFAULT 0');
+        } catch(e) {} // Ignore if already altered
+
+        const [result] = await pool.query(
+            'INSERT INTO character_students (owner_id, name, class_id, race_id, level, zone_id, x, y, z, heading, gender, face, deity_id, str, sta, agi, dex, wis, intel, cha) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            [ownerId, name, classId, raceId, level, zoneId, x, y, z, heading, gender, face, deityId, stats.str || 0, stats.sta || 0, stats.agi || 0, stats.dex || 0, stats.wis || 0, stats.int || 0, stats.cha || 0]
+        );
+        return result.insertId;
+    } catch(e) {
+        console.error('[DB] createCharacterStudent error:', e.message);
+        return null;
+    }
+}
+
 // ── Inventory Queries ───────────────────────────────────────────────────
+
 
 async function getInventory(charId) {
     if (!pool) return [];
@@ -1133,7 +1195,9 @@ module.exports = {
     addBuybackItem,
     getBuybackItems,
     removeBuybackItem,
-    updateCharacterBind
+    updateCharacterBind,
+    getCharacterStudents,
+    createCharacterStudent
 };
 
 

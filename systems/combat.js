@@ -27,11 +27,16 @@ async function handleMobDeath(session, mob, events) {
   const xp = combat_utility.calcXPGain(session.char.level, mob.level, mob.xpBase, zem);
   
   if (xp > 0) {
-    session.char.experience += xp;
-    events.push({ event: 'XP_GAIN', amount: xp });
+    awardExp(session, xp, events);
   } else {
     events.push({ event: 'MESSAGE', text: 'You gain no experience for such a trivial opponent.' });
   }
+}
+
+function awardExp(session, xp, events = null) {
+  const localEvents = events || [];
+  session.char.experience += xp;
+  localEvents.push({ event: 'XP_GAIN', amount: xp });
 
   // Level up check
   let levelsGained = 0;
@@ -47,17 +52,23 @@ async function handleMobDeath(session, mob, events) {
     session.char.maxMana = session.effectiveStats.mana;
     session.char.hp = session.char.maxHp;
     session.char.mana = session.char.maxMana;
-    events.push({ event: 'LEVEL_UP', level: session.char.level });
+    localEvents.push({ event: 'LEVEL_UP', level: session.char.level });
 
     const newSpells = SpellDB.getNewSpellsAtLevel(session.char.class, session.char.level);
     for (const spell of newSpells) {
       const result = SpellSystem.scribeSpellToBook(session, spell._key);
       if (result >= 0) {
-        events.push({ event: 'MESSAGE', text: `You have learned ${spell.name}! It has been scribed to your spellbook.` });
+        localEvents.push({ event: 'MESSAGE', text: `You have learned ${spell.name}! It has been scribed to your spellbook.` });
       }
     }
     if (newSpells.length > 0) SpellSystem.sendSpellbookFull(session);
   }
+
+  if (!events) {
+    sendCombatLog(session, localEvents);
+    sendFullState(session);
+  }
+
 
   // Generate loot
   const generatedLoot = [];
@@ -522,5 +533,6 @@ module.exports = {
   setDependencies,
   processCombatTick,
   handleMobDeath,
-  canInteract
+  canInteract,
+  awardExp
 };

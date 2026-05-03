@@ -310,7 +310,7 @@ class BaseBot {
                 targetZ = this.config.campZ || 0;
                 followRadius = 5; // Get close to camp center
             } else {
-                const leader = group.members[0].session.char;
+                const leader = group.members[0].char;
                 // DO NOT follow the leader if they are the designated puller
                 if (group.roles && group.roles.puller === leader.id) {
                     // Fall back to following the main assist or main tank instead

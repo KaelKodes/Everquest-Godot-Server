@@ -422,7 +422,7 @@ function processMobAI(zone, zoneId, dt, api) {
 
               // Add hate for the pet's owner
               if (pet.ownerSession) {
-                api.sendCombatLog(pet.ownerSession, [{ event: 'MELEE_HIT', sourceId: `mob_${mobId}`, targetId: `pet_${pet.id}`, source: mob.name, target: pet.name, damage: dmgRoll, type: 'slash' }]);
+                api.sendCombatLog(pet.ownerSession, [{ event: 'MELEE_HIT', sourceId: `mob_${mob.id}`, targetId: `pet_${pet.id}`, source: mob.name, target: pet.name, damage: dmgRoll, type: 'slash' }]);
               }
             }
           }
@@ -445,7 +445,7 @@ function processMobAI(zone, zoneId, dt, api) {
               let ripoDmg = combat.calcPlayerDamage(session, damage, delay);
               mob.hp -= ripoDmg;
               const wpnSkill = api.getWeaponSkillName ? api.getWeaponSkillName(session.inventory) : '1h_slashing';
-              events.push({ event: 'MELEE_HIT', sourceId: `player_${session.char.id}`, targetId: `mob_${mobId}`, source: 'You', target: mob.name, damage: ripoDmg, text: 'Riposte', type: wpnSkill });
+              events.push({ event: 'MELEE_HIT', sourceId: `player_${session.char.id}`, targetId: `mob_${mob.id}`, source: 'You', target: mob.name, damage: ripoDmg, text: 'Riposte', type: wpnSkill });
             }
           } else {
             const mobHitChance = combat.calcMobHitChance(mob, session);
@@ -491,7 +491,7 @@ function processMobAI(zone, zoneId, dt, api) {
                 session.char.hp -= dmgRoll;
               }
               const attackText = combat.getMobAttackText(mob);
-              events.push({ event: 'MELEE_HIT', sourceId: `mob_${mobId}`, targetId: `player_${session.char.id}`, source: mob.name, target: 'You', damage: dmgRoll, text: attackText, type: 'slash' });
+              events.push({ event: 'MELEE_HIT', sourceId: `mob_${mob.id}`, targetId: `player_${session.char.id}`, source: mob.name, target: 'You', damage: dmgRoll, text: attackText, type: 'slash' });
 
               // Damage Shield reflection (SPA 59 = DS)
               if (Array.isArray(session.buffs)) {
@@ -511,7 +511,7 @@ function processMobAI(zone, zoneId, dt, api) {
               api.breakHide(session);
             } else {
               const attackText = combat.getMobAttackText(mob);
-              events.push({ event: 'MELEE_MISS', sourceId: `mob_${mobId}`, targetId: `player_${session.char.id}`, source: mob.name, target: 'You', text: `${attackText} miss`, type: 'slash' });
+              events.push({ event: 'MELEE_MISS', sourceId: `mob_${mob.id}`, targetId: `player_${session.char.id}`, source: mob.name, target: 'You', text: `${attackText} miss`, type: 'slash' });
             }
           }
         

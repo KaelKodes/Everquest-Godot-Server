@@ -9,7 +9,7 @@ const ZONES = require('../data/zones');
 const { zoneInstances, sessions } = State;
 
 const { NPC_TYPES, HAIL_RANGE } = require('../data/npcTypes');
-const ITEMS = ItemDB.ITEMS || {};
+const ITEMS = ItemDB.createLegacyProxy();
 
 function getDistanceSq(x1, y1, x2, y2) {
   return (x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1);
@@ -174,7 +174,8 @@ async function handleSell(session, msg) {
   await DB.updateCharacterState(char);
   
   // Add to buyback
-  await DB.addBuybackItem(char.id, parseInt(merchant.key), invRow.item_key, invRow.quantity || 1, sellPrice);
+  const safeMerchantKey = isNaN(parseInt(merchant.key)) ? merchant.key : parseInt(merchant.key);
+  await DB.addBuybackItem(char.id, safeMerchantKey, invRow.item_key, invRow.quantity || 1, sellPrice);
 
   // Refresh inventory
   session.inventory = await DB.getInventory(char.id);
@@ -866,7 +867,8 @@ async function handleBuyRecover(session, msg) {
         return;
     }
 
-    const buybackItems = await DB.getBuybackItems(char.id, parseInt(merchant.key));
+    const safeMerchantKey = isNaN(parseInt(merchant.key)) ? merchant.key : parseInt(merchant.key);
+    const buybackItems = await DB.getBuybackItems(char.id, safeMerchantKey);
     
     // If no buybackId provided, the client is just requesting the list
     if (buybackId === undefined || buybackId === null) {
@@ -925,7 +927,7 @@ async function handleBuyRecover(session, msg) {
     if (module.exports.sendStatusFn) module.exports.sendStatusFn(session);
 
     // Tell the client to refresh the recover list
-    const updatedBuybackItems = await DB.getBuybackItems(char.id, parseInt(merchant.key));
+    const updatedBuybackItems = await DB.getBuybackItems(char.id, safeMerchantKey);
     send(session.ws, {
         type: 'MERCHANT_RECOVER_LIST',
         npcId: merchant.id,
@@ -1020,7 +1022,24 @@ async function handleRightClick(session, msg) {
       target.heading = newHeading;
 
       const eqemuDB = require('../eqemu_db');
-      const dbItems = await eqemuDB.getMerchantItems(parseInt(target.key));
+      let dbItems = [];
+      const shopData = MERCHANT_INVENTORIES[target.key];
+      if (shopData) {
+          dbItems = shopData.items.map(i => {
+              const def = ItemDB.getById(i.itemKey) || ITEMS[i.itemKey] || {};
+              return {
+                  itemKey: i.itemKey,
+                  name: def.name || i.itemKey,
+                  price: i.price || def.value || 10,
+                  charges: 1
+              };
+          });
+      } else {
+          const mKey = parseInt(target.key);
+          if (!isNaN(mKey)) {
+              dbItems = await eqemuDB.getMerchantItems(mKey);
+          }
+      }
       
       const buyMod = await getChaBuyMod(session, target.id);
       const sellMod = await getChaSellMod(session, target.id);

@@ -312,11 +312,26 @@ async function handleMessage(ws, msg) {
     // --- Group System ---
     case 'GROUP_INVITE': return GroupManager.handleInvite(session, msg.targetName);
     case 'GROUP_INVITE_RESPONSE': return GroupManager.handleInviteResponse(session, msg.accepted);
-    case 'GROUP_DISBAND': return GroupManager.handleDisband(session);
+    case 'GROUP_DISBAND': 
+      for (const [ws, s] of sessions) {
+        if (s.isBot && s.char && s.char.ownerId === session.char.id) {
+          sendCombatLog(session, [{ event: 'MESSAGE', text: `You dismiss ${s.char.name} from the group.` }]);
+          GroupManager.handleLeave(s);
+          broadcastEntityState(s, 'despawn');
+          sessions.delete(ws);
+        }
+      }
+      return GroupManager.handleDisband(session);
     case 'GROUP_KICK': {
       if (session.group && session.group.leaderId === session.char.id) {
         const target = session.group.members.find(m => m.char.name === msg.targetName);
-        if (target) GroupManager.handleDisband(target);
+        if (target) {
+          GroupManager.handleDisband(target);
+          if (target.isBot && target.char.ownerId === session.char.id) {
+            broadcastEntityState(target, 'despawn');
+            sessions.delete(target.ws);
+          }
+        }
       }
       break;
     }
@@ -644,70 +659,26 @@ async function handleLogin(ws, msg) {
     console.log(`[ENGINE] Migrated missing vision skills for ${char.name}.`);
   }
 
-  // Load any hired students from the database
-  const RACES = {
-    1: 'human', 2: 'barbarian', 3: 'erudite', 4: 'wood elf', 5: 'high elf',
-    6: 'dark elf', 7: 'half elf', 8: 'dwarf', 9: 'troll', 10: 'ogre',
-    11: 'halfling', 12: 'gnome', 128: 'iksar', 130: 'vah shir', 330: 'froglok'
-  };
-  const CLASSES = {
-    1: 'warrior', 2: 'cleric', 3: 'paladin', 4: 'ranger', 5: 'shadowknight',
-    6: 'druid', 7: 'monk', 8: 'bard', 9: 'rogue', 10: 'shaman',
-    11: 'necromancer', 12: 'wizard', 13: 'magician', 14: 'enchanter',
-    15: 'beastlord', 16: 'berserker'
-  };
-
-  const students = await DB.getCharacterStudents(char.id);
-  if (students && students.length > 0) {
-    for (const st of students) {
-      const studentChar = {
-        id: 'bot_' + st.id,
+  session.char.mercenaries = [null, null];
+  const auth = authSessions.get(session.ws);
+  if (auth) {
+    const allCharacters = await DB.getCharactersByAccount(auth.accountId);
+    let slotIndex = 0;
+    for (const st of allCharacters) {
+      if (st.id === char.id) continue;
+      
+      session.char.mercenaries[slotIndex] = {
+        id: st.id,
+        dbId: st.id,
         name: st.name,
-        class: CLASSES[st.class_id] || 'cleric',
-        classId: st.class_id,
-        race: RACES[st.race_id] || 'human',
-        raceId: st.race_id,
-        level: st.level,
-        hp: st.hp, maxHp: 100, mana: st.mana, maxMana: 100,
-        zoneId: session.char.zoneId,
-        x: session.char.x, y: session.char.y, z: session.char.z || 0, heading: session.char.heading || 0,
-        ownerId: session.char.id,
-        gender: st.gender || 0,
-        face: st.face || 0,
-        deityId: st.deity_id || 396,
-        str: st.str || 0,
-        sta: st.sta || 0,
-        agi: st.agi || 0,
-        dex: st.dex || 0,
-        wis: st.wis || 0,
-        intel: st.intel || 0,
-        cha: st.cha || 0
+        race: st.race,
+        class: st.className || st.class,
+        raceStr: st.race,
+        classStr: st.className || st.class
       };
       
-      const fakeWs = { id: studentChar.id, send: () => {}, on: () => {} };
-      const botSession = await createSession(fakeWs, studentChar);
-      botSession.isBot = true;
-      const ClericBot = require('./systems/botAI/profiles/cleric');
-      botSession.bot = new ClericBot(botSession); // using ClericBot as base for now
-      
-      GroupManager.handleInvite(session, studentChar.name);
-      GroupManager.handleInviteResponse(botSession, true);
-      
-      broadcastEntityState(botSession, 'spawn');
-      
-      // Add to mercenaries list so it shows in Student Manager UI
-      if (!session.char.mercenaries) session.char.mercenaries = [null, null];
-      let slotIndex = session.char.mercenaries.findIndex(m => m === null);
-      if (slotIndex !== -1) {
-        session.char.mercenaries[slotIndex] = {
-          id: studentChar.id,
-          name: studentChar.name,
-          race: studentChar.race,
-          class: studentChar.class,
-          raceStr: studentChar.race,
-          classStr: studentChar.class
-        };
-      }
+      slotIndex++;
+      if (slotIndex >= 2) break; // Currently UI only supports 2 student slots
     }
   }
 
@@ -2571,30 +2542,20 @@ async function handleMercenaryAction(session, msg) {
 
     sendCombatLog(session, [{ event: 'MESSAGE', text: `You summon your student ${merc.name} the ${merc.raceStr}/${merc.classStr}.` }]);
     
-    const students = await DB.getCharacterStudents(session.char.id);
-    const st = students.find(s => 'bot_' + s.id === merc.id);
+    const auth = authSessions.get(session.ws);
+    if (!auth) return;
+    const characters = await DB.getCharactersByAccount(auth.accountId);
+    const st = characters.find(s => s.id === merc.id);
     if (st) {
-      const CLASSES = { 1: 'warrior', 2: 'cleric', 3: 'paladin', 4: 'ranger', 5: 'shadowknight', 6: 'druid', 7: 'monk', 8: 'bard', 9: 'rogue', 10: 'shaman', 11: 'necromancer', 12: 'wizard', 13: 'magician', 14: 'enchanter', 15: 'beastlord', 16: 'berserker' };
-      const RACES = { 1: 'human', 2: 'barbarian', 3: 'erudite', 4: 'wood_elf', 5: 'high_elf', 6: 'dark_elf', 7: 'half_elf', 8: 'dwarf', 9: 'troll', 10: 'ogre', 11: 'halfling', 12: 'gnome', 128: 'iksar', 130: 'vah_shir', 330: 'froglok' };
+      const studentChar = await DB.getCharacter(st.name);
+      if (!studentChar) return;
       
-      const studentChar = {
-        id: 'bot_' + st.id,
-        name: st.name,
-        class: CLASSES[st.class_id] || 'cleric',
-        classId: st.class_id,
-        race: RACES[st.race_id] || 'human',
-        raceId: st.race_id,
-        level: st.level,
-        hp: st.hp, maxHp: 100, mana: st.mana, maxMana: 100,
-        zoneId: session.char.zoneId,
-        x: session.char.x, y: session.char.y, z: session.char.z || 0, heading: session.char.heading || 0,
-        ownerId: session.char.id,
-        gender: st.gender || 0,
-        face: st.face || 0,
-        deityId: st.deity_id || 396,
-        str: st.str || 0, sta: st.sta || 0, agi: st.agi || 0, dex: st.dex || 0,
-        wis: st.wis || 0, intel: st.intel || 0, cha: st.cha || 0
-      };
+      studentChar.zoneId = session.char.zoneId;
+      studentChar.x = session.char.x;
+      studentChar.y = session.char.y;
+      studentChar.z = session.char.z || 0;
+      studentChar.heading = session.char.heading || 0;
+      studentChar.ownerId = session.char.id;
       
       const fakeWs = { id: studentChar.id, send: () => {}, on: () => {} };
       const newBot = await createSession(fakeWs, studentChar);
@@ -2618,6 +2579,14 @@ async function handleMercenaryAction(session, msg) {
     } else {
       sendCombatLog(session, [{ event: 'MESSAGE', text: 'That student is not currently active.' }]);
     }
+    
+    // Cleanup any orphans
+    for (const [ws, s] of sessions) {
+      if (s.isBot && s.char && s.char.id === merc.id && s.char.ownerId === session.char.id) {
+        broadcastEntityState(s, 'despawn');
+        sessions.delete(ws);
+      }
+    }
   }
   else if (action === "suspend_active") {
     let dismissed = false;
@@ -2636,13 +2605,27 @@ async function handleMercenaryAction(session, msg) {
   }
   else if (action === "release") {
     if (!merc) return;
+    
+    // First despawn the active bot if they are spawned
     const botSess = findBotSession(session, merc.id);
     if (botSess) {
       GroupManager.handleLeave(botSess);
       broadcastEntityState(botSess, 'despawn');
       sessions.delete(botSess.ws);
     }
+    
+    // Also despawn any orphaned clones of this specific bot
+    for (const [ws, s] of sessions) {
+      if (s.isBot && s.char && s.char.id === merc.id && s.char.ownerId === session.char.id) {
+        broadcastEntityState(s, 'despawn');
+        sessions.delete(ws);
+      }
+    }
+
     sendCombatLog(session, [{ event: 'MESSAGE', text: `You release ${merc.name} from your mentorship.` }]);
+    
+    // Wipe them from database and memory
+    DB.deleteCharacter(merc.dbId);
     session.char.mercenaries[index] = null;
     sendMercenaries(session);
   }
@@ -3022,17 +3005,12 @@ function handleCamp(session) {
       clearInterval(session.campTimer);
       session.campTimer = null;
 
-      // Save character state
-      DB.updateCharacterState(session.char);
-      DB.saveCharacterSkills(session.char.id, session.char.skills);
-      SpellSystem.saveBuffsToFile(session);
+      // Save character state and clean up bots
+      removeSession(session.ws);
       sendCombatLog(session, [{ event: 'MESSAGE', text: 'You have safely camped out.' }]);
 
       // Tell the client to return to character select
       send(session.ws, { type: 'CAMP_COMPLETE' });
-
-      // Remove session
-      sessions.delete(session.ws);
     } else {
       sendCombatLog(session, [{ event: 'MESSAGE', text: `Remain camping for ${session.campCountdown} seconds to log out.` }]);
     }
@@ -4267,15 +4245,36 @@ async function handleHireStudent(session, msg) {
     15: 'beastlord', 16: 'berserker'
   };
 
-  const studentDbId = await DB.createCharacterStudent(
-      session.char.id, msg.name, msg.classId, msg.raceId, msg.level,
-      session.char.zoneId, session.char.x, session.char.y, session.char.z || 0, session.char.heading || 0,
-      msg.gender, msg.face, msg.deityId, msg.stats
+  const auth = authSessions.get(session.ws);
+  if (!auth) {
+    sendCombatLog(session, [{ event: 'MESSAGE', text: 'Authentication missing. Cannot hire student.' }]);
+    return;
+  }
+
+  const newCharList = await DB.createCharacter(
+      auth.accountId, msg.name, CLASSES[msg.classId] || 'cleric', RACES[msg.raceId] || 'human', msg.deityId,
+      msg.stats ? msg.stats.str : 0, msg.stats ? msg.stats.sta : 0, msg.stats ? msg.stats.agi : 0, 
+      msg.stats ? msg.stats.dex : 0, msg.stats ? msg.stats.wis : 0, msg.stats ? msg.stats.int : 0, msg.stats ? msg.stats.cha : 0,
+      100, 100, { face: msg.face, gender: msg.gender }
   );
+  
+  if (newCharList && newCharList.error) {
+      sendCombatLog(session, [{ event: 'MESSAGE', text: `Failed to hire student: ${newCharList.error}` }]);
+      return;
+  }
+  
+  const characters = await DB.getCharactersByAccount(auth.accountId);
+  const newCharDef = characters.find(c => c.name.toLowerCase() === msg.name.toLowerCase());
+  if (!newCharDef) {
+      sendCombatLog(session, [{ event: 'MESSAGE', text: 'Error locating new student in database.' }]);
+      return;
+  }
+  
+  const studentDbId = newCharDef.id;
 
   // msg has: name, raceId, classId, level, gender, face, deityId, stats
   const char = {
-    id: 'bot_' + (studentDbId || Math.floor(Math.random() * 1000000)),
+    id: studentDbId,
     name: msg.name,
     class: CLASSES[msg.classId] || 'cleric',
     classId: msg.classId,

@@ -659,6 +659,17 @@ async function createCharacterStudent(ownerId, name, classId, raceId, level, zon
     }
 }
 
+async function deleteCharacterStudent(studentDbId) {
+    if (!pool) return false;
+    try {
+        await pool.query('DELETE FROM character_students WHERE id = ?', [studentDbId]);
+        return true;
+    } catch(e) {
+        console.error('[DB] deleteCharacterStudent error:', e.message);
+        return false;
+    }
+}
+
 // ── Inventory Queries ───────────────────────────────────────────────────
 
 
@@ -966,6 +977,7 @@ async function saveCharacterLocation(charId, zoneShortName, roomId) {
 const _merchantCache = {};
 
 async function getMerchantItems(npcId) {
+    if (typeof npcId === 'number' && isNaN(npcId)) return [];
     if (_merchantCache[npcId]) return _merchantCache[npcId];
     if (!pool) return [];
     try {
@@ -1075,6 +1087,7 @@ async function addBuybackItem(charId, npcId, itemId, charges, price) {
 
 async function getBuybackItems(charId, npcId) {
     if (!pool) return [];
+    if (typeof npcId === 'number' && isNaN(npcId)) return [];
     try {
         const [rows] = await pool.query(
             'SELECT id, item_id, charges, price FROM merchant_buyback WHERE char_id = ? AND npc_id = ? ORDER BY sold_at DESC',
@@ -1197,7 +1210,8 @@ module.exports = {
     removeBuybackItem,
     updateCharacterBind,
     getCharacterStudents,
-    createCharacterStudent
+    createCharacterStudent,
+    deleteCharacterStudent
 };
 
 

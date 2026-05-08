@@ -15,14 +15,31 @@ function getDistanceSq(x1, y1, x2, y2) {
   return (x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1);
 }
 
-// We use the calcEffectiveStats function passed from the engine context
+let calcEffectiveStatsFn, sendCombatLogFn, sendInventoryFn, sendStatusFn, processQuestActionsFn, handleTrainSkillFn;
+
 function calcEffectiveStats(char, inventory, buffs) {
-  return module.exports.calcEffectiveStatsFn ? module.exports.calcEffectiveStatsFn(char, inventory, buffs) : {hp: char.maxHp, mana: char.maxMana};
+  return calcEffectiveStatsFn ? calcEffectiveStatsFn(char, inventory, buffs) : {hp: char.maxHp, mana: char.maxMana};
 }
 
-// We also need sendCombatLog, sendInventory, sendStatus
 function sendCombatLog(session, events) {
-  return module.exports.sendCombatLogFn ? module.exports.sendCombatLogFn(session, events) : null;
+  if (sendCombatLogFn) sendCombatLogFn(session, events);
+}
+
+function sendInventory(session) {
+  if (sendInventoryFn) sendInventoryFn(session);
+}
+
+function sendStatus(session) {
+  if (sendStatusFn) sendStatusFn(session);
+}
+
+function init(deps) {
+  calcEffectiveStatsFn = deps.calcEffectiveStats;
+  sendCombatLogFn = deps.sendCombatLog;
+  sendInventoryFn = deps.sendInventory;
+  sendStatusFn = deps.sendStatus;
+  processQuestActionsFn = deps.processQuestActions;
+  handleTrainSkillFn = deps.handleTrainSkill;
 }
 
 function getFirstEmptySlot(inventory) {
@@ -33,14 +50,9 @@ function getFirstEmptySlot(inventory) {
   }
   return slot > 29 ? -1 : slot;
 }
-function sendInventory(session) {
-  return module.exports.sendInventoryFn ? module.exports.sendInventoryFn(session) : null;
-}
-function sendStatus(session) {
-  return module.exports.sendStatusFn ? module.exports.sendStatusFn(session) : null;
-}
+
 function processQuestActions(session, target, actions) {
-  if (module.exports.processQuestActionsFn) return module.exports.processQuestActionsFn(session, target, actions);
+  if (processQuestActionsFn) return processQuestActionsFn(session, target, actions);
 }
 
 async function handleBuy(session, msg) {
@@ -581,8 +593,9 @@ async function handleEquipItem(session, msg) {
   if (targetSlot <= 0) return;
 
   // Class/Race restriction check (EQEmu bitmask: bit N = class/race ID N+1; 65535 = all)
-  const CLASSES_MAP = { warrior:1, cleric:2, paladin:3, ranger:4, shadowknight:5, druid:6, monk:7, bard:8, rogue:9, shaman:10, necromancer:11, wizard:12, magician:13, enchanter:14, beastlord:15, berserker:16 };
-  const RACES_MAP = { human:1, barbarian:2, erudite:3, wood_elf:4, high_elf:5, dark_elf:6, half_elf:7, dwarf:8, troll:9, ogre:10, halfling:11, gnome:12, iksar:128, vah_shir:130, froglok:330 };
+  const constants = require('../data/constants');
+  const CLASSES_MAP = constants.CLASSES;
+  const RACES_MAP = constants.RACES;
   if (itemDef.classes && itemDef.classes !== 65535) {
     const classId = CLASSES_MAP[session.char.class] || 1;
     if (!(itemDef.classes & (1 << (classId - 1)))) {
@@ -717,8 +730,9 @@ async function handleAutoEquip(session, msg) {
   }
 
   // Class/Race restriction check
-  const CLASSES_MAP = { warrior:1, cleric:2, paladin:3, ranger:4, shadowknight:5, druid:6, monk:7, bard:8, rogue:9, shaman:10, necromancer:11, wizard:12, magician:13, enchanter:14, beastlord:15, berserker:16 };
-  const RACES_MAP = { human:1, barbarian:2, erudite:3, wood_elf:4, high_elf:5, dark_elf:6, half_elf:7, dwarf:8, troll:9, ogre:10, halfling:11, gnome:12, iksar:128, vah_shir:130, froglok:330 };
+  const constants = require('../data/constants');
+  const CLASSES_MAP = constants.CLASSES;
+  const RACES_MAP = constants.RACES;
   if (def.classes && def.classes !== 65535) {
     const classId = CLASSES_MAP[session.char.class] || 1;
     if (!(def.classes & (1 << (classId - 1)))) {
@@ -1062,7 +1076,8 @@ async function handleRightClick(session, msg) {
       });
 
       // Compute player's class bitmask for client-side filtering
-      const CLASSES_MAP = { warrior:1, cleric:2, paladin:3, ranger:4, shadow_knight:5, druid:6, monk:7, bard:8, rogue:9, shaman:10, necromancer:11, wizard:12, magician:13, enchanter:14, beastlord:15, berserker:16 };
+      const constants = require('../data/constants');
+      const CLASSES_MAP = constants.CLASSES;
       const classId = CLASSES_MAP[char.class] || 1;
       const playerClassBitmask = 1 << (classId - 1);
 
@@ -1129,10 +1144,6 @@ module.exports = {
   handleGetOffer,
   handleSellJunk,
   handleBuyRecover,
+  init,
   getFirstEmptySlot,
-  setCalcEffectiveStatsFn: (fn) => { module.exports.calcEffectiveStatsFn = fn; },
-  setSendCombatLogFn: (fn) => { module.exports.sendCombatLogFn = fn; },
-  setSendInventoryFn: (fn) => { module.exports.sendInventoryFn = fn; },
-  setSendStatusFn: (fn) => { module.exports.sendStatusFn = fn; },
-  setProcessQuestActionsFn: (fn) => { module.exports.processQuestActionsFn = fn; }
 };

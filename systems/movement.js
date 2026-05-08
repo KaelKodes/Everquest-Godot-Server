@@ -31,6 +31,22 @@ function sendStatus(session) {
 function interruptCasting(session, message) {
   if (module.exports.interruptCastingFn) return module.exports.interruptCastingFn(session, message);
 }
+function handleStand(session) {
+  if (module.exports.handleStandFn) return module.exports.handleStandFn(session);
+}
+
+function init(deps) {
+  module.exports.getZoneDefFn = deps.getZoneDef;
+  module.exports.handleStopCombatFn = deps.handleStopCombat;
+  module.exports.despawnPetFn = deps.despawnPet;
+  module.exports.flushSkillUpsFn = deps.flushSkillUps;
+  module.exports.sendCombatLogFn = deps.sendCombatLog;
+  module.exports.broadcastEntityStateFn = deps.broadcastEntityState;
+  module.exports.ensureZoneLoadedFn = deps.ensureZoneLoaded;
+  module.exports.sendStatusFn = deps.sendStatus;
+  module.exports.interruptCastingFn = deps.interruptCasting;
+  module.exports.handleStandFn = deps.handleStand;
+}
 
 function handleSwimTick(session, msg) {
   if (session && session.char) {
@@ -71,8 +87,6 @@ async function handleZone(session, msg) {
   const newZoneDef = getZoneDef(targetZone);
   session.char.roomId = (newZoneDef && newZoneDef.defaultRoom) || '';
   
-  DB.saveCharacterLocation(session.char.id, targetZone, session.char.roomId);
-
   // Use the zone_point's target coordinates for spawn position
   // 999999 means "keep the player's current coordinate on that axis"
   let spawnX = zoneLine.targetX || 0;
@@ -83,13 +97,17 @@ async function handleZone(session, msg) {
   if (spawnY > 900000) spawnY = session.char.y || 0;
   if (spawnZ > 900000) spawnZ = session.char.z || 0;
 
-
-
   session.char.x = spawnX;
   session.char.y = spawnY;
   session.char.z = spawnZ;
-  session.pendingTeleport = { x: spawnX, y: spawnY, z: spawnZ };
+
+  DB.saveCharacterLocation(session.char.id, targetZone, spawnX, spawnY, spawnZ);
+  session.pendingTeleport = { x: spawnX, y: spawnY, z: spawnZ }; // Client handles its own safety boost and snapping
+  session.loginFreeze = Date.now() + 5000; // Freeze movement updates after zoning
   
+  // Force a full flush on zoning to prevent "ghost zoning" rollbacks
+  DB.forceFlushCharacter(session.char.id);
+
   const zoneName = (newZoneDef && newZoneDef.name) || targetZone;
   sendCombatLog(session, [{ event: 'MESSAGE', text: `You have entered ${zoneName}.` }]);
   sendStatus(session);
@@ -97,16 +115,31 @@ async function handleZone(session, msg) {
 
 function handleUpdatePos(session, msg) {
   if (session.char) {
+    if (session.loginFreeze && Date.now() < session.loginFreeze) {
+      return; // Ignore movement updates while login/zone freeze is active
+    }
+
     if (session.tickDistance === undefined) session.tickDistance = 0;
     
     const now = Date.now();
     let dx = 0, dy = 0, dz = 0;
 
+    // msg.z from client is the EQ Z coordinate (height)
+    const clientZ = msg.z != null ? msg.z : (session.char.z || 0);
+
+    // Broadcast player movement to others in the zone
+    broadcastEntityState(session, 'MOB_MOVE', {
+      x: msg.x,
+      y: msg.y,
+      z: clientZ,
+      heading: msg.heading != null ? msg.heading : (session.char.heading || 0)
+    });
+
     // Movement Validation (Anti-Cheat / Speed Hack Prevention)
     if (session.char.x != null && session.char.y != null) {
       dx = (msg.x != null ? msg.x : session.char.x) - session.char.x;
       dy = (msg.y != null ? msg.y : session.char.y) - session.char.y;
-      dz = (msg.z != null ? msg.z : session.char.z || 0) - (session.char.z || 0);
+      dz = clientZ - (session.char.z || 0);
       
       const distSq = dx * dx + dy * dy; // Horizontal distance only
       
@@ -126,7 +159,8 @@ function handleUpdatePos(session, msg) {
         
         // Exclude huge dt jumps (like logging in or zoning) where lastMoveTime might be stale
         // Additionally, check if they are "flying" up (dz > 0) faster than a jump would allow
-        const jumpSpeed = (20.0 * maxDt);
+        // Increase jumpSpeed tolerance for fast elevators (from 20 to 50)
+        const jumpSpeed = (50.0 * maxDt);
         if (dt < 10.0 && (distSq > maxSpeedSq || dz > jumpSpeed)) {
           console.log(`[ENGINE] Rubberbanding ${session.char.name} (Speed hack or heavy lag detected). HorizDistSq: ${distSq.toFixed(1)}, dz: ${dz.toFixed(1)}, Dt: ${dt.toFixed(2)}`);
           if (session.ws) {
@@ -149,7 +183,15 @@ function handleUpdatePos(session, msg) {
 
     if (msg.x != null) session.char.x = msg.x;
     if (msg.y != null) session.char.y = msg.y;
-    if (msg.z != null) session.char.z = msg.z;
+    if (msg.z != null) session.char.z = clientZ;
+    if (msg.heading != null) session.char.heading = msg.heading;
+
+    // Movement breaks sitting/medding
+    if (dx !== 0 || dy !== 0 || dz !== 0) {
+      if (session.char.state === 'sitting' || session.char.state === 'medding') {
+        handleStand(session);
+      }
+    }
 
     // Movement interrupts casting
     if (session.casting && session.casting.startPos) {
@@ -409,6 +451,12 @@ async function handleSuccor(session) {
 
 function handleJump(session) {
   if (!session || !session.char) return;
+
+  // Jumping breaks sitting/medding
+  if (session.char.state === 'sitting' || session.char.state === 'medding') {
+    handleStand(session);
+  }
+
   if (session.char.fatigue === undefined) session.char.fatigue = 0;
   
   let staMod = 150.0 / (100.0 + (session.effectiveStats && session.effectiveStats.sta ? session.effectiveStats.sta : 100));
@@ -429,13 +477,5 @@ module.exports = {
   breakHide,
   handleTeleporterPad,
   handleSuccor,
-  setGetZoneDefFn: (fn) => { module.exports.getZoneDefFn = fn; },
-  setHandleStopCombatFn: (fn) => { module.exports.handleStopCombatFn = fn; },
-  setDespawnPetFn: (fn) => { module.exports.despawnPetFn = fn; },
-  setSendCombatLogFn: (fn) => { module.exports.sendCombatLogFn = fn; },
-  setBroadcastEntityStateFn: (fn) => { module.exports.broadcastEntityStateFn = fn; },
-  setFlushSkillUpsFn: (fn) => { module.exports.flushSkillUpsFn = fn; },
-  setEnsureZoneLoadedFn: (fn) => { module.exports.ensureZoneLoadedFn = fn; },
-  setSendStatusFn: (fn) => { module.exports.sendStatusFn = fn; },
-  setInterruptCastingFn: (fn) => { module.exports.interruptCastingFn = fn; }
+  init,
 };

@@ -212,7 +212,8 @@ class QuestManager {
                 class: player.class || 1,
                 race: player.race || 1,
                 ulevel: player.level || 1,
-                itemcount: itemcount
+                itemcount: itemcount,
+                quests_dir: this.questsDir
             };
 
             const jsonArg = JSON.stringify(argsObj);

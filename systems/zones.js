@@ -24,7 +24,7 @@ function getZoneDef(zoneKey) {
   return ZONES[zoneKey] || (zoneInstances[zoneKey] && zoneInstances[zoneKey].def) || null;
 }
 
-async function initZones() {
+async function initZones(requestedZones = null) {
   SpellDB.loadSpells();
   SPELLS = SpellDB.createLegacyProxy();
   console.log(`[ENGINE] Spell database: ${SpellDB.count()} spells loaded.`);
@@ -32,7 +32,12 @@ async function initZones() {
   await ItemDB.loadItems();
   ITEMS = ItemDB.createLegacyProxy();
   
-  for (const [zoneId, zoneDef] of Object.entries(ZONES)) {
+  const zonesToInit = requestedZones || Object.keys(ZONES);
+
+  for (const zoneId of zonesToInit) {
+    const zoneDef = ZONES[zoneId];
+    if (!zoneDef) continue;
+
     zoneInstances[zoneId] = {
       def: zoneDef, liveMobs: [], spawnPointState: [], liveNodes: [], nodeSpawnState: [],
       weather: Calendar.createZoneWeather(zoneDef.climate || 'temperate'), grids: {}, doors: [], doorStates: {}
@@ -93,7 +98,7 @@ async function ensureZoneLoaded(zoneKey, spawnMobFn, spawnMiningNodesFn, spawnMi
         race: row.race || 1, gender: row.gender || 0, npcClass: row.class || 1, chance: row.chance || 0,
         prim_melee_type: row.prim_melee_type, size: row.size || 6,
         runspeed: row.runspeed, walkspeed: row.walkspeed, attack_delay: row.attack_delay,
-        see_invis: row.see_invis, see_invis_undead: row.see_invis_undead,
+        see_invis: row.see_invis, see_invis_undead: row.see_invis_undead, loottable_id: row.loottable_id,
         textures: {
             t: row.texture, h: row.helmtexture, w1: row.d_melee_texture1, w2: row.d_melee_texture2,
             a: row.armtexture, b: row.bracertexture, hnd: row.handtexture, l: row.legtexture, f: row.feettexture

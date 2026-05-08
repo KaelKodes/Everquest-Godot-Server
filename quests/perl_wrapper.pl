@@ -17,6 +17,19 @@ our %itemcount = %{ $args->{itemcount} || {} };
 my $script_path = $args->{script_path};
 my $event_type = $args->{event_type} || 'EVENT_SAY';
 
+# Load all plugins from the plugins directory
+my $plugins_dir = $args->{quests_dir} . '/plugins';
+if (-d $plugins_dir) {
+    opendir(my $dh, $plugins_dir) || die "Can't opendir $plugins_dir: $!";
+    while (my $file = readdir($dh)) {
+        next if ($file =~ /^\./);
+        if ($file =~ /\.pl$/i) {
+            require "$plugins_dir/$file";
+        }
+    }
+    closedir($dh);
+}
+
 # Define the quest:: package to intercept calls and emit JSON commands
 package quest;
 use JSON;
@@ -70,21 +83,6 @@ sub random { return $_[int(rand(scalar @_))]; }
 sub assocName { return $main::name; }
 sub fixNPCName { return ''; }
 sub cityName { return ''; }
-
-# Soulbinder plugin (from plugins/soulbinders.pl)
-sub soulbinder_say {
-    my $text = shift;
-    my $pname = $main::name;
-
-    if ($text =~ /hail/i) {
-        quest::say("Greetings, ${pname}. When a hero of our world is slain, their soul returns to the place it was last bound and the body is reincarnated. As a member of the Order of Eternity, it is my duty to [bind your soul] to this location if that is your wish.");
-    }
-    elsif ($text =~ /bind.*soul/i) {
-        quest::doanim(42);
-        quest::selfcast(2049);
-        quest::emit('message', { color => 4, text => "You feel yourself bind to the area." });
-    }
-}
 
 sub return_items {
     my $items = shift;

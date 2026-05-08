@@ -9,19 +9,17 @@ function mapEqemuClassToNpcType(eqClass) {
 
 const GUILD_MASTER_CLASS = {
   1: 'warrior', 2: 'cleric', 3: 'paladin', 4: 'ranger',
-  5: 'shadowknight', 6: 'druid', 7: 'monk', 8: 'bard',
+  5: 'shadow_knight', 6: 'druid', 7: 'monk', 8: 'bard',
   9: 'rogue', 10: 'shaman', 11: 'necromancer', 12: 'wizard',
   13: 'magician', 14: 'enchanter', 15: 'beastlord', 16: 'berserker',
   20: 'warrior', 21: 'cleric', 22: 'paladin', 23: 'ranger',
-  24: 'shadowknight', 25: 'druid', 26: 'monk', 27: 'bard',
+  24: 'shadow_knight', 25: 'druid', 26: 'monk', 27: 'bard',
   28: 'rogue', 29: 'shaman', 30: 'necromancer', 31: 'wizard',
   32: 'magician', 33: 'enchanter', 34: 'beastlord', 35: 'berserker'
 };
 
-const CLASSES_MAP = { 
-  warrior: 1, cleric: 2, paladin: 3, ranger: 4, shadowknight: 5, druid: 6, monk: 7, bard: 8, 
-  rogue: 9, shaman: 10, necromancer: 11, wizard: 12, magician: 13, enchanter: 14, beastlord: 15, berserker: 16 
-};
+const constants = require('../data/constants');
+const CLASSES_MAP = constants.CLASSES;
 
 function getTaughtClassId(npcClass) {
   const className = GUILD_MASTER_CLASS[npcClass];

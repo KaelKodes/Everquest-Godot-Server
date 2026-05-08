@@ -1,18 +1,10 @@
 require('dotenv').config();
 const mysql = require('mysql2/promise');
 
-const CLASSES = {
-    'warrior': 1, 'cleric': 2, 'paladin': 3, 'ranger': 4, 'shadow_knight': 5,
-    'druid': 6, 'monk': 7, 'bard': 8, 'rogue': 9, 'shaman': 10,
-    'necromancer': 11, 'wizard': 12, 'magician': 13, 'enchanter': 14,
-    'beastlord': 15, 'berserker': 16
-};
+const constants = require('./data/constants');
+const CLASSES = constants.CLASSES;
+const RACES = constants.RACES;
 
-const RACES = {
-    'human': 1, 'barbarian': 2, 'erudite': 3, 'wood_elf': 4, 'high_elf': 5,
-    'dark_elf': 6, 'half_elf': 7, 'dwarf': 8, 'troll': 9, 'ogre': 10,
-    'halfling': 11, 'gnome': 12, 'iksar': 128, 'vah_shir': 130, 'froglok': 330
-};
 
 // Hardcoded fallback mappings (overridden once DB loads)
 const ZONES_NUM_FALLBACK = {
@@ -44,13 +36,16 @@ let pool;
 let initPromise = null;
 
 async function init() {
-    if (initPromise) return initPromise;
+    if (!process.env.EQEMU_PASSWORD) {
+        throw new Error('[DB] FATAL: EQEMU_PASSWORD not set in .env file. Cannot start server.');
+    }
+    
     initPromise = (async () => {
         pool = mysql.createPool({
         host: process.env.EQEMU_HOST || '127.0.0.1',
         port: process.env.EQEMU_PORT || 3307,
         user: process.env.EQEMU_USER || 'eqemu',
-        password: process.env.EQEMU_PASSWORD || 'bHqIbrW81WLuaZ4qaQGrRViIHHvz9nR',
+        password: process.env.EQEMU_PASSWORD,
         database: process.env.EQEMU_DATABASE || 'peq',
         waitForConnections: true,
         connectionLimit: 10,
@@ -58,6 +53,44 @@ async function init() {
     });
 
     console.log('[DB] Connected to EQEmu MySQL Database.');
+
+    try {
+        await pool.query(`
+          CREATE TABLE IF NOT EXISTS character_spellbook (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            character_id INT NOT NULL,
+            book_slot INT NOT NULL,
+            spell_key VARCHAR(128) NOT NULL,
+            spell_id INT NOT NULL,
+            UNIQUE KEY (character_id, book_slot)
+          )
+        `);
+        await pool.query(`
+          CREATE TABLE IF NOT EXISTS character_spell_loadouts (
+            character_id INT NOT NULL,
+            loadout_name VARCHAR(64) NOT NULL,
+            gem_data JSON NOT NULL,
+            PRIMARY KEY (character_id, loadout_name)
+          )
+        `);
+        await pool.query(`
+          CREATE TABLE IF NOT EXISTS character_buffs (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            character_id INT NOT NULL,
+            buff_name VARCHAR(128) NOT NULL,
+            duration FLOAT NOT NULL,
+            max_duration FLOAT NOT NULL,
+            beneficial TINYINT DEFAULT 1,
+            effects JSON,
+            ac INT DEFAULT 0,
+            icon INT DEFAULT 0,
+            mem_icon INT DEFAULT 0,
+            saved_at BIGINT NOT NULL
+          )
+        `);
+    } catch (e) {
+        console.error('[DB] Failed to create custom EQMUD tables:', e.message);
+    }
 
     // Build full zone metadata cache from DB
     try {
@@ -472,7 +505,7 @@ async function updateCharacterState(char) {
         try {
             await pool.query(
                 'UPDATE character_data SET x = ?, y = ?, z = ?, cur_hp = ?, mana = ?, exp = ?, level = ?, training_points = ?, hunger_level = ?, thirst_level = ? WHERE id = ?',
-                [char.x, char.y, char.z || 0, char.hp, char.mana, char.experience, char.level, char.practices || 0, char.hunger, char.thirst, char.id]
+                [char.x, char.y, char.z || 0, char.hp || 0, char.mana || 0, char.experience || 0, char.level || 1, char.practices || 0, char.hunger || 0, char.thirst || 0, char.id]
             );
             await saveCharacterCurrency(char.id, char.copper || 0);
         } catch (e) {
@@ -484,7 +517,7 @@ async function updateCharacterState(char) {
     try {
         await pool.query(
             'UPDATE character_data SET x = ?, y = ?, z = ?, zone_id = ?, cur_hp = ?, mana = ?, exp = ?, level = ?, training_points = ?, hunger_level = ?, thirst_level = ? WHERE id = ?',
-            [char.x, char.y, char.z || 0, zoneId, char.hp, char.mana, char.experience, char.level, char.practices || 0, char.hunger, char.thirst, char.id]
+            [char.x, char.y, char.z || 0, zoneId, char.hp || 0, char.mana || 0, char.experience || 0, char.level || 1, char.practices || 0, char.hunger || 0, char.thirst || 0, char.id]
         );
         // Save currency to the separate table
         await saveCharacterCurrency(char.id, char.copper || 0);
@@ -527,7 +560,7 @@ async function getZoneSpawns(shortName) {
                se.chance, 
                n.id as npc_id, n.name, n.level, n.hp, n.mindmg, n.maxdmg, n.race, n.gender, n.class, n.npc_faction_id, n.prim_melee_type,
                n.size, n.texture, n.helmtexture, n.d_melee_texture1, n.d_melee_texture2, n.armtexture, n.bracertexture, n.handtexture, n.legtexture, n.feettexture,
-               n.runspeed, n.walkspeed, n.attack_delay, n.see_invis, n.see_invis_undead,
+               n.runspeed, n.walkspeed, n.attack_delay, n.see_invis, n.see_invis_undead, n.loottable_id,
                sg.dist as wander_dist
         FROM spawn2 s 
         JOIN spawnentry se ON s.spawngroupID = se.spawngroupID 
@@ -685,7 +718,7 @@ async function getInventory(charId) {
             if (itemDef) {
                 inventory.push({
                     id: row.item_id, // we don't have unique inventory row IDs in EQEmu, just char + slot
-                    char_id: charId,
+                    character_id: charId,
                     item_key: itemDef._id, // the ItemDB stores _id as the original eqemu number
                     equipped: row.slot_id < 22 ? 1 : 0,
                     slot: row.slot_id,
@@ -939,7 +972,7 @@ async function saveCharacterCurrency(charId, totalCopper) {
 
 // ── Location Persistence ────────────────────────────────────────────
 
-async function saveCharacterLocation(charId, zoneShortName, roomId) {
+async function saveCharacterLocation(charId, zoneShortName, x, y, z) {
     if (!pool) return;
     let zoneId = getZoneIdByShortName(zoneShortName);
 
@@ -962,7 +995,7 @@ async function saveCharacterLocation(charId, zoneShortName, roomId) {
         return;
     }
     try {
-        await pool.query('UPDATE character_data SET zone_id = ? WHERE id = ?', [zoneId, charId]);
+        await pool.query('UPDATE character_data SET zone_id = ?, x = ?, y = ?, z = ? WHERE id = ?', [zoneId, x, y, z, charId]);
     } catch (e) {
         console.error('[DB] saveCharacterLocation Error:', e.message);
     }
@@ -1079,7 +1112,7 @@ async function addBuybackItem(charId, npcId, itemId, charges, price) {
     if (!pool) return;
     try {
         await pool.query(
-            'INSERT INTO merchant_buyback (char_id, npc_id, item_id, charges, price) VALUES (?, ?, ?, ?, ?)',
+            'INSERT INTO merchant_buyback (character_id, npc_id, item_id, charges, price) VALUES (?, ?, ?, ?, ?)',
             [charId, npcId, itemId, charges, price]
         );
     } catch(e) { console.error('[DB] addBuybackItem error:', e.message); }
@@ -1090,7 +1123,7 @@ async function getBuybackItems(charId, npcId) {
     if (typeof npcId === 'number' && isNaN(npcId)) return [];
     try {
         const [rows] = await pool.query(
-            'SELECT id, item_id, charges, price FROM merchant_buyback WHERE char_id = ? AND npc_id = ? ORDER BY sold_at DESC',
+            'SELECT id, item_id, charges, price FROM merchant_buyback WHERE character_id = ? AND npc_id = ? ORDER BY sold_at DESC',
             [charId, npcId]
         );
         return rows;
@@ -1166,9 +1199,164 @@ async function getCharCreateData(raceId) {
     }
 }
 
+// --- EQMUD Custom Spell/Buff Persistence ---
+
+async function getCharacterSpellbook(charId) {
+    if (!pool) return [];
+    try {
+        const [rows] = await pool.query('SELECT book_slot, spell_key, spell_id FROM character_spellbook WHERE char_id = ? ORDER BY book_slot', [charId]);
+        return rows.map(r => ({ bookSlot: r.book_slot, spell_key: r.spell_key, id: r.spell_id }));
+    } catch (e) {
+        console.error('[DB] getCharacterSpellbook Error:', e.message);
+        return [];
+    }
+}
+
+async function saveCharacterSpellbook(charId, spellbook) {
+    if (!pool || !spellbook || spellbook.length === 0) return;
+    try {
+        await pool.query('DELETE FROM character_spellbook WHERE char_id = ?', [charId]);
+        const SpellDB = require('./data/spellDatabase');
+        const values = spellbook.map(s => {
+            const spellDef = SpellDB.getByKey(s.spell_key);
+            const spellId = spellDef ? (spellDef._spellId || spellDef.id) : 0;
+            const slot = (s.bookSlot !== undefined) ? s.bookSlot : s.slot;
+            return [charId, slot, s.spell_key, spellId];
+        });
+        if (values.length > 0) {
+            await pool.query('INSERT INTO character_spellbook (char_id, book_slot, spell_key, spell_id) VALUES ?', [values]);
+        }
+    } catch (e) {
+        console.error('[DB] saveCharacterSpellbook Error:', e.message);
+    }
+}
+
+async function getCharacterSpellLoadouts(charId) {
+    if (!pool) return {};
+    try {
+        const [rows] = await pool.query('SELECT loadout_name, gem_data FROM character_spell_loadouts WHERE char_id = ?', [charId]);
+        const loadouts = {};
+        for (const r of rows) {
+            loadouts[r.loadout_name] = r.gem_data;
+        }
+        return loadouts;
+    } catch (e) {
+        console.error('[DB] getCharacterSpellLoadouts Error:', e.message);
+        return {};
+    }
+}
+
+async function saveCharacterSpellLoadouts(charId, loadouts) {
+    if (!pool || !loadouts) return;
+    try {
+        await pool.query('DELETE FROM character_spell_loadouts WHERE char_id = ?', [charId]);
+        const keys = Object.keys(loadouts);
+        if (keys.length === 0) return;
+        const values = keys.map(k => [charId, k, JSON.stringify(loadouts[k])]);
+        await pool.query('INSERT INTO character_spell_loadouts (char_id, loadout_name, gem_data) VALUES ?', [values]);
+    } catch (e) {
+        console.error('[DB] saveCharacterSpellLoadouts Error:', e.message);
+    }
+}
+
+async function getCharacterBuffs(charId) {
+    if (!pool) return [];
+    try {
+        const [rows] = await pool.query('SELECT * FROM character_buffs WHERE character_id = ?', [charId]);
+        const restored = [];
+        const SpellDB = require('./data/spellDatabase');
+        
+        for (const b of rows) {
+            const spellDef = SpellDB.getById(b.spell_id);
+            if (!spellDef) continue;
+            
+            restored.push({
+                name: spellDef._key,
+                duration: b.ticsremaining * 6, // Convert ticks back to seconds
+                casterLevel: b.caster_level,
+                casterName: b.caster_name,
+                spellId: b.spell_id,
+                beneficial: true // Assume beneficial for now or look up in spellDef
+            });
+        }
+        return restored;
+    } catch (e) {
+        console.error('[DB] getCharacterBuffs Error:', e.message);
+        return [];
+    }
+}
+
+async function saveCharacterBuffs(charId, buffs) {
+    if (!pool) return;
+    try {
+        await pool.query('DELETE FROM character_buffs WHERE character_id = ?', [charId]);
+        if (!buffs || buffs.length === 0) return;
+        
+        const values = buffs.map((b, index) => [
+            charId, 
+            index, // slot_id
+            b.spellId || 0,
+            b.casterLevel || 1,
+            b.casterName || 'Unknown',
+            Math.floor(b.duration / 6), // ticsremaining
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 // fills for runes and other eqemu columns
+        ]);
+        
+        await pool.query(`INSERT INTO character_buffs (
+            character_id, slot_id, spell_id, caster_level, caster_name, ticsremaining,
+            counters, numhits, melee_rune, magic_rune, persistent, dot_rune, 
+            caston_x, caston_y, caston_z, ExtraDIChance, instrument_mod
+        ) VALUES ?`, [values]);
+    } catch (e) {
+        console.error('[DB] saveCharacterBuffs Error:', e.message);
+    }
+}
+
+async function rollLootFromTable(loottableId) {
+    if (!pool || !loottableId) return [];
+    try {
+        // 1. Get all lootdrops for this loottable
+        // Note: mincash/maxcash and multiple drops logic can be added later
+        const [entries] = await pool.query(`
+            SELECT lte.lootdrop_id, lte.probability, lte.multiplier
+            FROM loottable_entries lte
+            WHERE lte.loottable_id = ?
+        `, [loottableId]);
+
+        const rolledItems = [];
+        for (const entry of entries) {
+            // Roll for the lootdrop itself
+            if (Math.random() * 100 <= entry.probability) {
+                // 2. Get items in this lootdrop
+                const [items] = await pool.query(`
+                    SELECT item_id, item_charges, chance
+                    FROM lootdrop_entries
+                    WHERE lootdrop_id = ?
+                `, [entry.lootdrop_id]);
+
+                // Standard EQ logic: roll for items within the drop
+                // Note: There are different 'mindrop/maxdrop' rules in PEQ, but this is the core loop
+                for (const item of items) {
+                    if (Math.random() * 100 <= item.chance) {
+                        rolledItems.push({
+                            itemKey: item.item_id.toString(),
+                            qty: item.item_charges || 1
+                        });
+                        // If we only want one item per drop, we could break here depending on table rules
+                    }
+                }
+            }
+        }
+        return rolledItems;
+    } catch (e) {
+        console.error('[DB] rollLootFromTable Error:', e.message);
+        return [];
+    }
+}
+
 module.exports = {
-    init,
-    loginAccount,
+  init,
+  loginAccount,
     createAccount,
     getCharactersByAccount,
     getStartZone,
@@ -1211,7 +1399,14 @@ module.exports = {
     updateCharacterBind,
     getCharacterStudents,
     createCharacterStudent,
-    deleteCharacterStudent
-};
+    deleteCharacterStudent,
+    getCharacterSpellbook,
+    saveCharacterSpellbook,
+    getCharacterSpellLoadouts,
+    saveCharacterSpellLoadouts,
+    getCharacterBuffs,
+    saveCharacterBuffs,
+    rollLootFromTable
+  };
 
 

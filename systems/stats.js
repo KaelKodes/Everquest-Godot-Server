@@ -1,8 +1,17 @@
 const DB = require('../db');
 const combat = require('../combat');
+const State = require('../state');
 const ItemDB = require('../data/itemDatabase');
 let ITEMS;
-setTimeout(() => { ITEMS = ItemDB.createLegacyProxy(); }, 0);
+let spellSystem, sendCombatLog, sendBuffs, broadcastTargetUpdate;
+
+function init(deps) {
+  spellSystem = deps.spellSystem;
+  sendCombatLog = deps.sendCombatLog;
+  sendBuffs = deps.sendBuffs;
+  broadcastTargetUpdate = deps.broadcastTargetUpdate;
+  ITEMS = ItemDB.createLegacyProxy();
+}
 
 // Training cost formula (P99 community polynomial: cost in copper per point)
 function getTrainingCostCopper(currentSkillValue) {
@@ -257,12 +266,6 @@ function getWeaponSkillName(inventory) {
   return 'hand_to_hand';
 }
 
-let sendCombatLog, SpellSystem;
-function setDependencies(deps) {
-  sendCombatLog = deps.sendCombatLog;
-  SpellSystem = deps.SpellSystem;
-}
-
 function processRegen(session, dt) {
   if (!session.abilityCooldowns) session.abilityCooldowns = {};
   for (let key in session.abilityCooldowns) {
@@ -336,6 +339,8 @@ function processRegen(session, dt) {
       char.hp = combat.clamp(char.hp + Math.max(0, Math.floor(rates.hpSitting * penalty)), 0, effective.hp);
       if (effective.mana > 0) {
         char.mana = combat.clamp(char.mana + Math.max(0, Math.floor(rates.manaSitting * penalty)), 0, effective.mana);
+        // Meditate skill up check
+        combat.trySkillUp(session, 'meditate');
       }
     } else if (!session.inCombat) {
       char.hp = combat.clamp(char.hp + Math.max(0, Math.floor(rates.hpStanding * penalty)), 0, effective.hp);
@@ -350,7 +355,24 @@ function processBuffs(session, dt) {
   let changed = false;
   for (let i = session.buffs.length - 1; i >= 0; i--) {
     const buff = session.buffs[i];
-    buff.duration -= dt;
+    
+    // --- Bard Song Persistence Logic ---
+    // If the buff is a song and the caster is still singing it, don't decrement duration.
+    let isBeingSung = false;
+    if (buff.isSong && buff.casterName) {
+      // Find the caster's session
+      const casterSess = Array.from(State.sessions.values()).find(s => s.char && s.char.name === buff.casterName);
+      if (casterSess && casterSess.activeSong && casterSess.activeSong.spellDef.name === buff.name) {
+          isBeingSung = true;
+          // Keep duration at its max while being sung
+          buff.duration = buff.maxDuration;
+      }
+    }
+
+    if (!isBeingSung) {
+      buff.duration -= dt;
+    }
+    // ------------------------------------
 
     if (Array.isArray(buff.effects)) {
       // HoT (SPA 0 positive = heal over time, e.g. Chloroplast/Regeneration)
@@ -395,7 +417,11 @@ function processBuffs(session, dt) {
     }
 
     if (buff.duration <= 0) {
-      sendCombatLog(session, [{ event: 'MESSAGE', text: `${buff.name} has worn off.` }]);
+      if (buff.beneficial) {
+        sendCombatLog(session, [{ event: 'MESSAGE', text: `Your ${buff.name} spell has worn off.` }]);
+      } else {
+        sendCombatLog(session, [{ event: 'MESSAGE', text: `${buff.name} has worn off.` }]);
+      }
       // Clean up state flags tied to specific buff types
       if (buff.isLevitate) session.char.isLevitating = false;
       if (buff.isWaterBreathing) session.char.canWaterBreathe = false;
@@ -420,14 +446,22 @@ function processBuffs(session, dt) {
     session.char.maxMana = session.effectiveStats.mana;
     if (session.char.hp > session.effectiveStats.hp) session.char.hp = session.effectiveStats.hp;
     if (session.char.mana > session.effectiveStats.mana) session.char.mana = session.effectiveStats.mana;
-    SpellSystem.sendBuffs(session);
+    if (spellSystem && typeof spellSystem.sendBuffs === 'function') {
+      spellSystem.sendBuffs(session);
+    } else if (typeof sendBuffs === 'function') {
+      sendBuffs(session);
+    }
+    // Update any players targeting this character that buffs have changed
+    if (broadcastTargetUpdate) {
+      broadcastTargetUpdate(session.char);
+    }
   }
 }
 
 module.exports = {
-  setDependencies,
   processRegen,
   processBuffs,
+  init,
   getTrainingCostCopper,
   copperToCoins,
   formatCurrency,

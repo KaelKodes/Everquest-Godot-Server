@@ -8,6 +8,7 @@ const { STARTER_GEAR, SUMMON_ITEM_MAP } = require('./data/items');
 const ItemDB = require('./data/itemDatabase');
 const ITEMS = ItemDB.createLegacyProxy(); // Legacy proxy for backwards compatibility
 const DB = require('./db');
+const eqemuDB = require('./eqemu_db');
 const combat = require('./combat');
 const { NPC_TYPES, HAIL_RANGE } = require('./data/npcTypes');
 const MERCHANT_INVENTORIES = require('./data/npcs/merchants');
@@ -19,6 +20,7 @@ const Calendar = require('./data/calendar');
 const WorldAtlas = require('./data/worldAtlas');
 const { send, getDistance, getDistanceSq } = require('./utils');
 const VisionSystem = require('./systems/vision');
+const SpatialSystem = require('./systems/spatial');
 const AISystem = require('./systems/ai');
 const EnvironmentSystem = require('./systems/environment');
 const SpellSystem = require('./systems/spells');
@@ -35,53 +37,8 @@ const CombatSystem = require('./systems/combat');
 const SurvivalSystem = require('./systems/survival');
 const ClericBot = require('./systems/botAI/profiles/cleric');
 const { mapEqemuClassToNpcType, GUILD_MASTER_CLASS } = require('./utils/npcUtils');
+const { INV_CLASSES, INV_RACES } = require('./data/constants');
 
-// Bind stat calculation for spells and systems
-setTimeout(() => {
-  SpellSystem.setCalcEffectiveStatsFn(StatsSystem.calcEffectiveStats);
-  SpellSystem.setDBFn(DB);
-  SpellSystem.setItemsFn(ITEMS);
-  SpellSystem.setSummonItemMapFn(SUMMON_ITEM_MAP);
-  SpellSystem.setSendInventoryFn(sendInventory);
-  SpellSystem.setZoneInstancesFn(State.zoneInstances);
-  InventorySystem.setCalcEffectiveStatsFn(StatsSystem.calcEffectiveStats);
-  InventorySystem.setSendCombatLogFn(sendCombatLog);
-  InventorySystem.setSendInventoryFn(sendInventory);
-  InventorySystem.setSendStatusFn(sendStatus);
-  InventorySystem.setProcessQuestActionsFn(processQuestActions);
-
-  ChatSystem.setSendCombatLogFn(sendCombatLog);
-  ChatSystem.setProcessQuestActionsFn(processQuestActions);
-  ChatSystem.setHandleHailFn(handleHail);
-  ChatSystem.setAwardExpFn(CombatSystem.awardExp);
-  
-  MovementSystem.setGetZoneDefFn(ZoneSystem.getZoneDef);
-  MovementSystem.setHandleStopCombatFn(handleStopCombat);
-  MovementSystem.setDespawnPetFn(despawnPet);
-  MovementSystem.setSendCombatLogFn(sendCombatLog);
-  MovementSystem.setBroadcastEntityStateFn(broadcastEntityState);
-  MovementSystem.setEnsureZoneLoadedFn((zoneKey) => ZoneSystem.ensureZoneLoaded(zoneKey, SpawningSystem.spawnMob, MiningSystem.spawnMiningNodes, MiningSystem.spawnMiningNPCs));
-  MovementSystem.setSendStatusFn(sendStatus);
-  MovementSystem.setFlushSkillUpsFn(flushSkillUps);
-  MovementSystem.setInterruptCastingFn(tryInterruptCasting);
-
-  CombatSystem.setDependencies({ 
-    handleMobDeath, sendCombatLog, sendStatus, despawnPet, combat, 
-    zoneInstances, SpellDB, SpellSystem, ITEMS, DB, sendFullState, 
-    calcEffectiveStats: StatsSystem.calcEffectiveStats 
-  });
-  SpellSystem.setDependencies({ 
-    combat, handleMobDeath, sendStatus, sendCombatLog, 
-    handleStopCombat: CombatSystem.handleStopCombat,
-    handleSuccor: MovementSystem.handleSuccor,
-    ensureZoneLoaded: ZoneSystem.ensureZoneLoaded,
-    resolveZoneKey: ZoneSystem.resolveZoneKey,
-    getZoneDef: ZoneSystem.getZoneDef
-  });
-  StatsSystem.setDependencies({ combat, sendCombatLog, SpellSystem });
-  MiningSystem.setDependencies({ ItemDB, ITEMS, sendCombatLog, sendInventory });
-  InventorySystem.handleTrainSkillFn = handleTrainSkill;
-}, 0);
 const QuestManager = require('./questManager');
 
 // Precise zone line trigger data extracted from EQ S3D client files (BSP regions)
@@ -172,6 +129,7 @@ async function createSession(ws, char) {
     inventory,
     spells,        // memorized gems (slot 0-7)
     spellbook: [],  // all scribed spells (bookSlot 0-791)
+    spellLoadouts: {}, // saved sets of memorized spells
     effectiveStats: StatsSystem.calcEffectiveStats(char, inventory),
     inCombat: false,
     autoFight: false,
@@ -183,11 +141,11 @@ async function createSession(ws, char) {
     activeVisionMode: null,  // null = auto (racial/spell), or explicit mode key
   };
 
-  // Load spellbook from file
+  // Load spellbook from DB
   if (!char.id.toString().startsWith('bot_')) {
-    SpellSystem.loadSpellbookFromFile(session);
+    await SpellSystem.loadSpellbookFromFile(session);
     // Load persisted buffs (with elapsed-time calculation)
-    SpellSystem.loadBuffsFromFile(session);
+    await SpellSystem.loadBuffsFromFile(session);
   }
 
   const zoneDef = ZoneSystem.getZoneDef(char.zoneId);
@@ -213,6 +171,7 @@ function removeSession(ws) {
     }
     DB.updateCharacterState(session.char);
     DB.saveCharacterSkills(session.char.id, session.char.skills);
+    SpellSystem.saveSpellbookToFile(session);
     DB.forceFlushCharacter(session.char.id); // Flush write-behind cache immediately
     SpellSystem.saveBuffsToFile(session);
     // Despawn pet on disconnect
@@ -252,6 +211,13 @@ async function handleMessage(ws, msg) {
   if (!session) return send(ws, { type: 'ERROR', message: 'Not logged in.' });
 
   switch (msg.type) {
+    case 'PONG':
+    {
+      session.lastPong = Date.now();
+      // Light Save on every PONG to ensure minimal data loss
+      DB.saveLight(session);
+      return;
+    }
     case 'REQUEST_SYNC': 
       sendStatus(session);
       sendMercenaries(session);
@@ -269,7 +235,7 @@ async function handleMessage(ws, msg) {
       session.isOutOfRange = msg.outOfRange;
       return;
     case 'CAST_SPELL': return handleCastSpell(session, msg);
-    case 'SERVER_COMMAND': return handleServerCommand(session, msg);
+    case 'SERVER_COMMAND': await handleServerCommand(session, msg); break;
     case 'SPELL_INSPECT': return handleSpellInspect(session, msg);
     case 'ITEM_INSPECT': return handleItemInspect(session, msg);
     case 'REMOVE_BUFF': return require('./systems/spells').handleRemoveBuff(session, msg);
@@ -374,8 +340,10 @@ async function handleMessage(ws, msg) {
     case 'MINE': return MiningSystem.handleMine(session, msg);
     case 'SET_VISION_MODE': return handleSetVisionMode(session, msg);
     case 'SUCCOR': return await MovementSystem.handleSuccor(session);
-    case 'PET_COMMAND': return handlePetCommand(session, msg);
     case 'DOOR_CLICK': return handleDoorClick(session, msg);
+    case 'WHO': return handleWho(session);
+    case 'TIME': return handleTime(session);
+    case 'RANDOM': return handleRandom(session, msg);
     // ── Chat Channels ──
     case 'SHOUT': return ChatSystem.handleShout(session, msg);
     case 'OOC': return ChatSystem.handleOOC(session, msg);
@@ -508,9 +476,8 @@ async function handleDeleteCharacter(ws, msg) {
   }
 
   // Delete from DB
-  const eqemuDB = require('./eqemu_db');
   try {
-    await eqemuDB.deleteCharacter(target.id);
+    await DB.deleteCharacter(target.id);
   } catch (e) {
     return send(ws, { type: 'ERROR', message: 'Failed to delete character.' });
   }
@@ -543,7 +510,6 @@ async function handleRequestDeities(ws, msg) {
 
 async function handleRequestCharCreateData(ws, msg) {
   const raceId = msg.raceId || 1;
-  const eqemuDB = require('./eqemu_db');
   const data = await eqemuDB.getCharCreateData(raceId);
 
   // Attach deity names for the client
@@ -551,58 +517,63 @@ async function handleRequestCharCreateData(ws, msg) {
     cls.deityNames = cls.deities.map(id => ({ id, name: DEITY_NAMES[id] || `Unknown (${id})` }));
   }
 
-  // Scan for real face variant GLBs: {code}_face1.glb, {code}_face2.glb, etc.
+  // Scan for real face variant GLBs with lazy-loading cache
   const fs = require('fs');
   const path = require('path');
-  const raceModelsPath = path.join(__dirname, '..', 'eqmud', 'Data', 'race_models.json');
-  const charsDir = path.join(__dirname, '..', 'eqmud', 'Data', 'Characters');
+  if (!global.faceVariantCache) global.faceVariantCache = new Map();
   let faceCountMale = 1, faceCountFemale = 1;
-  try {
-    const raceModels = JSON.parse(fs.readFileSync(raceModelsPath, 'utf8'));
-    const entry = raceModels[String(raceId)];
-    if (entry) {
-      const countFaces = (code) => {
-        try {
-          // 1. Classic races use texture swapping
-          const texDir = path.join(charsDir, 'Textures');
-          if (fs.existsSync(texDir)) {
-            const files = fs.readdirSync(texDir);
-            const pattern = new RegExp(`^${code}he00(\\d)1\\.png$`, 'i');
-            let maxFace = 0;
-            for (const f of files) {
-              const match = f.match(pattern);
-              if (match) {
-                const faceIdx = parseInt(match[1], 10);
-                if (faceIdx > maxFace) maxFace = faceIdx;
+  
+  if (global.faceVariantCache.has(raceId)) {
+    const cached = global.faceVariantCache.get(raceId);
+    faceCountMale = cached.male;
+    faceCountFemale = cached.female;
+  } else {
+    const raceModelsPath = path.join(__dirname, '..', 'eqmud', 'Data', 'race_models.json');
+    const charsDir = path.join(__dirname, '..', 'eqmud', 'Data', 'Characters');
+    try {
+      const raceModels = JSON.parse(fs.readFileSync(raceModelsPath, 'utf8'));
+      const entry = raceModels[String(raceId)];
+      if (entry) {
+        const countFaces = (code) => {
+          try {
+            const texDir = path.join(charsDir, 'Textures');
+            if (fs.existsSync(texDir)) {
+              const files = fs.readdirSync(texDir);
+              const pattern = new RegExp(`^${code}he00(\\d)1\\.png$`, 'i');
+              let maxFace = 0;
+              for (const f of files) {
+                const match = f.match(pattern);
+                if (match) {
+                  const faceIdx = parseInt(match[1], 10);
+                  if (faceIdx > maxFace) maxFace = faceIdx;
+                }
               }
+              if (maxFace > 0) return maxFace + 1;
             }
-            if (maxFace > 0) return maxFace + 1; // 0 is base face
-          }
 
-          // 2. Iksar/Vah Shir use _faceX.glb
-          const baseFiles = fs.readdirSync(charsDir);
-          const facePattern = new RegExp(`^${code}_face(\\d+)\\.glb$`, 'i');
-          const faceFiles = baseFiles.filter(f => facePattern.test(f));
-          if (faceFiles.length > 0) {
-            return faceFiles.length + 1; // base (0) + variants (1..N)
-          }
+            const baseFiles = fs.readdirSync(charsDir);
+            const facePattern = new RegExp(`^${code}_face(\\d+)\\.glb$`, 'i');
+            const faceFiles = baseFiles.filter(f => facePattern.test(f));
+            if (faceFiles.length > 0) return faceFiles.length + 1;
 
-          // 3. Frogloks use _0X.glb
-          if (code === 'frm' || code === 'frf') {
-            const frogPattern = new RegExp(`^${code}_0(\\d)\\.glb$`, 'i');
-            const frogFiles = baseFiles.filter(f => frogPattern.test(f));
-            if (frogFiles.length > 0) return frogFiles.length; // frm_00 to frm_08
-          }
+            if (code === 'frm' || code === 'frf') {
+              const frogPattern = new RegExp(`^${code}_0(\\d)\\.glb$`, 'i');
+              const frogFiles = baseFiles.filter(f => frogPattern.test(f));
+              if (frogFiles.length > 0) return frogFiles.length;
+            }
 
-          return 1;
-        } catch { return 1; }
-      };
-      faceCountMale = countFaces(entry.m);
-      faceCountFemale = countFaces(entry.f);
+            return 1;
+          } catch { return 1; }
+        };
+        faceCountMale = countFaces(entry.m);
+        faceCountFemale = countFaces(entry.f);
+      }
+    } catch (e) {
+      console.log('[ENGINE] Could not scan face variants:', e.message);
     }
-  } catch (e) {
-    console.log('[ENGINE] Could not scan face variants:', e.message);
+    global.faceVariantCache.set(raceId, { male: faceCountMale, female: faceCountFemale });
   }
+  
   data.faceCountMale = faceCountMale;
   data.faceCountFemale = faceCountFemale;
 
@@ -699,8 +670,9 @@ async function handleCreateCharacter(ws, msg) {
 
   // Look up numeric IDs for validation
   const eqemuDB = require('./eqemu_db');
-  const CLASSES_MAP = { warrior:1, cleric:2, paladin:3, ranger:4, shadow_knight:5, druid:6, monk:7, bard:8, rogue:9, shaman:10, necromancer:11, wizard:12, magician:13, enchanter:14, beastlord:15, berserker:16 };
-  const RACES_MAP = { human:1, barbarian:2, erudite:3, wood_elf:4, high_elf:5, dark_elf:6, half_elf:7, dwarf:8, troll:9, ogre:10, halfling:11, gnome:12, iksar:128, vah_shir:130, froglok:330 };
+  const constants = require('./data/constants');
+  const CLASSES_MAP = constants.CLASSES;
+  const RACES_MAP = constants.RACES;
   const raceId = RACES_MAP[race] || 1;
   const classId = CLASSES_MAP[charClass] || 1;
 
@@ -873,6 +845,11 @@ function handleDoorClick(session, msg) {
     doorState.isOpen = !doorState.isOpen;
     console.log(`[ENGINE] Door ${door.id} (${door.name}) state changed to ${doorState.isOpen}`);
 
+    // If it's a teleporter, handle it
+    if (door.dest_x !== 0 || door.dest_y !== 0 || (door.opentype === 3)) {
+      MovementSystem.handleTeleporterPad(session, door);
+    }
+
     // Broadcast to all players in the zone using the primary key 'id'
     const payload = JSON.stringify({
       type: 'DOOR_STATE_CHANGE',
@@ -968,6 +945,27 @@ function handleStopCombat(session) {
   sendStatus(session);
 }
 
+function broadcastTargetUpdate(mob) {
+  if (!mob || !mob.id) return;
+  const mobId = mob.id;
+  for (const [, session] of sessions) {
+    if (session.combatTarget === mob || (session.combatTarget && session.combatTarget.id === mobId)) {
+      send(session.ws, {
+        type: 'TARGET_UPDATE',
+        target: {
+          id: mob.id,
+          name: mob.name,
+          hp: mob.hp,
+          maxHp: mob.maxHp,
+          level: mob.level,
+          type: mob.isPet ? 'pet' : (mob.npcType === NPC_TYPES.MOB ? 'enemy' : 'npc'),
+          buffs: mob.buffs || []
+        },
+      });
+    }
+  }
+}
+
 function handleSetTarget(session, msg) {
   const targetId = msg.targetId;
   if (!targetId) return;
@@ -991,6 +989,7 @@ function handleSetTarget(session, msg) {
           maxHp: node.maxHp,
           level: node.tier,
           type: 'mining_node',
+          buffs: []
         },
       });
       return;
@@ -1024,7 +1023,8 @@ function handleSetTarget(session, msg) {
           maxHp: targetSession.char.maxHp || 100, // Should use effective stats, but this is a fallback
           level: targetSession.char.level,
           type: 'player',
-          pvpFaction: targetSession.char.pvpFaction || 0
+          pvpFaction: targetSession.char.pvpFaction || 0,
+          buffs: targetSession.buffs || []
         },
       });
       sendStatus(session);
@@ -1045,6 +1045,7 @@ function handleSetTarget(session, msg) {
         maxHp: mob.maxHp,
         level: mob.level,
         type: mob.isPet ? 'pet' : (mob.npcType === NPC_TYPES.MOB ? 'enemy' : 'npc'),
+        buffs: mob.buffs || []
       },
     });
     sendStatus(session);
@@ -1244,11 +1245,30 @@ async function handleCastSpell(session, msg) {
 
   // Can't cast while already casting
   if (session.casting) {
+    // Bard logic: clicking same gem stops current song, different gem interrupts and starts new one
     if (session.casting.spellDef?.derived?.isBardSong) {
-        interruptCasting(session, 'You change your tune.');
+        const currentSlot = session.casting.slotIndex;
+        if (currentSlot === slotIndex) {
+            interruptCasting(session, 'You stop singing.');
+            return;
+        } else {
+            interruptCasting(session, 'You change your tune.');
+            // Continue to cast the new song/spell below
+        }
     } else {
         return sendCombatLog(session, [{ event: 'MESSAGE', text: 'You are already casting a spell!' }]);
     }
+  }
+
+  // Active Song interruption
+  if (session.activeSong) {
+      if (session.activeSong.slotIndex === slotIndex) {
+          stopActiveSong(session, 'You stop singing.');
+          return;
+      } else {
+          stopActiveSong(session, 'You change your tune.');
+          // Continue to cast the new song/spell below
+      }
   }
 
   const spellsSystem = require('./systems/spells');
@@ -1287,23 +1307,31 @@ async function handleCastSpell(session, msg) {
 
   // Range check for offensive spells
   const spellRange = spellDef.range?.range || 200;
+  const targetTypeId = spellDef.targetType?.id;
+  
   if (spellDef.target === 'enemy') {
-    if (!session.combatTarget) {
-      return sendCombatLog(session, [{ event: 'MESSAGE', text: 'You must have a target to cast that spell.' }]);
-    }
-    // PvP Check for detrimental
-    if (session.combatTarget.char && !CombatSystem.canInteract(session, session.combatTarget, false)) {
-      return sendCombatLog(session, [{ event: 'MESSAGE', text: 'You cannot cast offensive spells on this target!' }]);
-    }
-    // Check distance to target mob
-    const mob = session.combatTarget;
-    if (mob.x != null && session.char.x != null) {
-      const dx = session.char.x - mob.x;
-      const dy = session.char.y - mob.y;
-      const distSq = dx * dx + dy * dy;
-      if (distSq > spellRange * spellRange) {
-        return sendCombatLog(session, [{ event: 'MESSAGE', text: 'Your target is out of range.' }]);
-      }
+    // PB AE spells (ID 4) do not require a target
+    if (targetTypeId === 4) {
+        // center on caster
+    } else {
+        if (!session.combatTarget) {
+          return sendCombatLog(session, [{ event: 'MESSAGE', text: 'You must have a target to cast that spell.' }]);
+        }
+        // PvP Check for detrimental
+        if (session.combatTarget.char && !CombatSystem.canInteract(session, session.combatTarget, false)) {
+          return sendCombatLog(session, [{ event: 'MESSAGE', text: 'You cannot cast offensive spells on this target!' }]);
+        }
+        // Check distance to target mob
+        const mob = session.combatTarget;
+        if (mob.x != null && session.char.x != null) {
+          const dx = session.char.x - mob.x;
+          const dy = session.char.y - mob.y;
+          const dz = (session.char.z || 0) - (mob.z || 0);
+          const distSq = dx * dx + dy * dy + dz * dz;
+          if (distSq > spellRange * spellRange) {
+            return sendCombatLog(session, [{ event: 'MESSAGE', text: 'Your target is out of range.' }]);
+          }
+        }
     }
   }
 
@@ -1312,6 +1340,8 @@ async function handleCastSpell(session, msg) {
   if (castTimeMod > 0) {
       castTimeSec = castTimeSec * (1.0 - (castTimeMod / 100.0));
   }
+  
+  console.log(`[SPELL] Casting ${spellDef.name}: raw=${spellDef.timing?.castTime}ms, final=${castTimeSec}s, mod=${castTimeMod}%`);
 
   // Deduct mana up front (classic EQ behavior)
   session.char.mana -= finalManaCost;
@@ -1325,7 +1355,7 @@ async function handleCastSpell(session, msg) {
 
   // Instant-cast spells (0 cast time) fire immediately
   if (castTimeSec <= 0) {
-    await applySpellEffect(session, spellDef, spellRow.spell_key);
+    await applySpellEffect(session, spellDef);
     session.ws.send(JSON.stringify({ type: 'CAST_COMPLETE', spellName: spellDef.name }));
     sendStatus(session);
     return;
@@ -1369,13 +1399,14 @@ async function processCasting(session, dt) {
     const { spellDef, spellKey, slotIndex, melodyDelay } = session.casting;
     session.casting = null;
 
-    await applySpellEffect(session, spellDef, spellKey);
+    await applySpellEffect(session, spellDef);
     session.ws.send(JSON.stringify({ type: 'CAST_COMPLETE', spellName: spellDef.name }));
     sendStatus(session);
 
-    // Auto-recast bard songs (twisting pulse)
-    if (spellDef.derived?.isBardSong && session.char.state !== 'sitting' && session.char.state !== 'medding') {
+    // Bard active song logic
+    if (spellDef.derived?.isBardSong) {
         if (session.melody && session.melody.active) {
+            // Melody logic remains mostly same but we use waitTimer
             let waitTimeSec = 0;
             if (melodyDelay === 'Auto') {
                 let buffDurationSec = spellDef.duration ? spellDef.duration * 6 : 0;
@@ -1400,9 +1431,36 @@ async function processCasting(session, dt) {
             } else {
                 playNextMelodySong(session);
             }
+        } else {
+            // Pulse timing: the user says "the delay on the animation itself, isnt bad...
+            // current logic replays the animation every few minutes (perfect!)"
+            // So we'll use a longer pulse window. 
+            // 3 ticks = 18s. Let's try 30s or even 60s for the animation pulse?
+            // User said current "extremely late" (minutes) was ok for animation.
+            // Let's set it to 30s as a middle ground.
+            let waitTimeSec = 30; 
+            
+            session.activeSong = {
+                spellDef,
+                spellKey,
+                slotIndex,
+                expiresAt: Date.now() + (waitTimeSec * 1000)
+            };
+            session.ws.send(JSON.stringify({ type: 'SONG_ACTIVE', spellName: spellDef.name, slot: slotIndex }));
         }
     }
   }
+}
+
+function stopActiveSong(session, message) {
+    if (session.activeSong) {
+        session.activeSong = null;
+        session.ws.send(JSON.stringify({ type: 'SONG_STOP' }));
+        if (message) {
+            sendCombatLog(session, [{ event: 'MESSAGE', text: message }]);
+        }
+        sendStatus(session);
+    }
 }
 
 async function handleMelody(session, msg) {
@@ -1471,6 +1529,9 @@ function handleStopMelody(session) {
   if (session.casting && session.casting.spellDef?.derived?.isBardSong) {
     interruptCasting(session, 'You stop singing.');
   }
+  if (session.activeSong) {
+    stopActiveSong(session, 'You stop singing.');
+  }
 }
 
 async function playNextMelodySong(session) {
@@ -1497,6 +1558,11 @@ function tryInterruptCasting(session, source) {
   const interruptChance = Math.max(0.25, 0.75 - (session.char.level * 0.005));
   if (Math.random() < interruptChance) {
     interruptCasting(session, `Your spell is interrupted!`);
+  } else {
+    // If we didn't get interrupted, we might skill up Channeling
+    const { trySkillUp } = require('./combat');
+    trySkillUp(session, 'channeling');
+    flushSkillUps(session);
   }
 }
 
@@ -1513,7 +1579,7 @@ function interruptCasting(session, message) {
   sendStatus(session);
 }
 
-async function applySpellEffect(session, spellDef, spellKey) {
+async function applySpellEffect(session, spellDef) {
   // Determine visual target based on beneficial/detrimental status
   let targetId = `player_${session.char.id}`;
   const isDetrimental = !spellDef.goodEffect;
@@ -1531,33 +1597,50 @@ async function applySpellEffect(session, spellDef, spellKey) {
       }
   }
 
+  // Enforce Line-of-Sight for detrimental spells or targeted beneficial spells
+  // Target type 1 is 'Self', which doesn't require LOS.
+  // We check LOS to session.combatTarget if it exists and isn't the caster.
+  if (spellDef.targetType?.id !== 1 && session.combatTarget && session.combatTarget !== session) {
+      const targetX = session.combatTarget.char ? session.combatTarget.char.x : session.combatTarget.x;
+      const targetY = session.combatTarget.char ? session.combatTarget.char.y : session.combatTarget.y;
+      const targetZ = session.combatTarget.char ? session.combatTarget.char.z : (session.combatTarget.z || 0);
+      
+      if (!SpatialSystem.hasLineOfSight(session.char.zoneId, session.char.x, session.char.y, targetX, targetY, session.char.z || 0, targetZ)) {
+          sendCombatLog(session, [{ event: 'MESSAGE', text: 'Your target is not in line of sight.' }]);
+          return;
+      }
+  }
+
   // Broadcast SPELL_ANIMATION to everyone in the zone
   const spellAnimId = spellDef.visual && spellDef.visual.spellAffectIndex !== undefined ? spellDef.visual.spellAffectIndex : -1;
   
   if (spellAnimId !== -1) {
-    let visualTargets = [targetId];
+    // Determine visual targets using the same logic as the spell effect itself
+    const primaryTargetEnt = session.combatTarget;
+    const aoeTargets = SpellSystem.getAoeTargets(session, spellDef, primaryTargetEnt);
+    
+    const visualTargets = aoeTargets.map(t => {
+        if (t.char) return `player_${t.char.id}`;
+        if (t.id) return t.id;
+        return null;
+    }).filter(id => id !== null);
 
-    // Distribute to group members if it's a song or group buff
-    if (spellDef.derived?.isBardSong || [3, 4, 41].includes(spellDef.targetType?.id) || spellDef.targetType?.name === 'groupPet') {
-        if (session.group && session.group.members) {
-            const rangeSq = (spellDef.range?.aoeRange || 50) ** 2;
-            visualTargets = session.group.members.filter(m => {
-                const dx = (m.char.x || 0) - (session.char.x || 0);
-                const dy = (m.char.y || 0) - (session.char.y || 0);
-                const dz = (m.char.z || 0) - (session.char.z || 0);
-                return (dx*dx + dy*dy + dz*dz) <= rangeSq || m === session;
-            }).map(m => `player_${m.char.id}`);
-        }
+    // Ensure caster sees it even if not in group/AE list (for single target buffs etc)
+    if (visualTargets.length === 0) {
+        visualTargets.push(`player_${session.char.id}`);
     }
 
     for (const vTarget of visualTargets) {
+        // Skip broadcast if target is invalid
+        if (!vTarget) continue;
+
         const payload = JSON.stringify({
           type: 'SPELL_ANIMATION',
           casterId: `player_${session.char.id}`,
           targetId: vTarget,
           spellAnimId: spellAnimId,
           spellName: spellDef.name,
-          isAura: spellDef.duration > 0
+          isAura: !!spellDef.visual?.targetAnimation // Use targetAnimation as a hint for auras
         });
         
         for (const [ws, client] of sessions) {
@@ -1568,7 +1651,28 @@ async function applySpellEffect(session, spellDef, spellKey) {
     }
   }
 
-  return SpellSystem.applySpellEffect(session, spellDef, spellKey);
+  const result = await SpellSystem.applySpellEffect(session, spellDef);
+
+  // ── Casting Skill-Ups ─────────────────────────────────────────────
+  // If the spell was applied (even if resisted, application was successful), try skill ups
+  if (spellDef.skill && spellDef.skill.name) {
+    const { trySkillUp } = require('./combat');
+    const skillName = spellDef.skill.name.toLowerCase(); // 'abjuration', 'alteration', etc.
+    
+    // Primary Casting Skill
+    trySkillUp(session, skillName);
+
+    // Specialization (Level 20+)
+    if (session.char.level >= 20) {
+      const specSkillName = `specialize_${skillName}`;
+      // Note: trySkillUp handles the cap check internally
+      trySkillUp(session, specSkillName);
+    }
+
+    flushSkillUps(session);
+  }
+
+  return result;
 }
 
 function handleAbility(session, msg) {
@@ -1583,7 +1687,7 @@ function handleAbility(session, msg) {
     return handleSenseHeading(session);
   }
 
-  if (ability === 'tracking') {
+  if (ability === 'tracking' || ability === 'track') {
     const skill = combat.getCharSkill(char, 'tracking');
     if (skill <= 0) {
       return sendCombatLog(session, [{ event: 'MESSAGE', text: `You have no idea how to track.` }]);
@@ -1659,43 +1763,7 @@ function handleAbility(session, msg) {
     return;
   }
 
-  if (ability === 'track') {
-    const skill = combat.getCharSkill(char, 'tracking');
-    if (skill <= 0) {
-      return sendCombatLog(session, [{ event: 'MESSAGE', text: `You don't know how to track.` }]);
-    }
-    // List mobs and players within tracking range (skill * 3 units)
-    const trackRange = skill * 3;
-    const instance = zoneInstances[char.zoneId];
-    const results = [];
-    if (instance) {
-      for (const mob of instance.liveMobs) {
-        const dist = getDistance(mob.x, mob.y, char.x, char.y);
-        if (dist <= trackRange) {
-          results.push({ name: mob.name, dist: Math.floor(dist) });
-        }
-      }
-    }
-    // Other players in the zone
-    for (const [, other] of sessions) {
-      if (other.char && other.char.zoneId === char.zoneId && other.char.id !== char.id) {
-        const dist = getDistance(other.char.x, other.char.y, char.x, char.y);
-        if (dist <= trackRange) {
-          results.push({ name: `(PC) ${other.char.name}`, dist: Math.floor(dist) });
-        }
-      }
-    }
-    results.sort((a, b) => a.dist - b.dist);
-    combat.trySkillUp(session, 'tracking');
-    flushSkillUps(session);
-
-    if (results.length === 0) {
-      return sendCombatLog(session, [{ event: 'MESSAGE', text: `You don't sense any nearby creatures.` }]);
-    }
-    const lines = results.slice(0, 20).map(r => ({ event: 'MESSAGE', text: `  [color=cyan]${r.name}[/color] (${r.dist} units)` }));
-    lines.unshift({ event: 'MESSAGE', text: `[color=yellow]-- Tracking Results (${results.length}) --[/color]` });
-    return sendCombatLog(session, lines);
-  }
+  // --- Ability cases below ---
 
   if (ability === 'bindwound' || ability === 'bind_wound' || ability === 'bind wound') {
     if (!session.abilityCooldowns) session.abilityCooldowns = {};
@@ -2544,11 +2612,16 @@ async function handleMercenaryAction(session, msg) {
     
     const auth = authSessions.get(session.ws);
     if (!auth) return;
-    const characters = await DB.getCharactersByAccount(auth.accountId);
-    const st = characters.find(s => s.id === merc.id);
+    const students = await DB.getCharacterStudents(session.char.id);
+    const st = students.find(s => s.id === merc.id);
     if (st) {
-      const studentChar = await DB.getCharacter(st.name);
-      if (!studentChar) return;
+      const studentChar = { ...st }; // Use the student data directly from character_students
+      
+      // Map names for the session/client logic
+      studentChar.race = INV_RACES[st.race_id] || 'human';
+      studentChar.class = INV_CLASSES[st.class_id] || 'warrior';
+      
+      studentChar.zoneId = session.char.zoneId;
       
       studentChar.zoneId = session.char.zoneId;
       studentChar.x = session.char.x;
@@ -3178,6 +3251,10 @@ function getEquipVisuals(session) {
 }
 
 function sendFullState(session) {
+  // Set a login freeze to ignore movement updates for a few seconds
+  // while the client loads geometry to prevent falling through floor
+  session.loginFreeze = Date.now() + 5000; 
+
   sendLoginOk(session);
   sendInventory(session);
   SpellSystem.sendSpellbook(session);
@@ -3196,6 +3273,7 @@ function sendLoginOk(session) {
   send(session.ws, {
     type: 'LOGIN_OK',
     character: {
+      id: char.id,
       name: char.name,
       class: char.class,
       race: char.race,
@@ -3217,7 +3295,7 @@ function sendLoginOk(session) {
       copper: char.copper,
       x: char.x,
       y: char.y,
-      z: char.z || 0,
+      z: (char.z || 0) + 5.0, // Give a 5 unit boost on login to prevent falling through floor; client handles snapping
       stats: {
         str: effective.str, sta: effective.sta, agi: effective.agi,
         dex: effective.dex, wis: effective.wis, intel: effective.intel,
@@ -3257,12 +3335,17 @@ function sendStatus(session) {
   // Determine which abilities & skills the character has unlocked to send to the UI
   const availableAbilities = [];  // Combat actions → Abilities tab
   const availableSkills = [];     // Utility actions → Skills tab
+  const skillData = {};           // Detailed skill data including caps
   for (const skillKey of Object.keys(Skills)) {
       const skVal = combat.getCharSkill(char, skillKey);
-      if (Skills[skillKey].type === 'ability' && skVal > 0) {
-          availableAbilities.push(Skills[skillKey].name.toLowerCase());
-      } else if (Skills[skillKey].type === 'skill' && skVal > 0) {
-          availableSkills.push(Skills[skillKey].name.toLowerCase());
+      if (skVal > 0) {
+          const max = combat.getMaxSkill(session, skillKey);
+          skillData[skillKey] = { value: skVal, max: max };
+          if (Skills[skillKey].type === 'ability') {
+              availableAbilities.push(Skills[skillKey].name.toLowerCase());
+          } else if (Skills[skillKey].type === 'skill') {
+              availableSkills.push(Skills[skillKey].name.toLowerCase());
+          }
       }
   }
 
@@ -3379,7 +3462,6 @@ function sendStatus(session) {
       connections: zone && zone.connections ? zone.connections : [], // Legacy
       spawnPos: session.pendingTeleport || null,
       equipVisuals: getEquipVisuals(session),
-      skills: char.skills,
       mapData: mapData,
       worldAtlas: (() => {
         const atlas = WorldAtlas.getAtlasEntry(char.zoneId);
@@ -3402,6 +3484,7 @@ function sendStatus(session) {
       abilityCooldowns: session.abilityCooldowns || {},
       availableAbilities: availableAbilities,
       availableSkills: availableSkills,
+      skillData: skillData,
       skills: char.skills || {},
       practices: char.practices || 0,
       copper: char.copper || 0,
@@ -3600,106 +3683,154 @@ function startGameLoop() {
     processEnvironment();
 
     for (const [ws, session] of sessions) {
-      StatsSystem.processRegen(session, dt);
-      if (session.bot) session.bot.tick();
-      processCasting(session, dt);
-      if (session.melody && session.melody.active && session.melody.waitTimer > 0) {
-          session.melody.waitTimer -= dt;
-          if (session.melody.waitTimer <= 0) {
-              session.melody.waitTimer = 0;
-              if (!session.casting) {
-                  playNextMelodySong(session);
-              }
+      try {
+        // --- Heartbeat PING (15s) ---
+        if (tickCount % 75 === 0) { // 75 ticks * 200ms = 15s
+          send(ws, { type: 'PING' });
+          
+          // Check for stale connections (Last Pong > 45s)
+          if (session.lastPong && (Date.now() - session.lastPong > 45000)) {
+            console.log(`[ENGINE] Stale connection detected for ${session.char?.name}, disconnecting.`);
+            ws.close();
+            continue;
           }
-      }
-      CombatSystem.processCombatTick(session, dt);
-      StatsSystem.processBuffs(session, dt);
-      SurvivalSystem.processSurvival(session, dt, sendCombatLog, sendStatus);
-      processSkillCooldowns(session, dt);
-      sendStatus(session);
-
-      // --- Proximity Sync ---
-      // Periodically refresh the world state to handle LoadRadius pop-ins/outs
-      if (tickCount % SYNC_RATE === 0) {
-          handleLook(session, true); // forceSync = true
-      }
-
-      // --- Tracking Updates ---
-      if (tickCount % 20 === 0 && session.trackingTargetId) {
-          const zone = zoneInstances[session.char.zoneId];
-          let target = null;
-          if (zone) {
-              if (zone.mobs && zone.mobs[session.trackingTargetId]) target = zone.mobs[session.trackingTargetId];
-              if (!target && activeSessions) {
-                  for (const p of Object.values(activeSessions)) {
-                      if (p.char && p.char.id === session.trackingTargetId) { target = p.char; break; }
-                  }
-              }
-          }
-
-          if (target && target.hp > 0) {
-              // Calculate direction relative to player's heading
-              // In EQ, North is positive Y? Actually let's just output angle relative to player heading
-              const dx = target.x - session.char.x;
-              const dy = target.y - session.char.y;
-              // Target angle from player
-              let angleToTarget = Math.atan2(dx, dy) * 180 / Math.PI; // Assuming standard Cartesian, but EQ axes might vary.
-              // Normalize angleToTarget to 0-360
-              if (angleToTarget < 0) angleToTarget += 360;
-              
-              let playerHeading = session.char.heading || 0;
-              // Player heading might be 0-360 or 0-512 (EQ uses 0-512). Let's assume degrees for now or EQ 0-512?
-              // Standardizing to degrees for the message string.
-              // We'll just output straight direction or left/right.
-              // For simplicity, just use cardinal directions.
-              let dirStr = '';
-              if (angleToTarget > 337.5 || angleToTarget <= 22.5) dirStr = 'North';
-              else if (angleToTarget > 22.5 && angleToTarget <= 67.5) dirStr = 'Northeast';
-              else if (angleToTarget > 67.5 && angleToTarget <= 112.5) dirStr = 'East';
-              else if (angleToTarget > 112.5 && angleToTarget <= 157.5) dirStr = 'Southeast';
-              else if (angleToTarget > 157.5 && angleToTarget <= 202.5) dirStr = 'South';
-              else if (angleToTarget > 202.5 && angleToTarget <= 247.5) dirStr = 'Southwest';
-              else if (angleToTarget > 247.5 && angleToTarget <= 292.5) dirStr = 'West';
-              else if (angleToTarget > 292.5 && angleToTarget <= 337.5) dirStr = 'Northwest';
-
-              sendCombatLog(session, [{ event: 'MESSAGE', text: `To track ${target.name || target.originalName}, head ${dirStr}.` }]);
-          } else {
-              sendCombatLog(session, [{ event: 'MESSAGE', text: `You have lost your tracking target.` }]);
-              session.trackingTargetId = null;
-          }
-      }
-
-      // --- Bind Sight Updates (SPA 73) ---
-      if (tickCount % 5 === 0 && session.bindSightTarget) {
-        const bst = session.bindSightTarget;
-        const isPlayer = !!bst.char;
-        const alive = isPlayer ? (bst.char.hp > 0) : (bst.hp > 0);
-        if (alive) {
-          const tX = isPlayer ? bst.char.x : bst.x;
-          const tY = isPlayer ? bst.char.y : bst.y;
-          const tZ = isPlayer ? (bst.char.z || 0) : (bst.z || 0);
-          const tH = isPlayer ? (bst.char.heading || 0) : (bst.heading || 0);
-          send(session.ws, {
-            type: 'BIND_SIGHT',
-            active: true,
-            targetName: isPlayer ? bst.char.name : bst.name,
-            x: tX, y: tY, z: tZ, heading: tH
-          });
-        } else {
-          // Target died — break bind sight
-          session.bindSightTarget = null;
-          session.bindSightTargetId = null;
-          session.buffs = (session.buffs || []).filter(b => !b.isBindSight);
-          send(session.ws, { type: 'BIND_SIGHT', active: false });
-          sendCombatLog(session, [{ event: 'MESSAGE', text: 'Your sight returns to normal.' }]);
-          SpellSystem.sendBuffs(session);
         }
-      }
 
-      // --- Group Stat Sync (SPA parity) ---
-      if (tickCount % 20 === 0 && session.group && session.group.leaderId === session.char.id) {
-        // Only one person per group needs to trigger the update for the whole group
-        GroupManager.updateGroupPresence(session.group);
+        StatsSystem.processRegen(session, dt);
+        if (session.bot) session.bot.tick();
+        processCasting(session, dt);
+        
+        // --- Bard Active Song / Pulse handling ---
+        if (session.activeSong && !session.casting) {
+            if (Date.now() >= session.activeSong.expiresAt) {
+                const { slotIndex } = session.activeSong;
+                // Don't clear activeSong yet, handleCastSpell will handle it if it starts a new cast
+                // But we must avoid infinite loop if handleCastSpell fails or doesn't start casting
+                const oldActiveSong = session.activeSong;
+                session.activeSong = null; 
+                handleCastSpell(session, { slot: slotIndex }).catch(err => {
+                    console.error(`[ENGINE] Bard pulse failed for ${session.char.name}:`, err);
+                    // If it failed, don't restore it, it's safer to stop
+                });
+            }
+        }
+
+        if (session.melody && session.melody.active && session.melody.waitTimer > 0) {
+            session.melody.waitTimer -= dt;
+            if (session.melody.waitTimer <= 0) {
+                session.melody.waitTimer = 0;
+                if (!session.casting) {
+                    playNextMelodySong(session);
+                }
+            }
+        }
+        CombatSystem.processCombatTick(session, dt);
+        StatsSystem.processBuffs(session, dt);
+        SurvivalSystem.processSurvival(session, dt, sendCombatLog, sendStatus);
+        processSkillCooldowns(session, dt);
+        sendStatus(session);
+
+        // --- Proximity Sync ---
+        // Periodically refresh the world state to handle LoadRadius pop-ins/outs
+        if (tickCount % SYNC_RATE === 0) {
+            handleLook(session, true); // forceSync = true
+        }
+
+        // --- Tracking Updates ---
+        if (tickCount % 20 === 0 && session.trackingTargetId) {
+            const zone = zoneInstances[session.char.zoneId];
+            let target = null;
+            if (zone) {
+                // Find mob in liveMobs
+                if (zone.liveMobs) {
+                    target = zone.liveMobs.find(m => m.id === session.trackingTargetId || String(m.id) === String(session.trackingTargetId));
+                }
+                
+                // If not a mob, check if it's a player
+                if (!target) {
+                    for (const p of sessions.values()) {
+                        if (p.char && (p.char.id === session.trackingTargetId || String(p.char.id) === String(session.trackingTargetId))) {
+                            target = p.char;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (target && target.hp > 0) {
+                const dx = target.x - session.char.x;
+                const dy = target.y - session.char.y;
+                
+                // Calculate relative angle to target (0-360)
+                let angleToTarget = Math.atan2(dx, dy) * 180 / Math.PI;
+                if (angleToTarget < 0) angleToTarget += 360;
+                
+                // Player's current heading in degrees (512 units = 360 degrees)
+                const charHeadingDeg = ((session.char.heading || 0) / 512) * 360;
+                
+                // Relative bearing (how much the player needs to turn to face the target)
+                let bearing = angleToTarget - charHeadingDeg;
+                while (bearing > 180) bearing -= 360;
+                while (bearing < -180) bearing += 360;
+                
+                let relDir = 'straight ahead';
+                if (bearing > 157.5 || bearing <= -157.5) relDir = 'behind you';
+                else if (bearing > 22.5 && bearing <= 67.5) relDir = 'to your right';
+                else if (bearing > 67.5 && bearing <= 112.5) relDir = 'to your right'; // 90 deg
+                else if (bearing > 112.5 && bearing <= 157.5) relDir = 'to your right and behind you';
+                else if (bearing < -22.5 && bearing >= -67.5) relDir = 'to your left';
+                else if (bearing < -67.5 && bearing >= -112.5) relDir = 'to your left'; // -90 deg
+                else if (bearing < -112.5 && bearing >= -157.5) relDir = 'to your left and behind you';
+                
+                // Refined relative directions
+                if (bearing > 10 && bearing <= 45) relDir = 'slightly to your right';
+                else if (bearing > 45 && bearing <= 135) relDir = 'to your right';
+                else if (bearing > 135 && bearing <= 170) relDir = 'to your right and behind you';
+                else if (bearing < -10 && bearing >= -45) relDir = 'slightly to your left';
+                else if (bearing < -45 && bearing >= -135) relDir = 'to your left';
+                else if (bearing < -135 && bearing >= -170) relDir = 'to your left and behind you';
+                else if (bearing > 170 || bearing < -170) relDir = 'directly behind you';
+                else if (bearing <= 10 && bearing >= -10) relDir = 'straight ahead';
+
+                sendCombatLog(session, [{ event: 'MESSAGE', text: `You are tracking ${target.name || target.originalName}, its trail leads ${relDir}.` }]);
+            } else {
+                sendCombatLog(session, [{ event: 'MESSAGE', text: `You have lost your tracking target.` }]);
+                session.trackingTargetId = null;
+            }
+        }
+
+        // --- Bind Sight Updates (SPA 73) ---
+        if (tickCount % 5 === 0 && session.bindSightTarget) {
+          const bst = session.bindSightTarget;
+          const isPlayer = !!bst.char;
+          const alive = isPlayer ? (bst.char.hp > 0) : (bst.hp > 0);
+          if (alive) {
+            const tX = isPlayer ? bst.char.x : bst.x;
+            const tY = isPlayer ? bst.char.y : bst.y;
+            const tZ = isPlayer ? (bst.char.z || 0) : (bst.z || 0);
+            const tH = isPlayer ? (bst.char.heading || 0) : (bst.heading || 0);
+            send(session.ws, {
+              type: 'BIND_SIGHT',
+              active: true,
+              targetName: isPlayer ? bst.char.name : bst.name,
+              x: tX, y: tY, z: tZ, heading: tH
+            });
+          } else {
+            session.bindSightTarget = null;
+            session.bindSightTargetId = null;
+            session.buffs = (session.buffs || []).filter(b => !b.isBindSight);
+            send(session.ws, { type: 'BIND_SIGHT', active: false });
+            sendCombatLog(session, [{ event: 'MESSAGE', text: 'Your sight returns to normal.' }]);
+            SpellSystem.sendBuffs(session);
+          }
+        }
+
+        // --- Group Stat Sync (SPA parity) ---
+        if (tickCount % 20 === 0 && session.group && session.group.leaderId === session.char.id) {
+          GroupManager.updateGroupPresence(session.group);
+        }
+      } catch (err) {
+        console.error(`[ENGINE] Error in game loop for session ${session?.char?.name || 'Unknown'}:`, err);
       }
     }
 
@@ -3707,7 +3838,9 @@ function startGameLoop() {
       broadcastMobMove, processPetAI, handlePetDeath, sendCombatLog,
       sessions, handleMobDeath, getWeaponStats: StatsSystem.getWeaponStats, tryInterruptCasting,
       breakSneak: MovementSystem.breakSneak, breakHide: MovementSystem.breakHide, despawnPet,
-      breakMez: SpellSystem.breakMez
+      breakMez: SpellSystem.breakMez,
+      broadcastTargetUpdate: broadcastTargetUpdate,
+      handleTrainSkill: (session, skill) => StatsSystem.handleTrainSkill(session, skill)
     };
 
     for (const zoneId of Object.keys(zoneInstances)) {
@@ -3724,11 +3857,13 @@ function startGameLoop() {
       }
     }
 
-    // Persist every 10 ticks (~20 seconds)
+    // Persist every 10 ticks (~20 seconds) — Legacy backup
     saveCounter++;
     if (saveCounter >= 10) {
       saveCounter = 0;
       for (const [, session] of sessions) {
+        // Event-driven saves + heartbeat pong saves now handle most state.
+        // This is a safety sweep for all non-location state (skills, spellbook).
         DB.updateCharacterState(session.char);
         DB.saveCharacterSkills(session.char.id, session.char.skills);
         SpellSystem.saveBuffsToFile(session);
@@ -4163,14 +4298,17 @@ function handleEmote(session, msg) {
 
 //  Teleporter Pad Logic 
 
-async function initZones() {
-  return ZoneSystem.initZones();
+async function initZones(requestedZones = null) {
+  return ZoneSystem.initZones(requestedZones);
 }
 
 function handleGetTrackingList(session) {
   const char = session.char;
   const skill = combat.getCharSkill(char, 'tracking');
   if (skill <= 0) return;
+
+  // Chance to skill up every time tracking is used
+  combat.trySkillUp(session, 'tracking');
 
   let multiplier = 7; // Bard
   if (char.class === 'Ranger') multiplier = 12;
@@ -4209,23 +4347,44 @@ function handleGetTrackingList(session) {
     }
   };
 
-  if (zone.mobs) {
-    for (const mob of Object.values(zone.mobs)) {
+  if (zone.liveMobs) {
+    for (const mob of zone.liveMobs) {
       if (mob.hp > 0) checkAddEntity(mob, false);
     }
   }
-  for (const p of Object.values(activeSessions)) {
+  for (const p of sessions.values()) {
     if (p.char && p.char.zoneId === char.zoneId && p.char.hp > 0) {
       checkAddEntity(p.char, true);
     }
   }
 
-  // Sort by spawn order / default (ID works for now)
+  // Default sort by distance
+  list.sort((a, b) => a.dist - b.dist);
+
   send(session.ws, { type: 'TRACKING_LIST', targets: list });
 }
 
 function handleSetTrackingTarget(session, msg) {
+  // Ensure we store it in a consistent format if possible, but the game loop now handles both string and number
   session.trackingTargetId = msg.targetId;
+  const zone = zoneInstances[session.char.zoneId];
+  let targetName = "target";
+  
+  if (zone && zone.liveMobs) {
+      const mob = zone.liveMobs.find(m => String(m.id) === String(msg.targetId));
+      if (mob) targetName = mob.name || mob.originalName;
+  }
+  
+  if (targetName === "target") {
+      for (const p of sessions.values()) {
+          if (p.char && String(p.char.id) === String(msg.targetId)) {
+              targetName = p.char.name;
+              break;
+          }
+      }
+  }
+
+  sendCombatLog(session, [{ event: 'MESSAGE', text: `You are now tracking ${targetName}.` }]);
 }
 
 function handleClearTracking(session) {
@@ -4359,7 +4518,7 @@ async function handleHireStudent(session, msg) {
   sendCombatLog(session, [{ event: 'MESSAGE', text: `You have successfully hired ${msg.name}!` }]);
 }
 
-function handleServerCommand(session, msg) {
+async function handleServerCommand(session, msg) {
   const auth = authSessions.get(session.ws);
   if (!auth || auth.status < 200) {
     sendCombatLog(session, [{ event: 'MESSAGE', text: `[color=red]Unknown command: ${msg.command}[/color]` }]);
@@ -4418,7 +4577,7 @@ function handleServerCommand(session, msg) {
       if (args.length === 0 || args[0] === '') return sendCombatLog(session, [{ event: 'MESSAGE', text: `Usage: /exp <amount>` }]);
       const amt = parseInt(args[0], 10);
       if (!isNaN(amt)) {
-        CombatSystem.awardExp(session, amt, null);
+        await CombatSystem.awardExp(session, amt, null);
       }
       break;
     }
@@ -4446,10 +4605,121 @@ function handleServerCommand(session, msg) {
   }
 }
 
+async function handleManualLogin(ws, data) {
+  if (!data || !data.characterName) {
+    console.error('[ENGINE] handleManualLogin: Missing data or characterName');
+    return send(ws, { type: 'ERROR', message: 'Invalid login data.' });
+  }
+
+  const char = await DB.getCharacter(data.characterName);
+  if (!char) {
+    return send(ws, { type: 'ERROR', message: 'Character not found.' });
+  }
+
+  // Check if character is already online and boot them
+  for (const [existingWs, existingSession] of sessions.entries()) {
+    if (existingSession.char.id === char.id) {
+      console.log(`[ENGINE] Kicking existing session for ${char.name} (handoff)`);
+      send(existingWs, { type: 'ERROR', message: 'You have been disconnected because your character is entering a new zone.' });
+      existingWs.close();
+      sessions.delete(existingWs);
+    }
+  }
+
+  const session = await createSession(ws, char);
+  console.log(`[ENGINE] ${char.name} manually logged in (handoff) with full state sync.`);
+  sendFullState(session);
+}
+
+function handleWho(session) {
+  const zoneId = session.char.zoneId;
+  const players = [];
+  for (const [, s] of sessions) {
+    if (s.char && s.char.zoneId === zoneId && !s.isBot) {
+      players.push(`[${s.char.level} ${s.char.class}] ${s.char.name} (${s.char.race})`);
+    }
+  }
+  sendCombatLog(session, [{ event: 'MESSAGE', text: `Players in ${zoneId}:` }]);
+  for (const p of players) {
+    sendCombatLog(session, [{ event: 'MESSAGE', text: p }]);
+  }
+  sendCombatLog(session, [{ event: 'MESSAGE', text: `There are ${players.length} players in ${zoneId}.` }]);
+}
+
+function handleTime(session) {
+  const cal = State.worldCalendar;
+  sendCombatLog(session, [{ event: 'MESSAGE', text: `It is ${cal.hour}:${cal.minute.toString().padStart(2, '0')}, Day ${cal.day} of ${cal.month}, Year ${cal.year}.` }]);
+}
+
+function handleRandom(session, msg) {
+  const max = msg.max || 100;
+  const roll = Math.floor(Math.random() * max) + 1;
+  const text = `${session.char.name} rolls a ${roll} out of ${max}`;
+  ChatSystem.broadcastChat(session, 'say', text, 200);
+  sendCombatLog(session, [{ event: 'MESSAGE', text: text }]);
+}
+
+async function bootstrapServer() {
+  console.log('[ENGINE] Starting bootstrap sequence...');
+
+  // 1. Data & Database
+  await DB.initDatabase();
+
+  const deps = {
+    db: DB,
+    items: ITEMS,
+    itemDb: ItemDB,
+    spellDb: SpellDB,
+    spellSystem: SpellSystem,
+    combat: combat,
+    calcEffectiveStats: StatsSystem.calcEffectiveStats,
+    sendCombatLog: sendCombatLog,
+    sendInventory: sendInventory,
+    sendStatus: sendStatus,
+    sendBuffs: SpellSystem.sendBuffs,
+    handleStopCombat: CombatSystem.handleStopCombat,
+    handleMobDeath: handleMobDeath,
+    despawnPet: despawnPet,
+    zoneInstances: State.zoneInstances,
+    sessions: State.sessions,
+    summonItemMap: SUMMON_ITEM_MAP,
+    ensureZoneLoaded: (zoneKey) => ZoneSystem.ensureZoneLoaded(zoneKey, SpawningSystem.spawnMob, MiningSystem.spawnMiningNodes, MiningSystem.spawnMiningNPCs),
+    resolveZoneKey: ZoneSystem.resolveZoneKey,
+    getZoneDef: ZoneSystem.getZoneDef,
+    handleSuccor: MovementSystem.handleSuccor,
+    processQuestActions: processQuestActions,
+    handleHail: handleHail,
+    handleTrainSkill: handleTrainSkill,
+    flushSkillUps: flushSkillUps,
+    interruptCasting: tryInterruptCasting,
+    sendFullState: sendFullState,
+    broadcastTargetUpdate: broadcastTargetUpdate,
+    handleStand: handleStand
+  };
+
+  // 2. Initialize Core Systems
+  CombatSystem.init(deps);
+  SpellSystem.init(deps);
+  StatsSystem.init(deps);
+  InventorySystem.init(deps);
+  MiningSystem.init(deps);
+  
+  // 3. Initialize Utility Systems
+  ChatSystem.init(deps);
+  MovementSystem.init(deps);
+
+  // 4. Initialize Zones
+  // await ZoneSystem.initZones(); // Removed from here, called explicitly in main() or zone_server.js
+
+  console.log('[ENGINE] Bootstrap sequence complete.');
+}
+
 module.exports = {
-  initZones,
+  bootstrapServer,
+  initZones: ZoneSystem.initZones,
   startGameLoop,
   handleMessage,
+  handleManualLogin,
   createSession,
   removeSession,
   sessions,

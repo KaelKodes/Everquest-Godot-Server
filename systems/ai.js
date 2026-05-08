@@ -1,5 +1,6 @@
 const combat = require('../combat');
 const FactionSystem = require('./faction');
+const SpatialSystem = require('./spatial');
 
 function processMobRoaming(mob, dt, zoneId, api) {
   if (mob.gridPauseTimer > 0) {
@@ -114,28 +115,58 @@ function processMobAI(zone, zoneId, dt, api) {
           if (debuff.tickTimer <= 0) {
             debuff.tickTimer = 6; // 6-second EQ tick
             mob.hp -= debuff.tickDamage;
+            if (mob.hp < 0) mob.hp = 0;
+            if (mob.hateList) mob.hateList.addEntToHateList(debuff.casterSession, debuff.tickDamage, debuff.tickDamage);
             if (api.breakMez) api.breakMez(mob);
             // Notify the caster if they're still in this zone
-            for (const [, s] of api.sessions) {
-              if (s.char && s.char.name === debuff.casterSession && s.char.zoneId === zoneId) {
-                api.sendCombatLog(s, [{ event: 'SPELL_DAMAGE', source: debuff.name, target: mob.name, spell: debuff.name, damage: debuff.tickDamage }]);
+            if (api.sessions) {
+              for (const s of (api.sessions.values ? Array.from(api.sessions.values()) : Object.values(api.sessions))) {
+                if (s.char && s.char.name === debuff.casterSession && s.char.zoneId === zoneId) {
+                  const text = `${mob.name} has been hit by your ${debuff.name} for ${debuff.tickDamage} damage.`;
+                  api.sendCombatLog(s, [{ event: 'SPELL_DAMAGE', source: debuff.name, target: mob.name, spell: debuff.name, damage: debuff.tickDamage, text }]);
+                }
               }
             }
+            if (api.broadcastTargetUpdate) api.broadcastTargetUpdate(mob);
           }
         }
 
         if (debuff.duration <= 0) {
+          // Notify the caster that the debuff wore off
+          if (api.sessions) {
+            for (const s of (api.sessions.values ? Array.from(api.sessions.values()) : Object.values(api.sessions))) {
+              if (s.char && s.char.name === debuff.casterSession && s.char.zoneId === zoneId) {
+                api.sendCombatLog(s, [{ event: 'MESSAGE', text: `Your ${debuff.name} spell has worn off ${mob.name}.` }]);
+              }
+            }
+          }
           mob.buffs.splice(i, 1);
+          if (api.broadcastTargetUpdate) api.broadcastTargetUpdate(mob);
         }
       }
       // Check if DOT killed the mob
-      if (mob.hp <= 0) {
+      if (mob.hp <= 0 && mob.alive !== false) {
+        mob.alive = false;
         // Find caster session for XP/loot
-        for (const [, s] of api.sessions) {
-          if (s.combatTarget === mob) {
-            api.handleMobDeath(s, mob, []);
-            break;
+        let killerFound = false;
+        if (api.sessions) {
+          for (const s of (api.sessions.values ? Array.from(api.sessions.values()) : Object.values(api.sessions))) {
+            if (s.char && s.char.name === mob.hateList?.getMobWithMostHateOnList()) {
+              api.handleMobDeath(s, mob, []);
+              killerFound = true;
+              break;
+            }
           }
+        }
+        // Fallback: If top hater isn't online, try any session targeting this mob
+        if (!killerFound && api.sessions) {
+            for (const s of (api.sessions.values ? Array.from(api.sessions.values()) : Object.values(api.sessions))) {
+                if (s.combatTarget === mob) {
+                    api.handleMobDeath(s, mob, []);
+                    killerFound = true;
+                    break;
+                }
+            }
         }
         continue;
       }
@@ -148,14 +179,16 @@ function processMobAI(zone, zoneId, dt, api) {
       const topHateName = mob.hateList.getMobWithMostHateOnList();
       if (topHateName) {
         let resolvedTarget = null;
-        for (const [, s] of api.sessions) {
-          if (s.char && s.char.name === topHateName && s.char.zoneId === zoneId && s.char.hp > 0 && s.char.state !== 'dead') {
-            resolvedTarget = s;
-            break;
+        if (api.sessions) {
+          for (const s of (api.sessions.values ? Array.from(api.sessions.values()) : Object.values(api.sessions))) {
+            if (s.char && s.char.name === topHateName && s.char.zoneId === zoneId && s.char.hp > 0 && s.char.state !== 'dead') {
+              resolvedTarget = s;
+              break;
+            }
           }
         }
         
-        // If the top target is valid, they are our target. Otherwise we wipe them from the list.
+        // If the top target is valid, they are our target. Otherwise, we wipe them from the list.
         if (resolvedTarget) {
           mob.target = resolvedTarget;
         } else {
@@ -178,7 +211,8 @@ function processMobAI(zone, zoneId, dt, api) {
         
         const dx = session.char.x - mob.x;
         const dy = session.char.y - mob.y;
-        const distSq = dx*dx + dy*dy;
+        const dz = (session.char.z || 0) - (mob.z || 0);
+        const distSq = dx*dx + dy*dy + dz*dz;
         
         if (distSq > 150*150) continue;
         
@@ -234,6 +268,13 @@ function processMobAI(zone, zoneId, dt, api) {
               // If the player is behind the mob, shouldAggro = false
               // TODO: Add directional math check using mob.heading
               shouldAggro = false; 
+            }
+
+            // Line-of-Sight Check
+            if (shouldAggro) {
+              if (!SpatialSystem.hasLineOfSight(zoneId, mob.x, mob.y, session.char.x, session.char.y)) {
+                shouldAggro = false;
+              }
             }
           }
           
@@ -314,13 +355,15 @@ function processMobAI(zone, zoneId, dt, api) {
       }
 
       // Get target position and HP reference
-      let targetX, targetY;
+      let targetX, targetY, targetZ;
       if (targetIsPet) {
         targetX = mob.target.x;
         targetY = mob.target.y;
+        targetZ = mob.target.z || 0;
       } else {
         targetX = mob.target.char.x;
         targetY = mob.target.char.y;
+        targetZ = mob.target.char.z || 0;
       }
 
       // Check for haste/slow and movement buffs/debuffs (SPA 11, SPA 3)
@@ -352,7 +395,7 @@ function processMobAI(zone, zoneId, dt, api) {
       const mobMoveSpeedMod = Math.min(2.5, Math.max(0.1, maxMoveBuff * minMoveDebuff));
 
       // ── Range check & mob movement ──
-      const MELEE_RANGE = 15;
+      const MELEE_RANGE = 12; // Reduced from 15 to bring them closer to player elbow-range
 
       let inMeleeRange = true;
       let distSq = 0;
@@ -360,7 +403,8 @@ function processMobAI(zone, zoneId, dt, api) {
       if (mob.x != null && targetX != null) {
         const dx = targetX - mob.x;
         const dy = targetY - mob.y;
-        distSq = dx * dx + dy * dy;
+        const dz = targetZ - (mob.z || 0);
+        distSq = dx * dx + dy * dy + dz * dz;
         inMeleeRange = distSq <= (MELEE_RANGE * MELEE_RANGE);
       }
 
@@ -387,11 +431,29 @@ function processMobAI(zone, zoneId, dt, api) {
           dist = Math.sqrt(distSq);
           const dx = targetX - mob.x;
           const dy = targetY - mob.y;
+          const dz = targetZ - (mob.z || 0);
+          // Face movement direction while chasing (X/Y plane for heading)
+          let chaseHeading = (Math.atan2(dx, dy) / (2 * Math.PI)) * 512;
+          if (chaseHeading < 0) chaseHeading += 512;
+          mob.heading = chaseHeading;
           mob.x += (dx / dist) * Math.min(moveAmount, dist);
           mob.y += (dy / dist) * Math.min(moveAmount, dist);
+          mob.z = (mob.z || 0) + (dz / dist) * Math.min(moveAmount, dist);
           api.broadcastMobMove(mob, zoneId);
         }
         continue;
+      }
+
+      // Face target continuously during combat
+      const tdx = targetX - mob.x;
+      const tdy = targetY - mob.y;
+      let combatHeading = (Math.atan2(tdx, tdy) / (2 * Math.PI)) * 512;
+      if (combatHeading < 0) combatHeading += 512;
+      
+      // Only broadcast if heading changed significantly to save bandwidth
+      if (Math.abs(combatHeading - (mob.heading || 0)) > 1) {
+          mob.heading = combatHeading;
+          api.broadcastMobMove(mob, zoneId);
       }
 
       if (isNaN(mob.attackTimer)) mob.attackTimer = 0;
@@ -400,7 +462,7 @@ function processMobAI(zone, zoneId, dt, api) {
       mob.attackTimer -= dt;
       if (mob.attackTimer <= 0) {
         mob.attackTimer = mob.attackDelay / mobAtkSpeedMod;
-
+        
         const events = [];
         let playerSession = targetIsPet ? null : mob.target;
 

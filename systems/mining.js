@@ -7,9 +7,10 @@ const { send } = require('../utils');
 const { NPC_TYPES } = require('../data/npcTypes');
 
 let ItemDB, ITEMS, sendCombatLog, sendInventory;
-function setDependencies(deps) {
-  ItemDB = deps.ItemDB;
-  ITEMS = deps.ITEMS;
+
+function init(deps) {
+  ItemDB = deps.itemDb;
+  ITEMS = deps.items;
   sendCombatLog = deps.sendCombatLog;
   sendInventory = deps.sendInventory;
 }
@@ -174,9 +175,9 @@ function handleMine(session, msg) {
 }
 
 module.exports = {
-  setDependencies,
   spawnMiningNodes,
   spawnMiningNPCs,
   processMiningRespawns,
   handleMine,
+  init,
 };

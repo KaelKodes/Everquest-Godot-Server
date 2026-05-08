@@ -8,11 +8,8 @@ const engine = require('./gameEngine');
 const PORT = process.env.PORT || 3005;
 
 async function main() {
-  // ── Initialize Database ─────────────────────────────────────────
-  await DB.initDatabase();
-
-  // ── Initialize Game Engine (zones, spells, items) BEFORE accepting connections ──
-  await engine.initZones();
+  // ── Initialize Game Engine (DB, Zones, Spells, Items) ──
+  await engine.bootstrapServer();
   engine.startGameLoop();
 
   // ── Express Setup ───────────────────────────────────────────────
@@ -65,6 +62,33 @@ async function main() {
     console.log(`  WebSocket: ws://localhost:${PORT}`);
     console.log(`========================================\n`);
   });
+
+  // ── Graceful Shutdown ───────────────────────────────────────────
+  async function shutdown(signal) {
+    console.log(`\n[SERVER] Received ${signal}. Shutting down gracefully...`);
+    try {
+      // Save all active sessions
+      const savePromises = [];
+      for (const [ws, session] of engine.sessions) {
+        if (session && session.char) {
+          savePromises.push(DB.forceFlushCharacter(session.char.id));
+        }
+      }
+      await Promise.all(savePromises);
+      
+      // Flush write-behind cache
+      await DB.flushWriteBehindCache();
+      
+      console.log('[SERVER] All character data saved successfully.');
+    } catch (err) {
+      console.error('[SERVER] Error during shutdown:', err);
+    } finally {
+      process.exit(0);
+    }
+  }
+
+  process.on('SIGINT', () => shutdown('SIGINT'));
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
 }
 
 main().catch(err => {

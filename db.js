@@ -19,7 +19,8 @@ async function flushWriteBehindCache() {
     try {
       if (cache.state) await eqemuDB.updateCharacterState(cache.state);
       if (cache.skills) await eqemuDB.saveCharacterSkills(charId, cache.skills);
-      if (cache.location) await eqemuDB.saveCharacterLocation(charId, cache.location.zoneId, cache.location.roomId);
+      if (cache.location) await eqemuDB.saveCharacterLocation(charId, cache.location.zoneId, cache.location.x, cache.location.y, cache.location.z);
+      if (cache.buffs) await eqemuDB.saveCharacterBuffs(charId, cache.buffs);
       count++;
     } catch (err) {
       console.error(`[DB] Background flush failed for character ${charId}:`, err);
@@ -28,8 +29,8 @@ async function flushWriteBehindCache() {
   if (count > 0) console.log(`[DB] Background flushed data for ${count} characters.`);
 }
 
-// Flush every 60 seconds
-setInterval(flushWriteBehindCache, 60000);
+// Flush every 30 seconds (Reduced from 60s for better responsiveness with heartbeat saves)
+setInterval(flushWriteBehindCache, 30000);
 
 async function forceFlushCharacter(charId) {
   const cache = writeBehindCache.get(charId);
@@ -37,7 +38,7 @@ async function forceFlushCharacter(charId) {
     writeBehindCache.delete(charId);
     if (cache.state) await eqemuDB.updateCharacterState(cache.state);
     if (cache.skills) await eqemuDB.saveCharacterSkills(charId, cache.skills);
-    if (cache.location) await eqemuDB.saveCharacterLocation(charId, cache.location.zoneId, cache.location.roomId);
+    if (cache.location) await eqemuDB.saveCharacterLocation(charId, cache.location.zoneId, cache.location.x, cache.location.y, cache.location.z);
   }
 }
 
@@ -50,6 +51,7 @@ module.exports = {
   getValidDeities: eqemuDB.getValidDeities,
   getCharacter: eqemuDB.getCharacter,
   createCharacter: eqemuDB.createCharacter,
+  deleteCharacter: eqemuDB.deleteCharacter,
   
   // Write-Behind Cache interceptors
   updateCharacterState: (char) => {
@@ -61,10 +63,34 @@ module.exports = {
     if (!writeBehindCache.has(charId)) writeBehindCache.set(charId, {});
     writeBehindCache.get(charId).skills = { ...skills };
   },
-  saveCharacterLocation: (charId, zoneId, roomId) => {
+  saveCharacterLocation: (charId, zoneId, x, y, z) => {
     if (!writeBehindCache.has(charId)) writeBehindCache.set(charId, {});
-    writeBehindCache.get(charId).location = { zoneId, roomId };
+    writeBehindCache.get(charId).location = { zoneId, x, y, z };
   },
+
+  // Efficient Light Save (Location & Basic State)
+  saveLight: (session) => {
+    if (!session || !session.char) return;
+    const char = session.char;
+    if (!writeBehindCache.has(char.id)) writeBehindCache.set(char.id, {});
+    const cache = writeBehindCache.get(char.id);
+    
+    // Light state: HP, Mana, Position
+    cache.state = { 
+        id: char.id,
+        hp: char.hp, 
+        mana: char.mana, 
+        state: char.state,
+        x: char.x, 
+        y: char.y, 
+        z: char.z, 
+        heading: char.heading,
+        zoneId: char.zoneId,
+        roomId: char.roomId
+    };
+    cache.location = { zoneId: char.zoneId, x: char.x, y: char.y, z: char.z || 0 };
+  },
+
   forceFlushCharacter,
   flushWriteBehindCache,
 
@@ -90,4 +116,11 @@ module.exports = {
   updateCharacterBind: eqemuDB.updateCharacterBind,
   getCharacterStudents: eqemuDB.getCharacterStudents,
   createCharacterStudent: eqemuDB.createCharacterStudent,
+  getCharacterSpellbook: eqemuDB.getCharacterSpellbook,
+  saveCharacterSpellbook: eqemuDB.saveCharacterSpellbook,
+  getCharacterSpellLoadouts: eqemuDB.getCharacterSpellLoadouts,
+  saveCharacterSpellLoadouts: eqemuDB.saveCharacterSpellLoadouts,
+  getCharacterBuffs: eqemuDB.getCharacterBuffs,
+  saveCharacterBuffs: eqemuDB.saveCharacterBuffs,
+  rollLootFromTable: eqemuDB.rollLootFromTable
 };

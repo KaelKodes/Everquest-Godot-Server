@@ -6,7 +6,10 @@
 const { Skills, RACIAL_SKILLS } = require('./data/skills');
 const ItemDB = require('./data/itemDatabase');
 let ITEMS;
-setTimeout(() => { ITEMS = ItemDB.createLegacyProxy(); }, 0);
+
+function init(deps) {
+  ITEMS = ItemDB.createLegacyProxy();
+}
 
 function roll(min, max) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
@@ -685,6 +688,6 @@ module.exports = {
   calcKickDamage, calcBashDamage, calcBackstabDamage,
   calcSpellResist, RESIST_TYPES,
   getCon, xpForLevel, calcXPGain, getRegenRates, checkFizzle,
-  calcMaxHP, calcMaxMana,
+  calcMaxHP, calcMaxMana, init,
   calcAvoidanceAC, calcACSum, calcMitigationAC, calcDisplayedAC, getMobAttackText,
 };

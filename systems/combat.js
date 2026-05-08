@@ -1,21 +1,25 @@
 const combat = require('../combat');
 const StatsSystem = require('./stats');
 
-let handleMobDeathFn, sendCombatLog, sendStatus, despawnPet, combat_utility, zoneInstances, SpellDB, SpellSystem, ITEMS, DB, sendFullState, calcEffectiveStats;
+let handleMobDeathFn, sendCombatLog, sendStatus, despawnPet, combat_utility, zoneInstances, spellDb, spellSystem, items, db, sendFullState, calcEffectiveStats;
 
-function setDependencies(deps) {
+function init(deps) {
   handleMobDeathFn = deps.handleMobDeath;
   sendCombatLog = deps.sendCombatLog;
   sendStatus = deps.sendStatus;
   despawnPet = deps.despawnPet;
   combat_utility = deps.combat;
   zoneInstances = deps.zoneInstances;
-  SpellDB = deps.SpellDB;
-  SpellSystem = deps.SpellSystem;
-  ITEMS = deps.ITEMS;
-  DB = deps.DB;
+  spellDb = deps.spellDb;
+  spellSystem = deps.spellSystem;
+  items = deps.items;
+  db = deps.db;
   sendFullState = deps.sendFullState;
   calcEffectiveStats = deps.calcEffectiveStats;
+}
+
+function setDependencies(deps) {
+  init(deps);
 }
 
 async function handleMobDeath(session, mob, events) {
@@ -27,13 +31,13 @@ async function handleMobDeath(session, mob, events) {
   const xp = combat_utility.calcXPGain(session.char.level, mob.level, mob.xpBase, zem);
   
   if (xp > 0) {
-    awardExp(session, xp, events);
+    await awardExp(session, xp, events, mob);
   } else {
     events.push({ event: 'MESSAGE', text: 'You gain no experience for such a trivial opponent.' });
   }
 }
 
-function awardExp(session, xp, events = null) {
+async function awardExp(session, xp, events = null, mob = null) {
   const localEvents = events || [];
   session.char.experience += xp;
   localEvents.push({ event: 'XP_GAIN', amount: xp });
@@ -54,14 +58,14 @@ function awardExp(session, xp, events = null) {
     session.char.mana = session.char.maxMana;
     localEvents.push({ event: 'LEVEL_UP', level: session.char.level });
 
-    const newSpells = SpellDB.getNewSpellsAtLevel(session.char.class, session.char.level);
+    const newSpells = spellDb ? spellDb.getNewSpellsAtLevel(session.char.class, session.char.level) : [];
     for (const spell of newSpells) {
-      const result = SpellSystem.scribeSpellToBook(session, spell._key);
+      const result = spellSystem ? spellSystem.scribeSpellToBook(session, spell._key) : -1;
       if (result >= 0) {
         localEvents.push({ event: 'MESSAGE', text: `You have learned ${spell.name}! It has been scribed to your spellbook.` });
       }
     }
-    if (newSpells.length > 0) SpellSystem.sendSpellbookFull(session);
+    if (newSpells.length > 0 && spellSystem) spellSystem.sendSpellbookFull(session);
   }
 
   if (!events) {
@@ -70,19 +74,28 @@ function awardExp(session, xp, events = null) {
   }
 
 
-  // Generate loot
-  const generatedLoot = [];
-  for (const lootEntry of mob.loot) {
-    if (Math.random() < lootEntry.chance) {
-      const itemDef = ITEMS[lootEntry.itemKey];
-      if (itemDef) {
-         generatedLoot.push({ itemKey: lootEntry.itemKey, qty: 1 });
+  const zone = (zoneInstances && session.char) ? zoneInstances[session.char.zoneId] : null;
+
+  // Generate loot (only if a mob was provided)
+  let generatedLoot = [];
+  if (mob) {
+    if (mob.loottable_id > 0 && db && db.rollLootFromTable) {
+      generatedLoot = await db.rollLootFromTable(mob.loottable_id);
+    } else if (mob.loot) {
+      // Fallback to static loot
+      for (const lootEntry of mob.loot) {
+        if (Math.random() < lootEntry.chance) {
+          const itemDef = items ? items[lootEntry.itemKey] : null;
+          if (itemDef) {
+             generatedLoot.push({ itemKey: lootEntry.itemKey, qty: 1 });
+          }
+        }
       }
     }
   }
 
-  // Create Corpse
-  if (zone) {
+  // Create Corpse (only if a mob was provided)
+  if (mob && zone) {
     if (!zone.corpses) zone.corpses = [];
     
     // According to EQ rules: 30s if empty, 7.5m if items, 30m if lvl 55+ and items
@@ -125,7 +138,7 @@ function awardExp(session, xp, events = null) {
   }
 
   // Remove mob
-  if (zone) {
+  if (zone && mob) {
     zone.liveMobs = zone.liveMobs.filter(m => m.id !== mob.id);
   }
 
@@ -257,19 +270,21 @@ async function processCombatTick(session, dt) {
     atkSpeedMod = Math.min(2.0, Math.max(0.3, atkSpeedMod)); // Cap at 100% haste, 70% slow
     session.attackTimer = (delay / 10) / atkSpeedMod;
 
+    const MELEE_RANGE = 12; // Adjusted to match AI range (approx 10ft in-game units)
     if (session.isOutOfRange) {
       events.push({ event: 'MESSAGE', text: 'You cannot reach your target!' });
     } else {
       // Server-side range validation — don't trust client alone
-      const MELEE_RANGE = 50; // EQ world units — characters next to mobs are ~20-40 apart
+      const SERVER_MELEE_RANGE = MELEE_RANGE * 1.5; // Slightly more lenient than AI range for server lag
       let serverOutOfRange = false;
       const tX = mob.char ? mob.char.x : mob.x;
       const tY = mob.char ? mob.char.y : mob.y;
+      let distSq = 0;
       if (session.char.x != null && tX != null) {
         const dx = session.char.x - tX;
         const dy = session.char.y - tY;
-        const distSq = dx * dx + dy * dy;
-        serverOutOfRange = distSq > (MELEE_RANGE * MELEE_RANGE);
+        distSq = dx * dx + dy * dy;
+        serverOutOfRange = distSq > (SERVER_MELEE_RANGE * SERVER_MELEE_RANGE);
       }
 
       if (serverOutOfRange) {
@@ -334,7 +349,7 @@ async function processCombatTick(session, dt) {
               hateMod = Math.max(0.01, hateMod); // Never go to 0
               const hateAmt = Math.floor(dmgRoll * hateMod);
               if (mob.hateList) mob.hateList.addEntToHateList(session.char.name, hateAmt, dmgRoll);
-              SpellSystem.breakMez(mob, events);
+              if (spellSystem) spellSystem.breakMez(mob, events);
 
               // SPA 85: Check for weapon proc buffs
               if (Array.isArray(session.buffs)) {
@@ -344,7 +359,7 @@ async function processCombatTick(session, dt) {
                     const procChance = Math.min(50, 5 * (buff.procRate / 100));
                     if (combat.chance(procChance)) {
                       // Fire the proc spell as bonus damage
-                      const procSpell = SpellDB ? SpellDB.getById(buff.procSpellId) : null;
+                      const procSpell = spellDb ? spellDb.getById(buff.procSpellId) : null;
                       if (procSpell) {
                         const procDmg = procSpell.effects?.find(e => e.spa === 0 && e.base < 0);
                         if (procDmg) {
@@ -391,6 +406,11 @@ async function processCombatTick(session, dt) {
             events.push({ event: 'MELEE_HIT', source: 'You', target: tName, damage: dmgRoll, type: wpnSkill });
           }
         } else {
+          // If we are within range, even a miss makes the mob aggressive
+          if (!isTargetPlayer && mob.hateList) {
+             mob.hateList.addEntToHateList(session.char.name, 1, 0);
+             if (!mob.target) mob.target = session;
+          }
           events.push({ event: 'MELEE_MISS', source: 'You', target: tName, text: isOffhand ? 'Offhand miss' : null, type: wpnSkill });
         }
       };
@@ -530,6 +550,7 @@ function canInteract(source, target, isBeneficial) {
 }
 
 module.exports = {
+  init,
   setDependencies,
   processCombatTick,
   handleMobDeath,

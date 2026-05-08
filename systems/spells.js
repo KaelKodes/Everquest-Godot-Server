@@ -6,9 +6,154 @@ const { send } = require('../utils');
 
 const SPELLS = SpellDB.createLegacyProxy();
 
+let sendCombatLog, sendStatus, calcEffectiveStatsFn, ensureZoneLoaded, getZoneDef, resolveZoneKey, handleStopCombat, handleSuccor, combat, handleMobDeath, broadcastTargetUpdate;
+
+function init(deps) {
+  sendCombatLog = deps.sendCombatLog;
+  sendStatus = deps.sendStatus;
+  calcEffectiveStatsFn = deps.calcEffectiveStats;
+  ensureZoneLoaded = deps.ensureZoneLoaded;
+  getZoneDef = deps.getZoneDef;
+  resolveZoneKey = deps.resolveZoneKey;
+  handleStopCombat = deps.handleStopCombat;
+  handleSuccor = deps.handleSuccor;
+  combat = deps.combat;
+  handleMobDeath = deps.handleMobDeath;
+  broadcastTargetUpdate = deps.broadcastTargetUpdate;
+
+  // Internal function pointers
+  module.exports.calcEffectiveStatsFn = deps.calcEffectiveStats;
+  module.exports.DB = deps.db;
+  module.exports.ITEMS = deps.items;
+  module.exports.SUMMON_ITEM_MAP = deps.summonItemMap;
+  module.exports.sendInventoryFn = deps.sendInventory;
+  module.exports.zoneInstances = deps.zoneInstances;
+}
+
 function calcEffectiveStats(char, inventory, buffs) {
-  // We'll need to pass this in from gameEngine context since it's defined there
-  return module.exports.calcEffectiveStatsFn ? module.exports.calcEffectiveStatsFn(char, inventory, buffs) : {hp: char.maxHp, mana: char.maxMana};
+  // Use the injected function if available
+  return calcEffectiveStatsFn ? calcEffectiveStatsFn(char, inventory, buffs) : {hp: char.maxHp, mana: char.maxMana};
+}
+
+/**
+ * Centralized logic for processing an offensive spell target.
+ * Handles player filtering, resistance checks, and initial aggression.
+ * Returns { skip: true } if the target should be skipped, or { resistResult } on success.
+ */
+function processOffensiveTarget(mob, session, spellDef, events) {
+    if (mob.char) return { skip: true }; // Skip players for now
+
+    const resistResult = combat.calcSpellResist(mob, session.char.level, spellDef.resistType, spellDef.resistAdjust);
+    if (resistResult === 'FULL_RESIST') {
+        events.push({ event: 'RESIST', target: mob.name, spell: spellDef.name });
+        return { skip: true };
+    }
+
+    if (!mob.target) mob.target = session;
+    return { resistResult };
+}
+
+function calculateSpellDuration(spellDef, durMod, resistResult, defaultDur = 6) {
+  let dur = spellDef.duration || defaultDur;
+  if (durMod > 0) dur = Math.floor(dur * (1.0 + (durMod / 100.0)));
+  if (resistResult === 'PARTIAL_RESIST') dur = Math.floor(dur / 2);
+  return dur;
+}
+
+/**
+ * Checks if a spell can stack on an entity and applies it if possible.
+ * Enforces classic EQ stacking rules: slots, groups, and levels.
+ */
+function applyBuff(entity, spellDef, duration, casterName, isBeneficial = true, session = null, extraProps = {}) {
+    if (!entity) return false;
+    if (!Array.isArray(entity.buffs)) entity.buffs = [];
+
+    const spellId = spellDef.id;
+    const stackingGroup = spellDef.stackingGroup || 0;
+    const spellLevel = spellDef.level || 1;
+
+    // 1. Exact Spell Refresh
+    const existingIdx = entity.buffs.findIndex(b => b.spellId === spellId);
+    if (existingIdx !== -1) {
+        entity.buffs[existingIdx].duration = duration;
+        entity.buffs[existingIdx].maxDuration = duration;
+        // Merge extra props
+        Object.assign(entity.buffs[existingIdx], extraProps);
+        return true;
+    }
+
+    // 2. Stacking Logic
+    let blocked = false;
+    const toRemove = [];
+
+    for (let i = 0; i < entity.buffs.length; i++) {
+        const b = entity.buffs[i];
+        
+        // Stacking Group Conflict
+        if (stackingGroup !== 0 && b.stackingGroup === stackingGroup) {
+            if (b.level > spellLevel) {
+                blocked = true;
+                break;
+            } else {
+                toRemove.push(i);
+            }
+        }
+        
+        // Heuristic: If it's the exact same name, it's a conflict
+        if (b.name === (spellDef.buffName || spellDef.name)) {
+            if (b.level > spellLevel) {
+                blocked = true;
+                break;
+            } else {
+                toRemove.push(i);
+            }
+        }
+    }
+
+    if (blocked) {
+        if (session && isBeneficial) {
+            if (sendCombatLog) {
+                sendCombatLog(session, [{ event: 'MESSAGE', text: 'Your spell did not take hold.' }]);
+            }
+        }
+        return false;
+    }
+
+    // Remove overwritten buffs
+    toRemove.sort((a, b) => b - a).forEach(idx => entity.buffs.splice(idx, 1));
+
+          // 3. Application
+    const buffObj = {
+        spellId: spellId,
+        stackingGroup: stackingGroup,
+        level: spellLevel,
+        name: spellDef.buffName || spellDef.name,
+        duration: duration,
+        maxDuration: duration,
+        beneficial: isBeneficial,
+        casterSession: casterName,
+        icon: spellDef.visual?.icon || 0,
+        memIcon: spellDef.visual?.memIcon || 0,
+        effects: spellDef.effects || [],
+        ...extraProps
+    };
+
+    // Auto-calculate tickDamage if not provided and it's a detrimental spell
+    if (!isBeneficial && !buffObj.tickDamage) {
+        // SPA 0 = HP, SPA 79 = HP (common in later expansions), SPA 334 = HP (common for Bard songs)
+        const dotEffect = buffObj.effects.find(e => (e.spa === 0 || e.spa === 79 || e.spa === 334) && e.base < 0);
+        if (dotEffect) {
+            buffObj.tickDamage = Math.abs(dotEffect.base);
+        }
+    }
+
+    entity.buffs.push(buffObj);
+
+    // If target is an NPC, broadcast status update to all observers
+    if (!entity.char && broadcastTargetUpdate) {
+      broadcastTargetUpdate(entity);
+    }
+    return true;
 }
 
 /**
@@ -29,24 +174,19 @@ function breakMez(entity, events = null) {
   return broke;
 }
 
-const SPELLBOOK_DIR = path.join(__dirname, 'data', 'spellbooks');
-
-function getSpellbookPath(charName) {
-  return path.join(SPELLBOOK_DIR, `${charName.toLowerCase()}.json`);
-}
-
-function loadSpellbookFromFile(session) {
+async function loadSpellbookFromFile(session) {
   try {
-    const filePath = getSpellbookPath(session.char.name);
-    if (!fs.existsSync(filePath)) {
-      // No saved spellbook — build from starter spells
+    const DB = require('../db');
+    const spellbookData = await DB.getCharacterSpellbook(session.char.id);
+    const loadoutsData = await DB.getCharacterSpellLoadouts(session.char.id);
+    
+    if (!spellbookData || spellbookData.length === 0) {
       buildStarterSpellbook(session);
       return;
     }
-    const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-    session.spellbook = data.spellbook || [];
-    session.spells = data.memorized || [];
-    session.spellLoadouts = data.loadouts || {};
+    
+    session.spellbook = spellbookData;
+    session.spellLoadouts = loadoutsData || {};
     console.log(`[SPELLBOOK] Loaded ${session.spellbook.length} scribed spells, ${session.spells.length} memorized, ${Object.keys(session.spellLoadouts).length} loadouts for ${session.char.name}`);
   } catch (e) {
     console.error(`[SPELLBOOK] Load error for ${session.char.name}: ${e.message}`);
@@ -54,71 +194,21 @@ function loadSpellbookFromFile(session) {
   }
 }
 
-function saveSpellbookToFile(session) {
+async function saveSpellbookToFile(session) {
   try {
-    if (!fs.existsSync(SPELLBOOK_DIR)) {
-      fs.mkdirSync(SPELLBOOK_DIR, { recursive: true });
-    }
-    const data = {
-      spellbook: session.spellbook,
-      memorized: session.spells,
-      loadouts: session.spellLoadouts || {}
-    };
-    fs.writeFileSync(getSpellbookPath(session.char.name), JSON.stringify(data, null, 2));
+    const DB = require('../db');
+    await DB.saveCharacterSpellbook(session.char.id, session.spellbook);
+    await DB.saveCharacterSpellLoadouts(session.char.id, session.spellLoadouts);
   } catch (e) {
     console.error(`[SPELLBOOK] Save error for ${session.char.name}: ${e.message}`);
   }
 }
 
-// ── Buff Persistence (file-based) ───────────────────────────────────
-
-const BUFFS_DIR = path.join(__dirname, 'data', 'buffs');
-
-function getBuffsPath(charName) {
-  return path.join(BUFFS_DIR, `${charName.toLowerCase()}.json`);
-}
-
-function loadBuffsFromFile(session) {
+async function loadBuffsFromFile(session) {
   try {
-    const filePath = getBuffsPath(session.char.name);
-    if (!fs.existsSync(filePath)) return;
-    const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-    if (!Array.isArray(data.buffs)) return;
-
-    // Calculate elapsed time since save and subtract from durations
-    const savedAt = data.savedAt || 0;
-    const elapsed = savedAt ? (Date.now() - savedAt) / 1000 : 0;
-
-    const restored = [];
-    for (const b of data.buffs) {
-      const remaining = (b.duration || 0) - elapsed;
-      if (remaining > 0) {
-        let icon = b.icon || 0;
-        let memIcon = b.memIcon || 0;
-        
-        // Hydrate missing icons for older saves
-        if (!icon || !memIcon) {
-          const SpellDB = require('../data/spellDatabase');
-          const sDef = SpellDB.getByName(b.name);
-          if (sDef && sDef.visual) {
-            if (!icon) icon = sDef.visual.icon || 0;
-            if (!memIcon) memIcon = sDef.visual.memIcon || 0;
-          }
-        }
-
-        restored.push({
-          name: b.name,
-          duration: remaining,
-          maxDuration: b.maxDuration || remaining,
-          beneficial: b.beneficial !== false,
-          effects: b.effects || [],
-          ac: b.ac || 0,
-          icon: icon,
-          memIcon: memIcon
-        });
-      }
-    }
-
+    const DB = require('../db');
+    const restored = await DB.getCharacterBuffs(session.char.id);
+    
     session.buffs = restored;
     if (restored.length > 0) {
       // Recalculate stats with restored buffs
@@ -132,27 +222,10 @@ function loadBuffsFromFile(session) {
   }
 }
 
-function saveBuffsToFile(session) {
+async function saveBuffsToFile(session) {
   try {
-    if (!fs.existsSync(BUFFS_DIR)) {
-      fs.mkdirSync(BUFFS_DIR, { recursive: true });
-    }
-    // Only save beneficial buffs with remaining duration (skip expired/instant)
-    const activeBeneficial = (session.buffs || []).filter(b => b.duration > 0);
-    const data = {
-      savedAt: Date.now(),
-      buffs: activeBeneficial.map(b => ({
-        name: b.name,
-        duration: b.duration,
-        maxDuration: b.maxDuration,
-        beneficial: b.beneficial !== false,
-        effects: b.effects || [],
-        ac: b.ac || 0,
-        icon: b.icon || 0,
-        memIcon: b.memIcon || 0
-      })),
-    };
-    fs.writeFileSync(getBuffsPath(session.char.name), JSON.stringify(data, null, 2));
+    const DB = require('../db');
+    await DB.saveCharacterBuffs(session.char.id, session.buffs);
   } catch (e) {
     console.error(`[BUFFS] Save error for ${session.char.name}: ${e.message}`);
   }
@@ -179,6 +252,7 @@ function buildStarterSpellbook(session) {
   
   session.spellbook = [];
   session.spells = [];
+  session.spellLoadouts = {};
   
   let bookSlot = 0;
   let gemSlot = 0;
@@ -217,7 +291,7 @@ function buildStarterSpellbook(session) {
     });
   }
   
-  saveSpellbookToFile(session);
+  saveSpellbookToFile(session).then(() => {});
   console.log(`[SPELLBOOK] Built starter spellbook for ${session.char.name}: ${session.spellbook.length} spells`);
 }
 
@@ -243,7 +317,7 @@ function scribeSpellToBook(session, spellKey) {
     id: spellDef._spellId || spellDef.id,
   });
   
-  saveSpellbookToFile(session);
+  saveSpellbookToFile(session).then(() => {});
   return freeSlot;
 }
 
@@ -278,8 +352,8 @@ function handleMemorizeSpell(session, msg) {
     id: bookEntry.id,
   });
   
-  saveSpellbookToFile(session);
-  DB.memorizeSpell(session.char.id, spellKey, slot);
+  saveSpellbookToFile(session).then(() => {});
+  DB.memorizeSpell(session.char.id, spellKey, slot).then(() => {});
   sendSpellbook(session);
   
   const def = SPELLS[spellKey] || {};
@@ -293,8 +367,8 @@ function handleForgetSpell(session, msg) {
   const existing = session.spells.find(s => s.slot === slot);
   session.spells = session.spells.filter(s => s.slot !== slot);
   
-  saveSpellbookToFile(session);
-  DB.forgetSpell(session.char.id, slot);
+  saveSpellbookToFile(session).then(() => {});
+  DB.forgetSpell(session.char.id, slot).then(() => {});
   sendSpellbook(session);
   
   if (existing) {
@@ -321,7 +395,7 @@ function handleSwapBookSpells(session, msg) {
   }
   // If fromEntry is null, nothing to do
   
-  saveSpellbookToFile(session);
+  saveSpellbookToFile(session).then(() => {});
   sendSpellbookFull(session);
 }
 
@@ -332,7 +406,7 @@ function handleSaveSpellLoadout(session, msg) {
   
   // Save current memorized spells
   session.spellLoadouts[name] = JSON.parse(JSON.stringify(session.spells));
-  saveSpellbookToFile(session);
+  saveSpellbookToFile(session).then(() => {});
   
   send(session.ws, { type: 'MESSAGE', text: `Saved spell loadout: ${name}` });
   sendSpellLoadouts(session);
@@ -349,7 +423,7 @@ function handleLoadSpellLoadout(session, msg) {
   }
   
   session.spells = JSON.parse(JSON.stringify(session.spellLoadouts[name]));
-  saveSpellbookToFile(session);
+  saveSpellbookToFile(session).then(() => {});
   
   send(session.ws, { type: 'MESSAGE', text: `Loaded spell loadout: ${name}` });
   sendSpellbook(session);
@@ -360,15 +434,15 @@ function handleDeleteSpellLoadout(session, msg) {
   if (!name || !session.spellLoadouts || !session.spellLoadouts[name]) return;
   
   delete session.spellLoadouts[name];
-  saveSpellbookToFile(session);
+  saveSpellbookToFile(session).then(() => {});
   
   send(session.ws, { type: 'MESSAGE', text: `Deleted spell loadout: ${name}` });
   sendSpellLoadouts(session);
 }
 
-function handleClearSpells(session, msg) {
+function handleClearSpells(session) {
   session.spells = [];
-  saveSpellbookToFile(session);
+  saveSpellbookToFile(session).then(() => {});
   
   send(session.ws, { type: 'MESSAGE', text: 'Cleared all memorized spells.' });
   sendSpellbook(session);
@@ -456,20 +530,77 @@ function sendBuffs(session) {
 }
 
 
-let combat, handleMobDeath, sendStatus, sendCombatLog, handleStopCombat, handleSuccor, ensureZoneLoaded, resolveZoneKey, getZoneDef;
-function setDependencies(deps) {
-  combat = deps.combat;
-  handleMobDeath = deps.handleMobDeath;
-  sendStatus = deps.sendStatus;
-  sendCombatLog = deps.sendCombatLog;
-  handleStopCombat = deps.handleStopCombat;
-  handleSuccor = deps.handleSuccor;
-  ensureZoneLoaded = deps.ensureZoneLoaded;
-  resolveZoneKey = deps.resolveZoneKey;
-  getZoneDef = deps.getZoneDef;
+
+/**
+ * Robust target selection for AOE spells.
+ * Handles PB AE, Targeted AE, Group, and Group Pet target types.
+ */
+function getAoeTargets(session, spellDef, primaryTarget = null) {
+    const targets = [];
+    const isDetrimental = !spellDef.goodEffect;
+    const aoeRange = spellDef.range?.aoeRange || 50;
+    const rangeSq = aoeRange * aoeRange;
+
+    // Target Types (Classic EQ IDs):
+    // 1: Self
+    // 3: Group v1 (Targeted or PB)
+    // 4: PB AE (Point Blank Area Effect - centered on caster)
+    // 5: Targeted AE (Centered on primary target)
+    // 20: Target AE v2
+    // 41: Group v2
+    
+    const tid = spellDef.targetType?.id;
+    const isGroup = [3, 41].includes(tid) || spellDef.targetType?.name === 'groupPet' || (spellDef.derived?.isBardSong && !isDetrimental);
+    const isPbAe = tid === 4 || (spellDef.derived?.isBardSong && isDetrimental && !spellDef.range?.range); // Detrimental songs with 0 range are PB AE
+    const isTargetAe = [5, 20].includes(tid);
+
+    const zone = module.exports.zoneInstances ? module.exports.zoneInstances[session.char.zoneId] : null;
+
+    if (isGroup) {
+        // Beneficial Group effect (Heals, Buffs, Songs)
+        if (session.group && session.group.members) {
+            for (const m of session.group.members) {
+                const dx = (m.char.x || 0) - (session.char.x || 0);
+                const dy = (m.char.y || 0) - (session.char.y || 0);
+                const dz = (m.char.z || 0) - (session.char.z || 0);
+                if ((dx*dx + dy*dy + dz*dz) <= rangeSq || m === session) {
+                    targets.push(m);
+                }
+            }
+        } else {
+            targets.push(session);
+        }
+    } else if (isPbAe || isTargetAe) {
+        // Area Effect (Centered on Caster or Target)
+        const centerX = isPbAe ? session.char.x : (primaryTarget ? (primaryTarget.char ? primaryTarget.char.x : primaryTarget.x) : session.char.x);
+        const centerY = isPbAe ? session.char.y : (primaryTarget ? (primaryTarget.char ? primaryTarget.char.y : primaryTarget.y) : session.char.y);
+        const centerZ = isPbAe ? session.char.z : (primaryTarget ? (primaryTarget.char ? primaryTarget.char.z : primaryTarget.z) : session.char.z);
+
+        if (isDetrimental) {
+            // Detrimental AE: Targets enemies around center
+            if (zone && zone.liveMobs) {
+                for (const mob of zone.liveMobs) {
+                    const dx = (mob.x || 0) - centerX;
+                    const dy = (mob.y || 0) - centerY;
+                    const dz = (mob.z || 0) - centerZ;
+                    if ((dx*dx + dy*dy + dz*dz) <= rangeSq) {
+                        targets.push(mob);
+                    }
+                }
+            }
+        } else {
+            // Beneficial AE (Rare in EQ, but handled for completeness)
+            targets.push(session);
+        }
+    } else if (primaryTarget) {
+        // Single Target
+        targets.push(primaryTarget);
+    }
+
+    return targets;
 }
 
-async function applySpellEffect(session, spellDef, spellKey) {
+async function applySpellEffect(session, spellDef) {
   const events = [];
 
   const eligibleFocuses = getEligibleFocusEffects(session, spellDef);
@@ -584,23 +715,8 @@ async function applySpellEffect(session, spellDef, spellKey) {
       if (!mob.target) mob.target = session;
       events.push({ event: 'MESSAGE', text: `${mob.name} is enraged by your spell!` });
     } else {
-      let dur = spellDef.duration || 120;
-      if (durMod > 0) dur = Math.floor(dur * (1.0 + (durMod / 100.0)));
-      if (resistResult === 'PARTIAL_RESIST') dur = Math.floor(dur / 2);
-      
-      if (!Array.isArray(mob.buffs)) mob.buffs = [];
-      mob.buffs = mob.buffs.filter(b => b.name !== spellDef.name);
-      mob.buffs.push({
-        name: spellDef.name,
-        duration: dur,
-        maxDuration: dur,
-        beneficial: false,
-        effects: spellDef.effects,
-        isLull: true,
-        casterSession: session.char.name,
-        icon: spellDef.visual?.icon || 0,
-        memIcon: spellDef.visual?.memIcon || 0
-      });
+      const dur = calculateSpellDuration(spellDef, durMod, resistResult, 120);
+      applyBuff(mob, spellDef, dur, session.char.name, false, session);
       const successMsg = spellDef.messages?.castOnOther ? `${mob.name}${spellDef.messages.castOnOther}` : `${mob.name} looks less aggressive.`;
       events.push({ event: 'MESSAGE', text: successMsg });
     }
@@ -621,24 +737,8 @@ async function applySpellEffect(session, spellDef, spellKey) {
     if (resistResult === 'FULL_RESIST') {
       events.push({ event: 'RESIST', target: mob.name, spell: spellDef.name });
     } else {
-      let dur = spellDef.duration || 6;
-      if (durMod > 0) dur = Math.floor(dur * (1.0 + (durMod / 100.0)));
-      if (resistResult === 'PARTIAL_RESIST') dur = Math.floor(dur / 2);
-      
-      let maxDur = spellDef.duration || 6;
-      if (durMod > 0) maxDur = Math.floor(maxDur * (1.0 + (durMod / 100.0)));
-      
-      if (!Array.isArray(mob.buffs)) mob.buffs = [];
-      mob.buffs = mob.buffs.filter(b => b.name !== spellDef.name);
-      mob.buffs.push({
-        name: spellDef.name,
-        duration: dur,
-        maxDuration: maxDur,
-        beneficial: false,
-        effects: spellDef.effects,
-        isMez: true,
-        casterSession: session.char.name
-      });
+      const dur = calculateSpellDuration(spellDef, durMod, resistResult, 6);
+      applyBuff(mob, spellDef, dur, session.char.name, false, session);
       mob.target = null; // Drop aggro target
       events.push({ event: 'MESSAGE', text: `${mob.name} has been mesmerized.` });
     }
@@ -665,15 +765,8 @@ async function applySpellEffect(session, spellDef, spellKey) {
     if (resistResult === 'FULL_RESIST') {
       events.push({ event: 'RESIST', target: mob.name, spell: spellDef.name });
     } else {
-      let stunDur = (stunEffect.base || 4000) / 1000; // base is in milliseconds
-      if (resistResult === 'PARTIAL_RESIST') stunDur = Math.floor(stunDur / 2);
-      if (!Array.isArray(mob.buffs)) mob.buffs = [];
-      mob.buffs = mob.buffs.filter(b => b.name !== spellDef.name);
-      mob.buffs.push({
-        name: spellDef.name, duration: stunDur, maxDuration: stunDur,
-        beneficial: false, effects: spellDef.effects, isStun: true,
-        casterSession: session.char.name
-      });
+      const stunDur = calculateSpellDuration(spellDef, durMod, resistResult, (stunEffect.base || 4000) / 1000);
+      applyBuff(mob, spellDef, stunDur, session.char.name, false, session);
       events.push({ event: 'MESSAGE', text: `${mob.name} has been stunned!` });
     }
     if (sendCombatLog) sendCombatLog(session, events);
@@ -698,16 +791,8 @@ async function applySpellEffect(session, spellDef, spellKey) {
     if (resistResult === 'FULL_RESIST') {
       events.push({ event: 'RESIST', target: mob.name, spell: spellDef.name });
     } else {
-      let dur = spellDef.duration || 6;
-      if (durMod > 0) dur = Math.floor(dur * (1.0 + (durMod / 100.0)));
-      if (resistResult === 'PARTIAL_RESIST') dur = Math.floor(dur / 2);
-      if (!Array.isArray(mob.buffs)) mob.buffs = [];
-      mob.buffs = mob.buffs.filter(b => b.name !== spellDef.name);
-      mob.buffs.push({
-        name: spellDef.name, duration: dur, maxDuration: dur,
-        beneficial: false, effects: spellDef.effects, isFear: true,
-        casterSession: session.char.name
-      });
+      const dur = calculateSpellDuration(spellDef, durMod, resistResult, 6);
+      applyBuff(mob, spellDef, dur, session.char.name, false, session);
       mob.target = null; // Feared mobs drop target
       events.push({ event: 'MESSAGE', text: `${mob.name} flees in terror!` });
     }
@@ -728,16 +813,8 @@ async function applySpellEffect(session, spellDef, spellKey) {
     if (resistResult === 'FULL_RESIST') {
       events.push({ event: 'RESIST', target: mob.name, spell: spellDef.name });
     } else {
-      let dur = spellDef.duration || 48;
-      if (durMod > 0) dur = Math.floor(dur * (1.0 + (durMod / 100.0)));
-      if (resistResult === 'PARTIAL_RESIST') dur = Math.floor(dur / 2);
-      if (!Array.isArray(mob.buffs)) mob.buffs = [];
-      mob.buffs = mob.buffs.filter(b => b.name !== spellDef.name);
-      mob.buffs.push({
-        name: spellDef.name, duration: dur, maxDuration: dur,
-        beneficial: false, effects: spellDef.effects, isRoot: true,
-        casterSession: session.char.name
-      });
+      const dur = calculateSpellDuration(spellDef, durMod, resistResult, 48);
+      applyBuff(mob, spellDef, dur, session.char.name, false, session, { isRoot: true });
       events.push({ event: 'MESSAGE', text: `${mob.name}'s feet become entangled!` });
     }
     if (sendCombatLog) sendCombatLog(session, events);
@@ -757,16 +834,8 @@ async function applySpellEffect(session, spellDef, spellKey) {
     if (resistResult === 'FULL_RESIST') {
       events.push({ event: 'RESIST', target: mob.name, spell: spellDef.name });
     } else {
-      let dur = spellDef.duration || 12;
-      if (durMod > 0) dur = Math.floor(dur * (1.0 + (durMod / 100.0)));
-      if (resistResult === 'PARTIAL_RESIST') dur = Math.floor(dur / 2);
-      if (!Array.isArray(mob.buffs)) mob.buffs = [];
-      mob.buffs = mob.buffs.filter(b => b.name !== spellDef.name);
-      mob.buffs.push({
-        name: spellDef.name, duration: dur, maxDuration: dur,
-        beneficial: false, effects: spellDef.effects, isBlind: true,
-        casterSession: session.char.name
-      });
+      const dur = calculateSpellDuration(spellDef, durMod, resistResult, 12);
+      applyBuff(mob, spellDef, dur, session.char.name, false, session, { isBlind: true });
       events.push({ event: 'MESSAGE', text: `${mob.name} has been blinded!` });
     }
     if (sendCombatLog) sendCombatLog(session, events);
@@ -794,21 +863,13 @@ async function applySpellEffect(session, spellDef, spellKey) {
       if (!mob.target) mob.target = session;
       if (mob.hateList) mob.hateList.addEntToHateList(session.char.name, 500, 0);
     } else {
-      let dur = spellDef.duration || 36;
-      if (durMod > 0) dur = Math.floor(dur * (1.0 + (durMod / 100.0)));
-      if (resistResult === 'PARTIAL_RESIST') dur = Math.floor(dur / 2);
+      const dur = calculateSpellDuration(spellDef, durMod, resistResult, 36);
       // Mark mob as charmed — the AI system will treat it like a pet
-      if (!Array.isArray(mob.buffs)) mob.buffs = [];
-      mob.buffs = mob.buffs.filter(b => !b.isCharm);
-      mob.buffs.push({
-        name: spellDef.name, duration: dur, maxDuration: dur,
-        beneficial: false, effects: spellDef.effects, isCharm: true,
-        casterSession: session.char.name
-      });
+      applyBuff(mob, spellDef, dur, session.char.name, false, session, { isCharm: true });
       mob.isCharmed = true;
       mob.charmOwner = session;
       mob.target = null;
-      if (mob.hateList) mob.hateList.entries = [];
+      if (mob.hateList) mob.hateList.wipeHateList();
       events.push({ event: 'MESSAGE', text: `${mob.name} regards you as an ally!` });
     }
     if (sendCombatLog) sendCombatLog(session, events);
@@ -861,15 +922,8 @@ async function applySpellEffect(session, spellDef, spellKey) {
   const levitateEffect = (spellDef.effects || []).find(e => e.spa === 57);
   if (levitateEffect && spellDef.goodEffect) {
     if (instantTargetSession) {
-      let dur = spellDef.duration || 270;
-      if (durMod > 0) dur = Math.floor(dur * (1.0 + (durMod / 100.0)));
-      instantTargetSession.buffs = instantTargetSession.buffs.filter(b => b.name !== spellDef.buffName);
-      instantTargetSession.buffs.push({
-        name: spellDef.buffName || spellDef.name, duration: dur, maxDuration: dur,
-        beneficial: true, effects: spellDef.effects || [],
-        isLevitate: true,
-        icon: spellDef.visual?.icon || 0, memIcon: spellDef.visual?.memIcon || 0
-      });
+      const dur = calculateSpellDuration(spellDef, durMod, null, 270);
+      applyBuff(instantTargetSession, spellDef, dur, session.char.name, true, session, { isLevitate: true });
       instantTargetSession.char.isLevitating = true;
       events.push({ event: 'MESSAGE', text: spellDef.messages?.castOnYou || 'You feel lighter.' });
       sendBuffs(instantTargetSession);
@@ -883,15 +937,8 @@ async function applySpellEffect(session, spellDef, spellKey) {
   const waterBreathEffect = (spellDef.effects || []).find(e => e.spa === 14);
   if (waterBreathEffect && spellDef.goodEffect) {
     if (instantTargetSession) {
-      let dur = spellDef.duration || 270;
-      if (durMod > 0) dur = Math.floor(dur * (1.0 + (durMod / 100.0)));
-      instantTargetSession.buffs = instantTargetSession.buffs.filter(b => b.name !== spellDef.buffName);
-      instantTargetSession.buffs.push({
-        name: spellDef.buffName || spellDef.name, duration: dur, maxDuration: dur,
-        beneficial: true, effects: spellDef.effects || [],
-        isWaterBreathing: true,
-        icon: spellDef.visual?.icon || 0, memIcon: spellDef.visual?.memIcon || 0
-      });
+      const dur = calculateSpellDuration(spellDef, durMod, null, 270);
+      applyBuff(instantTargetSession, spellDef, dur, session.char.name, true, session, { isWaterBreathing: true });
       instantTargetSession.char.canWaterBreathe = true;
       events.push({ event: 'MESSAGE', text: spellDef.messages?.castOnYou || 'You feel as if you could breathe underwater.' });
       sendBuffs(instantTargetSession);
@@ -911,8 +958,7 @@ async function applySpellEffect(session, spellDef, spellKey) {
       return;
     }
 
-    let dur = spellDef.duration || 840;
-    if (durMod > 0) dur = Math.floor(dur * (1.0 + (durMod / 100.0)));
+    let dur = calculateSpellDuration(spellDef, durMod, null, 840);
 
     // Remove any existing bind sight buff
     session.buffs = session.buffs.filter(b => !b.isBindSight);
@@ -1019,13 +1065,14 @@ async function applySpellEffect(session, spellDef, spellKey) {
     events.push({ event: 'SPELL_HEAL', source: 'You', target: targetName, spell: spellDef.name, amount: healAmt });
 
     // Heal aggro — same as regular heals
-    const zone = module.exports.zoneInstances ? module.exports.zoneInstances[session.char.zoneId] : null;
+    const zoneInstances = module.exports.zoneInstances;
+    const zone = zoneInstances ? zoneInstances[session.char.zoneId] : null;
     if (zone && zone.liveMobs) {
       const hateAmt = Math.floor(healAmt / 3);
       if (hateAmt > 0) {
-        const healedName = target === session.char ? session.char.name : (target.name || target.char?.name);
+        const targetEntityName = target === session.char ? session.char.name : (target.name || target.char?.name);
         for (const m of zone.liveMobs) {
-          if (m.hateList && m.hateList.entries.some(e => e.entityId === healedName)) {
+          if (m.hateList && Array.isArray(m.hateList.entries) && m.hateList.entries.some(e => e.entityId === targetEntityName)) {
             m.hateList.addEntToHateList(session.char.name, hateAmt, 0);
           }
         }
@@ -1041,29 +1088,11 @@ async function applySpellEffect(session, spellDef, spellKey) {
       let healAmt = spellDef.amount || 10;
       if (healMod > 0) healAmt = Math.floor(healAmt * (1.0 + (healMod / 100.0)));
       
-      let targets = [instantTarget];
-      let targetSessions = [instantTargetSession];
-      
-      if (spellDef.derived?.isBardSong || [3, 4, 41].includes(spellDef.targetType?.id) || spellDef.targetType?.name === 'groupPet') {
-          if (session.group && session.group.members) {
-              const rangeSq = (spellDef.range?.aoeRange || 50) ** 2;
-              targets = [];
-              targetSessions = [];
-              for (const m of session.group.members) {
-                  const dx = (m.char.x || 0) - (session.char.x || 0);
-                  const dy = (m.char.y || 0) - (session.char.y || 0);
-                  const dz = (m.char.z || 0) - (session.char.z || 0);
-                  if ((dx*dx + dy*dy + dz*dz) <= rangeSq || m === session) {
-                      targets.push(m.char);
-                      targetSessions.push(m);
-                  }
-              }
-          }
-      }
+      const targets = getAoeTargets(session, spellDef, instantTargetSession || instantTarget);
 
-      for (let i = 0; i < targets.length; i++) {
-          const tChar = targets[i];
-          const tSess = targetSessions[i];
+      for (const target of targets) {
+          const tChar = target.char || target;
+          const tSess = target.char ? target : null;
           
           const maxHp = tSess && tSess.effectiveStats ? tSess.effectiveStats.hp : (tChar.maxHp || 100);
           tChar.hp = Math.min((tChar.hp || 0) + healAmt, maxHp);
@@ -1072,12 +1101,13 @@ async function applySpellEffect(session, spellDef, spellKey) {
           events.push({ event: 'SPELL_HEAL', source: 'You', target: targetName, spell: spellDef.name, amount: healAmt });
 
           // AE Heal Aggro: Find all mobs that have the healed target on their hate list
-          const zone = module.exports.zoneInstances ? module.exports.zoneInstances[session.char.zoneId] : null;
+          const zoneInstances = module.exports.zoneInstances;
+          const zone = zoneInstances ? zoneInstances[session.char.zoneId] : null;
           if (zone && zone.liveMobs) {
             const hateAmt = Math.floor(healAmt / 3);
             if (hateAmt > 0) {
               for (const m of zone.liveMobs) {
-                if (m.hateList && m.hateList.entries.some(e => e.entityId === tChar.name)) {
+                if (m.hateList && Array.isArray(m.hateList.entries) && m.hateList.entries.some(e => e.entityId === tChar.name)) {
                   // The mob is currently fighting the person who got healed. Add hate to the HEALER.
                   m.hateList.addEntToHateList(session.char.name, hateAmt, 0);
                 }
@@ -1089,174 +1119,145 @@ async function applySpellEffect(session, spellDef, spellKey) {
       break;
     }
     case 'dd': {
-      if (!session.combatTarget) {
-        events.push({ event: 'MESSAGE', text: 'You must have a target to cast that spell.' });
-        break;
-      }
-      const mob = session.combatTarget;
-      
-      const resistResult = combat.calcSpellResist(mob, session.char.level, spellDef.resistType, spellDef.resistAdjust);
-      if (resistResult === 'FULL_RESIST') {
-        events.push({ event: 'RESIST', target: mob.name, spell: spellDef.name });
-        break;
-      }
-      
-      if (!mob.target) mob.target = session;
-      let dmg = spellDef.damage || 10;
-      if (dmgMod > 0) dmg = Math.floor(dmg * (1.0 + (dmgMod / 100.0)));
-      if (resistResult === 'PARTIAL_RESIST') dmg = Math.floor(dmg / 2);
+      const targets = getAoeTargets(session, spellDef, session.combatTarget);
 
-      // SPA 170: Spell Critical Chance (e.g., Circle of Power)
-      let isSpellCrit = false;
-      if (Array.isArray(session.buffs)) {
-        let spellCritChance = 0;
-        for (const buff of session.buffs) {
-          if (Array.isArray(buff.effects)) {
-            for (const eff of buff.effects) {
-              if (eff.spa === 170 && eff.base > 0) spellCritChance += eff.base;
-            }
+      for (const mob of targets) {
+          const result = processOffensiveTarget(mob, session, spellDef, events);
+          if (result.skip) continue;
+          
+          const { resistResult } = result;
+          let dmg = spellDef.damage || 10;
+          if (dmgMod > 0) dmg = Math.floor(dmg * (1.0 + (dmgMod / 100.0)));
+          if (resistResult === 'PARTIAL_RESIST') dmg = Math.floor(dmg / 2);
+
+          // SPA 170: Spell Critical Chance
+          let isSpellCrit = false;
+          if (Array.isArray(session.buffs)) {
+              let spellCritChance = 0;
+              for (const buff of session.buffs) {
+                  if (Array.isArray(buff.effects)) {
+                      for (const eff of buff.effects) {
+                          if (eff.spa === 170 && eff.base > 0) spellCritChance += eff.base;
+                      }
+                  }
+              }
+              if (spellCritChance > 0 && combat.chance(spellCritChance)) {
+                  dmg = Math.floor(dmg * 2);
+                  isSpellCrit = true;
+              }
           }
-        }
-        if (spellCritChance > 0 && combat.chance(spellCritChance)) {
-          dmg = Math.floor(dmg * 2);
-          isSpellCrit = true;
-        }
-      }
 
-      mob.hp -= dmg;
-      if (mob.hateList) mob.hateList.addEntToHateList(session.char.name, dmg, dmg);
-      breakMez(mob, events);
-      if (isSpellCrit) {
-        events.push({ event: 'SPELL_DAMAGE', source: 'You', target: mob.name, spell: spellDef.name, damage: dmg, text: 'Critical Blast!' });
-      } else {
-        events.push({ event: 'SPELL_DAMAGE', source: 'You', target: mob.name, spell: spellDef.name, damage: dmg });
-      }
-      if (mob.hp <= 0) {
-        await handleMobDeath(session, mob, events);
+          mob.hp -= dmg;
+          if (mob.hateList) mob.hateList.addEntToHateList(session.char.name, dmg, dmg);
+          breakMez(mob, events);
+          if (isSpellCrit) {
+              events.push({ event: 'SPELL_DAMAGE', source: 'You', target: mob.name, spell: spellDef.name, damage: dmg, text: 'Critical Blast!' });
+          } else {
+              events.push({ event: 'SPELL_DAMAGE', source: 'You', target: mob.name, spell: spellDef.name, damage: dmg });
+          }
+          if (mob.hp <= 0) {
+              await handleMobDeath(session, mob, events);
+          }
       }
       break;
     }
     case 'dot':
     case 'debuff': {
-      if (!session.combatTarget) {
-        events.push({ event: 'MESSAGE', text: 'You must have a target to cast that spell.' });
-        break;
-      }
-      const mob = session.combatTarget;
-      
-      const resistResult = combat.calcSpellResist(mob, session.char.level, spellDef.resistType, spellDef.resistAdjust);
-      if (resistResult === 'FULL_RESIST') {
-        events.push({ event: 'RESIST', target: mob.name, spell: spellDef.name });
-        break;
-      }
-      
-      if (!mob.target) mob.target = session;
-      
-      // Calculate instant damage (SPA 0 or 79)
-      let instantDmg = spellDef.damage || 0;
-      if (instantDmg === 0) {
-        const hpEffect = (spellDef.effects || []).find(e => e.spa === 0 || e.spa === 79);
-        if (hpEffect && hpEffect.base < 0) {
-          instantDmg = Math.abs(hpEffect.base);
-        }
-      }
-      
-      if (instantDmg > 0) {
-        let actualDmg = instantDmg;
-        if (dmgMod > 0) actualDmg = Math.floor(actualDmg * (1.0 + (dmgMod / 100.0)));
-        if (resistResult === 'PARTIAL_RESIST') actualDmg = Math.floor(actualDmg / 2);
-
-        mob.hp -= actualDmg;
-        if (mob.hateList) mob.hateList.addEntToHateList(session.char.name, actualDmg, actualDmg);
-        breakMez(mob, events);
-        events.push({ event: 'SPELL_DAMAGE', source: 'You', target: mob.name, spell: spellDef.name, damage: actualDmg });
-        if (mob.hp <= 0) {
-          await handleMobDeath(session, mob, events);
+      const targets = getAoeTargets(session, spellDef, session.combatTarget);
+      if (targets.length === 0 && spellDef.targetType?.id !== 4) {
+          events.push({ event: 'MESSAGE', text: 'You must have a target to cast that spell.' });
           break;
-        }
       }
 
-      // Base hate for landing a debuff/dot (e.g. slow/tash generates huge hate in EQ)
-      let baseHate = spellDef.level ? spellDef.level * 4 : 50; 
-      if (spellDef.name.toLowerCase().includes('tash')) baseHate += 200;
-      if (spellDef.name.toLowerCase().includes('slow') || spellDef.name.toLowerCase().includes('drowsy')) baseHate += 300;
-      if (mob.hateList) mob.hateList.addEntToHateList(session.char.name, baseHate, 0);
+      for (const mob of targets) {
+          const result = processOffensiveTarget(mob, session, spellDef, events);
+          if (result.skip) continue;
+          
+          const { resistResult } = result;
+          
+          // Calculate instant damage (SPA 0 or 79)
+          let instantDmg = spellDef.damage || 0;
+          if (instantDmg === 0 && (spellDef.type === 'dd' || (spellDef.type === 'dot' && spellDef.duration === 0))) {
+              const hpEffect = (spellDef.effects || []).find(e => (e.spa === 0 || e.spa === 79) && e.base < 0);
+              if (hpEffect) {
+                  instantDmg = Math.abs(hpEffect.base);
+              }
+          }
+          
+          if (instantDmg > 0) {
+              let actualDmg = instantDmg;
+              if (dmgMod > 0) actualDmg = Math.floor(actualDmg * (1.0 + (dmgMod / 100.0)));
+              if (resistResult === 'PARTIAL_RESIST') actualDmg = Math.floor(actualDmg / 2);
 
-      // Add to mob buffs
-      let dur = spellDef.duration || 6;
-      if (durMod > 0) dur = Math.floor(dur * (1.0 + (durMod / 100.0)));
-      if (resistResult === 'PARTIAL_RESIST') dur = Math.floor(dur / 2);
-      
-      if (!Array.isArray(mob.buffs)) mob.buffs = [];
-      mob.buffs = mob.buffs.filter(b => b.name !== spellDef.name);
-      mob.buffs.push({
-        name: spellDef.name,
-        duration: dur,
-        maxDuration: dur,
-        beneficial: false,
-        effects: spellDef.effects || [],
-        casterSession: session.char.name,
-        icon: spellDef.visual?.icon || 0,
-        memIcon: spellDef.visual?.memIcon || 0
-      });
-      events.push({ event: 'MESSAGE', text: `${mob.name} is afflicted by ${spellDef.name}.` });
+              mob.hp -= actualDmg;
+              if (mob.hateList) mob.hateList.addEntToHateList(session.char.name, actualDmg, actualDmg);
+              breakMez(mob, events);
+              events.push({ event: 'SPELL_DAMAGE', source: 'You', target: mob.name, spell: spellDef.name, damage: actualDmg });
+              if (mob.hp <= 0) {
+                  await handleMobDeath(session, mob, events);
+                  continue;
+              }
+          }
+
+          // Base hate for landing a debuff/dot
+          let baseHate = spellDef.level ? spellDef.level * 4 : 50; 
+          if (spellDef.name.toLowerCase().includes('tash')) baseHate += 200;
+          if (spellDef.name.toLowerCase().includes('slow') || spellDef.name.toLowerCase().includes('drowsy')) baseHate += 300;
+          if (mob.hateList) mob.hateList.addEntToHateList(session.char.name, baseHate, 0);
+
+          // Add to mob buffs
+          const dur = calculateSpellDuration(spellDef, durMod, resistResult, 6);
+          
+          let tickDamage = 0;
+          if (spellDef.type === 'dot' || spellDef.derived?.isBardSong) {
+              const dotEffect = (spellDef.effects || []).find(e => (e.spa === 0 || e.spa === 79 || e.spa === 334) && e.base < 0);
+              if (dotEffect) {
+                  tickDamage = Math.abs(dotEffect.base);
+                  // Apply damage modifiers (e.g. Bard instruments)
+                  if (dmgMod > 0) tickDamage = Math.floor(tickDamage * (1.0 + (dmgMod / 100.0)));
+              }
+          }
+
+          applyBuff(mob, spellDef, dur, session.char.name, false, session, { tickDamage, isSong: spellDef.derived?.isBardSong === true, casterName: session.char.name });
+          events.push({ event: 'MESSAGE', text: `${mob.name} is afflicted by ${spellDef.name}.` });
+      }
       break;
     }
-    case 'buff': {
-      if (!instantTargetSession) break;
-      
-      let targets = [instantTargetSession];
-      if (spellDef.derived?.isBardSong || [3, 4, 41].includes(spellDef.targetType?.id) || spellDef.targetType?.name === 'groupPet') {
-          if (session.group && session.group.members) {
-              const rangeSq = (spellDef.range?.aoeRange || 50) ** 2;
-              targets = session.group.members.filter(m => {
-                  const dx = (m.char.x || 0) - (session.char.x || 0);
-                  const dy = (m.char.y || 0) - (session.char.y || 0);
-                  const dz = (m.char.z || 0) - (session.char.z || 0);
-                  return (dx*dx + dy*dy + dz*dz) <= rangeSq || m === session;
-              });
-          } else {
-              targets = [session];
-          }
-      }
+      case 'buff': {
+      const targets = getAoeTargets(session, spellDef, instantTargetSession);
 
-      for (const tSession of targets) {
-          tSession.buffs = tSession.buffs.filter(b => b.name !== (spellDef.buffName || spellDef.name));
-          
-          const runeEffect = (spellDef.effects || []).find(e => e.spa === 55);
-          const runeHealth = runeEffect ? Math.abs(runeEffect.max || runeEffect.base) : 0;
-          
-          let dur = spellDef.duration || 6;
-          if (durMod > 0) dur = Math.floor(dur * (1.0 + (durMod / 100.0)));
-          
-          tSession.buffs.push({
-            name: spellDef.buffName || spellDef.name,
-            duration: dur,
-            maxDuration: dur,
-            beneficial: true,
-            effects: spellDef.effects || [],
-            ac: spellDef.ac || 0,
-            runeHealth: runeHealth,
-            icon: spellDef.visual?.icon || 0,
-            memIcon: spellDef.visual?.memIcon || 0,
-            isSong: spellDef.derived?.isBardSong === true
+      let dur = spellDef.duration || 6;
+      if (durMod > 0) dur = Math.floor(dur * (1.0 + (durMod / 100.0)));
+
+      const runeEffect = (spellDef.effects || []).find(e => e.spa === 55);
+      const runeHealth = runeEffect ? Math.max(0, runeEffect.base || 0) : 0;
+
+      for (const target of targets) {
+          const tSess = target.char ? target : null;
+          if (!tSess) continue; // Buffs only apply to sessions for now
+
+          applyBuff(tSess, spellDef, dur, session.char.name, true, session, {
+              ac: spellDef.ac || 0,
+              runeHealth: runeHealth,
+              isSong: spellDef.derived?.isBardSong === true,
+              casterName: session.char.name
           });
 
-          const buffMsg = tSession === session 
-            ? (spellDef.messages?.castOnYou || `You feel ${spellDef.buffName || spellDef.name} take hold.`)
-            : (spellDef.messages?.castOnOther ? `${tSession.char.name}${spellDef.messages.castOnOther}` : `${tSession.char.name} looks buffed.`);
-          
-          if (tSession === session) {
+          const buffMsg = tSess === session
+              ? (spellDef.messages?.castOnYou || `You feel ${spellDef.buffName || spellDef.name} take hold.`)
+              : (spellDef.messages?.castOnOther ? `${tSess.char.name}${spellDef.messages.castOnOther}` : `${tSess.char.name} looks buffed.`);
+      
+          if (tSess === session) {
               events.push({ event: 'MESSAGE', text: buffMsg });
-          } else if (tSession.ws) {
-              tSession.ws.send(JSON.stringify({ type: 'CHAT', channel: 'system', text: spellDef.messages?.castOnYou || `You feel ${spellDef.buffName || spellDef.name} take hold.` }));
+          } else if (tSess.ws) {
+              tSess.ws.send(JSON.stringify({ type: 'CHAT', channel: 'system', text: spellDef.messages?.castOnYou || `You feel ${spellDef.buffName || spellDef.name} take hold.` }));
           }
 
-          tSession.effectiveStats = calcEffectiveStats(tSession.char, tSession.inventory, tSession.buffs);
-          tSession.char.maxHp = tSession.effectiveStats.hp;
-          tSession.char.maxMana = tSession.effectiveStats.mana;
-          sendBuffs(tSession);
-          if (typeof sendStatus === 'function') sendStatus(tSession);
+          tSess.effectiveStats = calcEffectiveStats(tSess.char, tSess.inventory, tSess.buffs);
+          tSess.char.maxHp = tSess.effectiveStats.hp;
+          tSess.char.maxMana = tSess.effectiveStats.mana;
+          sendBuffs(tSess);
+          if (typeof sendStatus === 'function') sendStatus(tSess);
       }
       break;
     }
@@ -1295,7 +1296,7 @@ async function applySpellEffect(session, spellDef, spellKey) {
     }
     case 'gate': {
       if (handleStopCombat) handleStopCombat(session);
-      const bindZone = session.char.startZoneId || session.char.zoneId;
+      const bindZone = session.char.bindZoneId || session.char.zoneId;
       if (bindZone !== session.char.zoneId) {
         if (ensureZoneLoaded) await ensureZoneLoaded(bindZone);
         session.char.zoneId = bindZone;
@@ -1306,7 +1307,7 @@ async function applySpellEffect(session, spellDef, spellKey) {
         session.char.z = 0;
         session.pendingTeleport = { x: 0, y: 0, z: 0 };
         const DB = require('../db');
-        DB.saveCharacterLocation(session.char.id, bindZone, session.char.roomId);
+        DB.saveCharacterLocation(session.char.id, bindZone, session.char.x, session.char.y, session.char.z);
         sendStatus(session);
       }
       events.push({ event: 'MESSAGE', text: 'You feel yourself drifting away...' });
@@ -1338,7 +1339,7 @@ async function applySpellEffect(session, spellDef, spellKey) {
       session.pendingTeleport = { x: 0, y: 0, z: 0 };
       
       const DB = require('../db');
-      DB.saveCharacterLocation(session.char.id, resolvedZone, session.char.roomId);
+      DB.saveCharacterLocation(session.char.id, resolvedZone, session.char.x, session.char.y, session.char.z);
       const tpName = targetDef.name || resolvedZone;
       events.push({ event: 'MESSAGE', text: `You feel the world shift around you. You have entered ${tpName}.` });
       sendStatus(session);
@@ -1402,7 +1403,6 @@ function getEligibleFocusEffects(session, castSpell) {
 }
 
 module.exports = {
-  setDependencies,
   getEligibleFocusEffects,
   applySpellEffect,
   loadSpellbookFromFile,
@@ -1423,12 +1423,8 @@ module.exports = {
   sendSpellbookFull,
   sendBuffs,
   breakMez,
-  setCalcEffectiveStatsFn: (fn) => { module.exports.calcEffectiveStatsFn = fn; },
-  setDBFn: (db) => { module.exports.DB = db; },
-  setItemsFn: (items) => { module.exports.ITEMS = items; },
-  setSummonItemMapFn: (map) => { module.exports.SUMMON_ITEM_MAP = map; },
-  setSendInventoryFn: (fn) => { module.exports.sendInventoryFn = fn; },
-  setZoneInstancesFn: (zi) => { module.exports.zoneInstances = zi; },
+  getAoeTargets,
+  init,
   handleRemoveBuff: (session, msg) => {
     if (!msg.name) return;
     const buffName = msg.name;

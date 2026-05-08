@@ -395,7 +395,7 @@ const Skills = {
     type: 'skill',
     classes: {
       ranger: { levelGranted: 1, capFormula: (level) => (level * 5) + 5, maxCap: 200 },
-      druid: { levelGranted: 20, capFormula: (level) => Math.min((level * 5) + 5, 50), maxCap: 50 },
+      druid: { levelGranted: 20, capFormula: (level) => Math.min((level * 5) + 5, 125), maxCap: 125 },
       bard: { levelGranted: 1, capFormula: (level) => Math.min((level * 5) + 5, 100), maxCap: 100 },
     }
   },

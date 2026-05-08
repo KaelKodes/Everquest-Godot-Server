@@ -13,19 +13,27 @@ function getDistanceSq(x1, y1, x2, y2) {
   return (x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1);
 }
 
-// Proxy functions injected from gameEngine
+let sendCombatLogFn, processQuestActionsFn, handleHailFn, awardExpFn;
+
 function sendCombatLog(session, events) {
-  if (module.exports.sendCombatLogFn) return module.exports.sendCombatLogFn(session, events);
+  if (sendCombatLogFn) return sendCombatLogFn(session, events);
 }
 function processQuestActions(session, target, actions) {
-  if (module.exports.processQuestActionsFn) return module.exports.processQuestActionsFn(session, target, actions);
+  if (processQuestActionsFn) return processQuestActionsFn(session, target, actions);
 }
 function handleHail(session, msg) {
-  if (module.exports.handleHailFn) return module.exports.handleHailFn(session, msg);
+  if (handleHailFn) return handleHailFn(session, msg);
 }
 
 const RP_CHAR_THRESHOLD = 60; // Characters needed to trigger a tick check
 const RP_TICK_CHANCE = 0.33;  // 33% chance to actually receive the exp on tick
+
+function init(deps) {
+  sendCombatLogFn = deps.sendCombatLog;
+  processQuestActionsFn = deps.processQuestActions;
+  handleHailFn = deps.handleHail;
+  awardExpFn = deps.awardExp;
+}
 
 function processRPExperience(session, text) {
   if (!text) return;
@@ -49,8 +57,8 @@ function processRPExperience(session, text) {
     // 33% chance to get an RP tick
     if (Math.random() <= RP_TICK_CHANCE) {
       const rpExp = Math.floor(Math.random() * 20) + 10; // 10-30 exp
-      if (module.exports.awardExpFn) {
-         module.exports.awardExpFn(session, rpExp, null);
+      if (awardExpFn) {
+         awardExpFn(session, rpExp, null);
          sendCombatLog(session, [{ event: 'MESSAGE', text: `[color=yellow]You feel a sense of immersion. You gained ${rpExp} experience for roleplaying.[/color]` }]);
       }
     }
@@ -165,7 +173,10 @@ async function handleSay(session, msg) {
     if (target.npcType === NPC_TYPES.BIND && text.toLowerCase() === 'bind') {
       sendCombatLog(session, [{ event: 'MESSAGE', text: `${target.name} begins to cast a spell.` }]);
       sendCombatLog(session, [{ event: 'MESSAGE', text: `You feel your soul bound to this location.` }]);
-      // TODO: Actually save bind point
+      const DB = require('../db');
+      DB.updateCharacterBind(session.char.id, session.char.zoneId, session.char.x, session.char.y, session.char.z).catch(err => {
+        console.error(`[CHAT] Failed to update bind point for ${char.name}:`, err);
+      });
       return;
     }
   }
@@ -364,9 +375,6 @@ module.exports = {
   handleRaid,
   handleAnnouncement,
   broadcastChat,
+  init,
   processRPExperience,
-  setSendCombatLogFn: (fn) => { module.exports.sendCombatLogFn = fn; },
-  setProcessQuestActionsFn: (fn) => { module.exports.processQuestActionsFn = fn; },
-  setHandleHailFn: (fn) => { module.exports.handleHailFn = fn; },
-  setAwardExpFn: (fn) => { module.exports.awardExpFn = fn; }
 };

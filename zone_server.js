@@ -6,18 +6,18 @@ const DB = require('./db');
 const engine = require('./gameEngine');
 const broker = require('./network/broker');
 const tokenManager = require('./network/tokenManager');
+const zoneRouter = require('./network/zoneRouter');
 
 const PORT = process.env.PORT || 3010;
-// Zone server can be passed a list of zones via environment or command line
-// e.g. ZONES=gfaydark,kelethin
-const ZONE_LIST = (process.env.ZONES || '').split(',').filter(z => z);
+// Zone server is assigned a node name; routing is DB-backed.
+const NODE = process.env.NODE || 'unknown';
 
 async function main() {
   await engine.bootstrapServer();
   await broker.init();
 
-  // Initialize only requested zones (we need to update engine.initZones to support this)
-  await engine.initZones(ZONE_LIST.length > 0 ? ZONE_LIST : null);
+  // Don't pre-initialize zones in cluster mode; load on-demand.
+  await engine.initZones([]);
   engine.startGameLoop();
 
   const app = express();
@@ -54,7 +54,25 @@ async function main() {
           return ws.send(JSON.stringify({ type: 'ERROR', message: 'Invalid or expired token' }));
       }
 
-      console.log(`[ZONE] ${data.characterName} entering zone via token.`);
+      // Determine which zone this character should be in
+      const character = await DB.getCharacter(data.characterName);
+      if (!character) {
+        return ws.send(JSON.stringify({ type: 'ERROR', message: 'Character data not found' }));
+      }
+      const zoneId = character.zoneId || 'gfaydark';
+      const routed = await zoneRouter.getUrlForZone(zoneId, DB);
+      const targetNode = routed.node;
+
+      // If DB routing assigns a different node, redirect
+      if (targetNode && targetNode !== NODE) {
+        if (!routed.url) return ws.send(JSON.stringify({ type: 'ERROR', message: `No zone node route found for ${zoneId}` }));
+        const zoneToken = await tokenManager.generateToken(data);
+        ws.send(JSON.stringify({ type: 'HANDOFF', token: zoneToken, url: routed.url }));
+        console.log(`[ZONE:${NODE}] Redirecting ${data.characterName} (${zoneId}) to node '${targetNode}' via ${routed.url}`);
+        return;
+      }
+
+      console.log(`[ZONE:${NODE}] ${data.characterName} entering zone '${zoneId}' via token.`);
       
       // Inject session into game engine
       // We need to simulate the login logic but using the token data
@@ -62,7 +80,7 @@ async function main() {
   }
 
   server.listen(PORT, () => {
-    console.log(`[ZONE] Zone Server listening on port ${PORT} for zones: ${ZONE_LIST.join(', ') || 'ALL'}`);
+    console.log(`[ZONE:${NODE}] Zone Node listening on port ${PORT} (routing via DB).`);
   });
 }
 

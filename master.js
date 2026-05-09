@@ -4,18 +4,46 @@ const path = require('path');
 const servers = [
   { name: 'LOGIN', script: 'login_server.js', port: 3005 },
   { name: 'WORLD', script: 'world_server.js', port: 3006 },
-  { name: 'ZONE_GFAY', script: 'zone_server.js', port: 3010, env: { ZONES: 'gfaydark,kelethin,crushbone' } },
-  { name: 'ZONE_BUTCHER', script: 'zone_server.js', port: 3011, env: { ZONES: 'butcher,felwithea,felwitheb' } }
+
+  // Two "god" nodes. They dynamically load zones on-demand, but ownership is fixed by continent.
+  { name: 'TUNARE', script: 'zone_server.js', port: 3010, env: { NODE: 'tunare' } },
+  { name: 'INNORUUK', script: 'zone_server.js', port: 3011, env: { NODE: 'innoruuk' } },
 ];
 
 const children = new Set();
 
+function buildNodeUrls() {
+  const urls = {};
+  for (const s of servers) {
+    if (s.script !== 'zone_server.js') continue;
+    const node = (s.env && s.env.NODE) ? s.env.NODE : null;
+    if (!node) continue;
+    urls[node] = `ws://localhost:${s.port}`;
+  }
+  return urls;
+}
+
+function buildContinentNodeMap() {
+  const map = {};
+  for (const s of servers) {
+    if (s.script !== 'zone_server.js') continue;
+    // Deprecated: routing is DB-backed now
+  }
+  return map;
+}
+
 function startServer(config) {
   console.log(`[MASTER] Starting ${config.name} on port ${config.port}...`);
   
+  const nodeUrls = buildNodeUrls();
+  const continentNodeMap = buildContinentNodeMap();
+  const defaultZoneUrl = nodeUrls.tunare || Object.values(nodeUrls)[0] || 'ws://localhost:3010';
   const childEnv = { 
     ...process.env, 
     PORT: config.port,
+    NODE_URLS: JSON.stringify(nodeUrls),
+    CONTINENT_NODE_MAP: JSON.stringify(continentNodeMap),
+    ZONE_URL_DEFAULT: defaultZoneUrl,
     ...config.env 
   };
 

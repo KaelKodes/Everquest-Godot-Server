@@ -47,6 +47,7 @@ module.exports = {
   loginAccount: eqemuDB.loginAccount,
   createAccount: eqemuDB.createAccount,
   getCharactersByAccount: eqemuDB.getCharactersByAccount,
+  getCharCreateData: eqemuDB.getCharCreateData,
   getStartZone: eqemuDB.getStartZone,
   getValidDeities: eqemuDB.getValidDeities,
   getCharacter: eqemuDB.getCharacter,
@@ -107,6 +108,7 @@ module.exports = {
   unequipSlot: eqemuDB.unequipSlot,
   deleteItem: eqemuDB.deleteItem,
   moveItem: eqemuDB.moveItem,
+  splitStackToSlot: eqemuDB.splitStackToSlot,
   getCharacterFactionValues: eqemuDB.getCharacterFactionValues,
   updateCharacterFactionValue: eqemuDB.updateCharacterFactionValue,
   getFactionCaches: eqemuDB.getFactionCaches,
@@ -123,4 +125,18 @@ module.exports = {
   getCharacterBuffs: eqemuDB.getCharacterBuffs,
   saveCharacterBuffs: eqemuDB.saveCharacterBuffs,
   rollLootFromTable: eqemuDB.rollLootFromTable
+  ,
+  // Persistent player corpses
+  savePlayerCorpse: eqemuDB.savePlayerCorpse,
+  getPlayerCorpsesForZone: eqemuDB.getPlayerCorpsesForZone,
+  updatePlayerCorpse: eqemuDB.updatePlayerCorpse,
+  deletePlayerCorpse: eqemuDB.deletePlayerCorpse,
+  appendLootConsentForCharacterCorpses: eqemuDB.appendLootConsentForCharacterCorpses,
+  removeLootConsentForCharacterCorpses: eqemuDB.removeLootConsentForCharacterCorpses,
+  clearLootConsentForCharacterCorpses: eqemuDB.clearLootConsentForCharacterCorpses
+  ,
+  // Zone routing (DB-backed)
+  refreshZoneRoutingCache: eqemuDB.refreshZoneRoutingCache,
+  getZoneRoute: eqemuDB.getZoneRoute,
+  upsertZoneRoute: eqemuDB.upsertZoneRoute
 };

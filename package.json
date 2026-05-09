@@ -6,7 +6,9 @@
   "scripts": {
     "start": "node index.js",
     "dev": "node --watch index.js",
-    "cluster": "node master.js"
+    "cluster": "node master.js",
+    "partition:nodes": "node tools/partition_zone_nodes.js",
+    "partition:nodes:apply": "node tools/partition_zone_nodes.js --apply"
   },
   "dependencies": {
     "@gltf-transform/core": "^4.3.0",

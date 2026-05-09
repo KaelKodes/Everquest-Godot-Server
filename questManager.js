@@ -138,6 +138,13 @@ class QuestManager {
         lua.global.set('e', e);
 
         const eq = {
+            /** Quest dialogue links — EQEmu returns bracketed text; MUD shows plain [phrase]. */
+            say_link: (phrase, _unused, displayAs) => {
+                if (typeof displayAs === 'string' && displayAs.length > 0) {
+                    return `[${displayAs}]`;
+                }
+                return `[${String(phrase ?? '')}]`;
+            },
             get_qglobals: (plr) => { return { paladin_epic: "9" }; }, // Stub
             spawn2: (npc_id, grid, unused, x, y, z, h) => 
                 actions.push({ action: 'spawn2', npc_id, grid, x, y, z, h }),

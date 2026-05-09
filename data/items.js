@@ -270,7 +270,8 @@ const STARTER_GEAR = {
   ranger:        [{ itemId: 5013, slot: 13 }, { itemId: 1004, slot: 17 }, { itemId: 2010, slot: 12 }, { itemId: 16, slot: 22 }],
   bard:          [{ itemId: 5013, slot: 13 }, { itemId: 1004, slot: 17 }, { itemId: 2010, slot: 12 }, { itemId: 16, slot: 22 }],
   monk:          [{ itemId: 1004, slot: 17 }, { itemId: 1001, slot: 2 }, { itemId: 16, slot: 22 }],
-  druid:         [{ itemId: 6012, slot: 13 }, { itemId: 1004, slot: 17 }, { itemId: 1001, slot: 2 }, { itemId: 16, slot: 22 }],
+  // Druid: all gear including primary weapon comes from PEQ `starting_items` (no duplicate staff from STARTER_GEAR).
+  druid:         [],
   shaman:        [{ itemId: 6012, slot: 13 }, { itemId: 1004, slot: 17 }, { itemId: 1001, slot: 2 }, { itemId: 16, slot: 22 }],
   necromancer:   [{ itemId: 6012, slot: 13 }, { itemId: 1004, slot: 17 }, { itemId: 1001, slot: 2 }, { itemId: 16, slot: 22 }],
   magician:      [{ itemId: 6012, slot: 13 }, { itemId: 1004, slot: 17 }, { itemId: 1001, slot: 2 }, { itemId: 16, slot: 22 }],

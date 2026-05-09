@@ -9,7 +9,52 @@ const ZONES = require('../data/zones');
 const { zoneInstances, sessions } = State;
 
 const { NPC_TYPES, HAIL_RANGE } = require('../data/npcTypes');
+const { canLootLockedCorpse } = require('../utils/corpseLoot');
 const ITEMS = ItemDB.createLegacyProxy();
+
+/** Nested slot stride per parent slot; must match eqmud Scripts/UI/BagWindow.cs */
+const NESTED_BAG_STRIDE = 10;
+
+function resolveNestedBagBase(toSlot) {
+  if (toSlot >= 251 && toSlot <= 330) {
+    const parentBagSlot = 22 + Math.floor((toSlot - 251) / NESTED_BAG_STRIDE);
+    const base = 251 + (parentBagSlot - 22) * NESTED_BAG_STRIDE;
+    return { parentBagSlot, base };
+  }
+  if (toSlot >= 2531 && toSlot <= 2770) {
+    const parentBagSlot = 2000 + Math.floor((toSlot - 2531) / NESTED_BAG_STRIDE);
+    const base = 2531 + (parentBagSlot - 2000) * NESTED_BAG_STRIDE;
+    return { parentBagSlot, base };
+  }
+  if (toSlot >= 2511 && toSlot <= 2590) {
+    const parentBagSlot = 2500 + Math.floor((toSlot - 2511) / NESTED_BAG_STRIDE);
+    const base = 2511 + (parentBagSlot - 2500) * NESTED_BAG_STRIDE;
+    return { parentBagSlot, base };
+  }
+  return null;
+}
+
+function isNestedBagSlotId(slot) {
+  return resolveNestedBagBase(slot) != null;
+}
+
+/**
+ * Ensures nested slot id is within parent container's bagslots (item DB).
+ * @returns {{ ok: true, isNested: false } | { ok: true, isNested: true, bagDef: object } | { ok: false, msg: string }}
+ */
+function validateNestedBagDestination(session, toSlot) {
+  const resolved = resolveNestedBagBase(toSlot);
+  if (!resolved) return { ok: true, isNested: false };
+  const parentBagRow = session.inventory.find((i) => i.slot === resolved.parentBagSlot);
+  if (!parentBagRow) return { ok: false, msg: 'There is no bag there.' };
+  const bagDef = ItemDB.getById(parentBagRow.item_key) || ITEMS[parentBagRow.item_key] || {};
+  const maxSlots = Math.max(0, Math.floor(Number(bagDef.bagslots)));
+  const idx = toSlot - resolved.base;
+  if (maxSlots <= 0 || idx < 0 || idx >= maxSlots) {
+    return { ok: false, msg: 'That container does not have that slot.' };
+  }
+  return { ok: true, isNested: true, bagDef };
+}
 
 function getDistanceSq(x1, y1, x2, y2) {
   return (x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1);
@@ -632,6 +677,42 @@ async function handleUnequipItem(session, msg) {
   sendStatus(session);
 }
 
+async function handleSplitMoveItem(session, msg) {
+  const { fromSlot, toSlot, count } = msg;
+  const n = Math.floor(Number(count));
+  if (!Number.isFinite(n) || n < 1) return;
+  if (fromSlot === toSlot) return;
+  if (toSlot < 22 && toSlot >= 0) {
+    send(session.ws, { type: 'SYSTEM_MSG', message: 'You cannot split stacks directly onto equipment slots.' });
+    return;
+  }
+
+  const invRow = session.inventory.find((i) => i.slot === fromSlot);
+  if (!invRow) return;
+  const qty = invRow.quantity > 0 ? invRow.quantity : 1;
+  if (qty <= 1 || n >= qty) {
+    send(session.ws, { type: 'SYSTEM_MSG', message: 'That stack is too small to split that way.' });
+    return;
+  }
+
+  const nestTo = validateNestedBagDestination(session, toSlot);
+  if (!nestTo.ok) {
+    send(session.ws, { type: 'SYSTEM_MSG', message: nestTo.msg });
+    return;
+  }
+
+  const ok = await DB.splitStackToSlot(session.char.id, fromSlot, toSlot, n);
+  if (!ok) {
+    send(session.ws, { type: 'SYSTEM_MSG', message: 'You cannot split the stack into that location.' });
+    return;
+  }
+
+  session.inventory = await DB.getInventory(session.char.id);
+  session.effectiveStats = calcEffectiveStats(session.char, session.inventory, session.buffs);
+  sendInventory(session);
+  sendStatus(session);
+}
+
 async function handleMoveItem(session, msg) {
   const { fromSlot, toSlot } = msg;
   if (fromSlot === toSlot) return;
@@ -641,54 +722,25 @@ async function handleMoveItem(session, msg) {
 
   const itemDef = ItemDB.getById(invRow.item_key) || ITEMS[invRow.item_key] || {};
 
-  // Check if target is a bag slot
-  if ((toSlot >= 251 && toSlot <= 330) || (toSlot >= 2531 && toSlot <= 2770) || (toSlot >= 2511 && toSlot <= 2590)) {
-    // Cannot put bags inside bags
-    if (itemDef.itemtype === 1) {
-      send(session.ws, { type: 'SYSTEM_MSG', message: 'You cannot put a container inside another container.' });
-      return;
-    }
-
-    let parentBagSlot = 0;
-    if (toSlot >= 251 && toSlot <= 330) {
-        parentBagSlot = 22 + Math.floor((toSlot - 251) / 10);
-    } else if (toSlot >= 2531 && toSlot <= 2770) {
-        parentBagSlot = 2000 + Math.floor((toSlot - 2531) / 10);
-    } else if (toSlot >= 2511 && toSlot <= 2590) {
-        parentBagSlot = 2500 + Math.floor((toSlot - 2511) / 10);
-    }
-
-    const parentBagRow = session.inventory.find(i => i.slot === parentBagSlot);
-    if (!parentBagRow) {
-      send(session.ws, { type: 'SYSTEM_MSG', message: 'There is no bag there.' });
-      return;
-    }
-
-    const bagDef = ItemDB.getById(parentBagRow.item_key) || ITEMS[parentBagRow.item_key] || {};
-    
-    // Check if item fits in the bag (bagsize 0-4 = tiny-giant, item size 0-4)
-    if (itemDef.size > bagDef.bagsize) {
-      send(session.ws, { type: 'SYSTEM_MSG', message: 'That item is too large to fit in this container.' });
-      return;
-    }
+  if (itemDef.itemtype === 1 && isNestedBagSlotId(toSlot)) {
+    send(session.ws, { type: 'SYSTEM_MSG', message: 'You cannot put a container inside another container.' });
+    return;
   }
 
-  // If moving a bag to another slot, ensure the target slot is not inside a bag
+  const nestTo = validateNestedBagDestination(session, toSlot);
+  if (!nestTo.ok) {
+    send(session.ws, { type: 'SYSTEM_MSG', message: nestTo.msg });
+    return;
+  }
+  if (nestTo.isNested && itemDef.size > nestTo.bagDef.bagsize) {
+    send(session.ws, { type: 'SYSTEM_MSG', message: 'That item is too large to fit in this container.' });
+    return;
+  }
+
   if (itemDef.itemtype === 1) {
-      if ((toSlot >= 251 && toSlot <= 330) || (toSlot >= 2531 && toSlot <= 2770) || (toSlot >= 2511 && toSlot <= 2590)) {
-          send(session.ws, { type: 'SYSTEM_MSG', message: 'You cannot put a container inside another container.' });
-          return;
-      }
-      
-      // If moving a bag, and there's an item in the target slot, that target item will swap with the bag.
-      // So if target item is NOT a bag, it will try to go into fromSlot.
-      // If fromSlot is an equip slot or inside a bag, it might be invalid.
-      // For MVP, we let eqemu_db swap them, but EQ might not allow swapping bags if target is occupied.
       const toRow = session.inventory.find(i => i.slot === toSlot);
       if (toRow) {
-          // If swapping, ensure the swapped item can go into fromSlot
-          if (fromSlot >= 251 && fromSlot <= 330) {
-               // The fromSlot is a bag slot, so we're swapping an item out of a bag WITH a bag into the bag. Invalid.
+          if (isNestedBagSlotId(fromSlot)) {
                send(session.ws, { type: 'SYSTEM_MSG', message: 'Invalid container swap.' });
                return;
           }
@@ -994,34 +1046,66 @@ async function handleRightClick(session, msg) {
   }
 
   if (effectiveType === 'corpse') {
-      let lootedSomething = false;
-      for (const lootEntry of target.loot) {
-          const itemDef = ITEMS[lootEntry.itemKey];
-          if (itemDef) {
-              if (itemDef.type !== 'weapon' && itemDef.type !== 'armor' && itemDef.type !== 'shield' && itemDef.type !== 'clothing') {
-                  const existing = session.inventory.find(i => i.item_key === lootEntry.itemKey);
-                  if (existing) {
-                      await DB.updateItemQuantity(existing.id, session.char.id, 1);
-                  } else {
-                      await DB.addItem(session.char.id, lootEntry.itemKey, 0, 0, 1);
-                  }
-              } else {
-                  await DB.addItem(session.char.id, lootEntry.itemKey, 0, 0, 1);
+      if (!canLootLockedCorpse(target, session)) {
+          sendCombatLog(session, [{ event: 'MESSAGE', text: `You do not have permission to loot this corpse.` }]);
+          return;
+      }
+
+      // 1. Handle Coins immediately upon opening (Part 1 - Req 3)
+      if (target.coins > 0) {
+          const totalCoins = target.coins;
+          target.coins = 0; // Prevent double-looting coins
+
+          if (session.group) {
+              const members = session.group.members;
+              const share = Math.floor(totalCoins / members.length);
+              const extra = totalCoins % members.length;
+              
+              for (let i = 0; i < members.length; i++) {
+                  const m = members[i];
+                  const amount = share + (i === 0 ? extra : 0);
+                  m.char.platinum = (m.char.platinum || 0) + amount;
+                  sendCombatLog(m, [{ event: 'MESSAGE', text: `You receive ${amount} platinum as your share of the loot.` }]);
+                  const { sendStatus, send } = require('../gameEngine');
+                  sendStatus(m);
+                  send(m.ws, { type: 'LOOT_COIN', amount: amount, currency: 'platinum' });
               }
-              sendCombatLog(session, [{ event: 'LOOT', item: itemDef.name, source: target.originalName }]);
-              lootedSomething = true;
+          } else {
+              char.platinum = (char.platinum || 0) + totalCoins;
+              sendCombatLog(session, [{ event: 'MESSAGE', text: `You loot ${totalCoins} platinum from the corpse.` }]);
+              const { sendStatus, send } = require('../gameEngine');
+              sendStatus(session);
+              send(session.ws, { type: 'LOOT_COIN', amount: totalCoins, currency: 'platinum' });
           }
       }
-      
-      if (lootedSomething) {
-          session.inventory = await DB.getInventory(session.char.id);
-          sendInventory(session);
+
+      // 2. Prepare items for the loot window
+      const lootItems = (target.loot || []).map((le, index) => {
+          const def = ItemDB.getById(le.itemKey) || ITEMS[le.itemKey] || {};
+          return {
+              lootIndex: index,
+              itemKey: le.itemKey || "",
+              name: def.name || "Unknown Item",
+              icon: def.icon || 0,
+              qty: le.qty || 1
+          };
+      });
+
+      // 3. Send message to open loot window ONLY if there are items
+      if (lootItems.length > 0) {
+          const { send } = require('../gameEngine');
+          send(session.ws, {
+              type: 'LOOT_CORPSE_OPEN',
+              corpseId: target.id,
+              corpseName: target.name,
+              items: lootItems
+          });
       } else {
-          sendCombatLog(session, [{ event: 'MESSAGE', text: `This corpse is empty.` }]);
+          sendCombatLog(session, [{ event: 'MESSAGE', text: `This corpse has no items.` }]);
+          // If coins were also zero, we could speed up decay here too, 
+          // but handleRightClick is just an interaction. 
+          // handleTakeLootItem handles empty transitions.
       }
-      
-      // Fast decay after looted
-      target.decayTime = 0; 
       return;
   }
 
@@ -1140,6 +1224,7 @@ module.exports = {
   handleEquipItem,
   handleUnequipItem,
   handleMoveItem,
+  handleSplitMoveItem,
   handleAutoEquip,
   handleGetOffer,
   handleSellJunk,

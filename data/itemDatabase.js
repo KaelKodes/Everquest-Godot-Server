@@ -53,8 +53,10 @@ class ItemDatabase {
           delay: rawItem.delay || 0,
           ac: rawItem.ac || 0,
           weight: rawItem.weight / 10 || 0.1, // eqemu weight is x10
-          value: rawItem.price || 1, 
-          
+          value: rawItem.price || 1,
+          stackable: Number(rawItem.stackable) || 0,
+          stacksize: Number(rawItem.stacksize) || 0,
+
           str: rawItem.astr || 0,
           sta: rawItem.asta || 0,
           agi: rawItem.aagi || 0,

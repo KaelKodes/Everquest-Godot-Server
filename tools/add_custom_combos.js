@@ -24,7 +24,8 @@ const DEITIES = {
 
 const ZONES = {
   halas: 29,
-  sfg: 4,
+  /** Surefall Glade — `zone.zoneidnumber` (not `zone.id`); 3 = qrg */
+  sfg: 3,
   neriak: 42,
   kaladim: 60,
   paineel: 75,

@@ -278,19 +278,8 @@ function buildStarterSpellbook(session) {
     }
     bookSlot++;
   }
-  
-  // Also add any spells the character should have from level-ups
-  const allClassSpells = SpellDB.getSpellsForClass(charClass, session.char.level);
-  for (const spell of allClassSpells) {
-    const key = spell._key;
-    if (session.spellbook.find(s => s.spell_key === key)) continue; // Already have it
-    session.spellbook.push({
-      bookSlot: bookSlot++,
-      spell_key: key,
-      id: spell._spellId || spell.id,
-    });
-  }
-  
+
+  // Intentionally do not auto-scribe every level-1 class spell from SpellDB — that bypasses scrolls/PEQ and floods the book.
   saveSpellbookToFile(session).then(() => {});
   console.log(`[SPELLBOOK] Built starter spellbook for ${session.char.name}: ${session.spellbook.length} spells`);
 }

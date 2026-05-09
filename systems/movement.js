@@ -152,17 +152,24 @@ function handleUpdatePos(session, msg) {
       const isGM = (auth && auth.accountName && auth.accountName.toLowerCase().startsWith('gm')) ||
                    (session.char && session.char.name.toLowerCase().startsWith('gm'));
 
-      if (dt > 0.05 && !isGM) { // Only check if enough time has passed (prevent divide-by-zero jitters)
+      // Slightly higher dt floor reduces false positives from bursty client frames / WebSocket batching.
+      if (dt > 0.07 && !isGM) {
         // Allow a generous buffer for lag spikes (e.g., 2 seconds of buffered movement max)
-        const maxDt = Math.min(dt, 2.0); 
-        const maxSpeedSq = (60.0 * maxDt) * (60.0 * maxDt);
-        
-        // Exclude huge dt jumps (like logging in or zoning) where lastMoveTime might be stale
-        // Additionally, check if they are "flying" up (dz > 0) faster than a jump would allow
-        // Increase jumpSpeed tolerance for fast elevators (from 20 to 50)
-        const jumpSpeed = (50.0 * maxDt);
-        if (dt < 10.0 && (distSq > maxSpeedSq || dz > jumpSpeed)) {
-          console.log(`[ENGINE] Rubberbanding ${session.char.name} (Speed hack or heavy lag detected). HorizDistSq: ${distSq.toFixed(1)}, dz: ${dz.toFixed(1)}, Dt: ${dt.toFixed(2)}`);
+        const maxDt = Math.min(dt, 2.0);
+        // ~Run speed 7–14 in classic units/sec depending on rules; mounts/SOW higher — keep headroom.
+        const maxHorizSpeed = 72.0;
+        const maxSpeedSq = (maxHorizSpeed * maxDt) * (maxHorizSpeed * maxDt);
+
+        // Upward Z only (downward is gravity / falling). Client spawn, stairs, lifts, and Godot↔EQ
+        // height fixes can legitimately jump tens of units while HorizDistSq ≈ 0 — use a floor so
+        // we do not rubberband every login when mesh Z disagrees slightly with DB Z.
+        const maxUpwardDz = Math.max(55.0 * maxDt, 36.0);
+
+        if (dt < 10.0 && (distSq > maxSpeedSq || dz > maxUpwardDz)) {
+          if (!session._rubberbandLogAt || now - session._rubberbandLogAt > 2500) {
+            session._rubberbandLogAt = now;
+            console.log(`[ENGINE] Rubberbanding ${session.char.name} (Speed hack or heavy lag detected). HorizDistSq: ${distSq.toFixed(1)}, dz: ${dz.toFixed(1)}, Dt: ${dt.toFixed(2)}`);
+          }
           if (session.ws) {
             session.ws.send(JSON.stringify({
               type: 'TELEPORT',

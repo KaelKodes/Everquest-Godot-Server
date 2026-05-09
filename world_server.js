@@ -5,6 +5,7 @@ const { WebSocketServer } = require('ws');
 const DB = require('./db');
 const broker = require('./network/broker');
 const tokenManager = require('./network/tokenManager');
+const zoneRouter = require('./network/zoneRouter');
 
 const PORT = process.env.PORT || 3006;
 
@@ -50,9 +51,10 @@ async function main() {
 
         const zoneId = character.zoneId || 'gfaydark';
 
-        // For now, let's assume a single zone server on port 3010
-        // In the future, master.js will tell us where each zone is.
-        const zoneUrl = process.env.ZONE_URL || 'ws://localhost:3010';
+        // Route to the correct zone node based on continent ownership
+        let zoneUrl = process.env.ZONE_URL || process.env.ZONE_URL_DEFAULT || 'ws://localhost:3010';
+        const routed = await zoneRouter.getUrlForZone(zoneId, DB);
+        if (routed && routed.url) zoneUrl = routed.url;
 
         // Handoff to Zone Server
         const zoneToken = await tokenManager.generateToken(data);

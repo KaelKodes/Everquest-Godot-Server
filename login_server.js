@@ -5,6 +5,8 @@ const { WebSocketServer } = require('ws');
 const DB = require('./db');
 const broker = require('./network/broker');
 const tokenManager = require('./network/tokenManager');
+const { attachFaceCounts } = require('./char_create_face_counts');
+const { createCharacterFromClientMessage } = require('./create_character_common');
 
 const PORT = process.env.PORT || 3005;
 
@@ -47,10 +49,13 @@ async function main() {
         await handleCreateAccount(ws, msg);
         break;
       case 'GET_CHAR_CREATE_DATA':
-        // Proxy to DB
-        const data = await DB.getCharCreateData();
+      case 'REQUEST_CHAR_CREATE_DATA': {
+        const raceId = msg.raceId ?? msg.race_id ?? 1;
+        const data = await DB.getCharCreateData(raceId);
+        attachFaceCounts(data, raceId);
         ws.send(JSON.stringify({ type: 'CHAR_CREATE_DATA', ...data }));
         break;
+      }
       case 'CREATE_CHARACTER':
         await handleCreateCharacter(ws, msg);
         break;
@@ -82,11 +87,18 @@ async function main() {
 
   async function handleCreateCharacter(ws, msg) {
     const auth = authSessions.get(ws);
-    if (!auth) return;
-    const result = await DB.createCharacter({ ...msg, accountId: auth.accountId });
-    if (result.error) return ws.send(JSON.stringify({ type: 'ERROR', message: result.error }));
-    const characters = await DB.getCharactersByAccount(auth.accountId);
-    ws.send(JSON.stringify({ type: 'ACCOUNT_OK', accountName: auth.accountName, characters }));
+    if (!auth) {
+      return ws.send(JSON.stringify({ type: 'ERROR', message: 'Not authenticated. Please login first.' }));
+    }
+    const result = await createCharacterFromClientMessage(auth.accountId, msg);
+    if (result.error) {
+      return ws.send(JSON.stringify({ type: 'ERROR', message: result.error }));
+    }
+    ws.send(JSON.stringify({
+      type: 'CHARACTER_CREATED',
+      name: result.name,
+      characters: result.characters
+    }));
   }
 
   async function handleDeleteCharacter(ws, msg) {

@@ -9,6 +9,8 @@ const ItemDB = require('./data/itemDatabase');
 const ITEMS = ItemDB.createLegacyProxy(); // Legacy proxy for backwards compatibility
 const DB = require('./db');
 const eqemuDB = require('./eqemu_db');
+const { attachFaceCounts } = require('./char_create_face_counts');
+const { createCharacterFromClientMessage } = require('./create_character_common');
 const combat = require('./combat');
 const { NPC_TYPES, HAIL_RANGE } = require('./data/npcTypes');
 const MERCHANT_INVENTORIES = require('./data/npcs/merchants');
@@ -19,6 +21,7 @@ const { VISION_MODES, RACE_VISION, SPELL_VISION_MODES, AMBIENT_LIGHT } = require
 const Calendar = require('./data/calendar');
 const WorldAtlas = require('./data/worldAtlas');
 const { send, getDistance, getDistanceSq } = require('./utils');
+const { canLootLockedCorpse } = require('./utils/corpseLoot');
 const VisionSystem = require('./systems/vision');
 const SpatialSystem = require('./systems/spatial');
 const AISystem = require('./systems/ai');
@@ -68,7 +71,7 @@ let worldCalendar = State.worldCalendar;
 
 // ── Session Management ──────────────────────────────────────────────
 
-async function createSession(ws, char) {
+async function createSession(ws, char, auth = null) {
   // Map EQEmu short_name to our internal zone key (qeytoqrg → qeynos_hills)
   char.zoneId = ZoneSystem.resolveZoneKey(char.zoneId);
 
@@ -126,6 +129,7 @@ async function createSession(ws, char) {
   const session = {
     ws,
     char,
+    auth: auth || null,
     inventory,
     spells,        // memorized gems (slot 0-7)
     spellbook: [],  // all scribed spells (bookSlot 0-791)
@@ -139,6 +143,7 @@ async function createSession(ws, char) {
     buffs: [],
     casting: null,
     activeVisionMode: null,  // null = auto (racial/spell), or explicit mode key
+    corpseConsentTo: new Set(), // lowercase names /consent allows to loot this player's corpses
   };
 
   // Load spellbook from DB
@@ -260,6 +265,9 @@ async function handleMessage(ws, msg) {
     case 'AUTO_INVENTORY': return handleAutoInventory(session);
     case 'TARGET_NAME': return handleTargetName(session, msg);
     case 'CORPSE_DRAG': return handleCorpseDrag(session);
+    case 'CORPSE_CONSENT': return handleCorpseConsent(session, msg);
+    case 'CORPSE_DENY': return handleCorpseDeny(session, msg);
+    case 'TAKE_LOOT_ITEM': return handleTakeLootItem(session, msg);
     case 'PET_COMMAND': return handlePetCommand(session, msg);
     case 'MERCENARY_ACTION': return handleMercenaryAction(session, msg);
     case 'HIRE_STUDENT': return handleHireStudent(session, msg);
@@ -273,6 +281,8 @@ async function handleMessage(ws, msg) {
     case 'NPC_GIVE_CANCEL': 
       sendInventory(session);
       return;
+    case 'GET_INVENTORY':
+      return sendInventory(session);
     case 'PET_INVENTORY_ACTION': return InventorySystem.handlePetInventoryAction(session, msg);
     
     // --- Group System ---
@@ -318,7 +328,7 @@ async function handleMessage(ws, msg) {
       break;
     }
     case 'DESTROY_ITEM': return InventorySystem.handleDestroyItem(session, msg);
-    case 'MOVE_ITEM': return InventorySystem.handleMoveItem(session, msg);
+    case 'SPLIT_MOVE_ITEM': return InventorySystem.handleSplitMoveItem(session, msg);
     case 'AUTO_EQUIP': return InventorySystem.handleAutoEquip(session, msg);
     case 'MEMORIZE_SPELL': return SpellSystem.handleMemorizeSpell(session, msg);
     case 'FORGET_SPELL': return SpellSystem.handleForgetSpell(session, msg);
@@ -511,74 +521,10 @@ async function handleRequestDeities(ws, msg) {
 async function handleRequestCharCreateData(ws, msg) {
   const raceId = msg.raceId || 1;
   const data = await eqemuDB.getCharCreateData(raceId);
-
-  // Attach deity names for the client
-  for (const cls of data.classes) {
-    cls.deityNames = cls.deities.map(id => ({ id, name: DEITY_NAMES[id] || `Unknown (${id})` }));
-  }
-
-  // Scan for real face variant GLBs with lazy-loading cache
-  const fs = require('fs');
-  const path = require('path');
-  if (!global.faceVariantCache) global.faceVariantCache = new Map();
-  let faceCountMale = 1, faceCountFemale = 1;
-  
-  if (global.faceVariantCache.has(raceId)) {
-    const cached = global.faceVariantCache.get(raceId);
-    faceCountMale = cached.male;
-    faceCountFemale = cached.female;
-  } else {
-    const raceModelsPath = path.join(__dirname, '..', 'eqmud', 'Data', 'race_models.json');
-    const charsDir = path.join(__dirname, '..', 'eqmud', 'Data', 'Characters');
-    try {
-      const raceModels = JSON.parse(fs.readFileSync(raceModelsPath, 'utf8'));
-      const entry = raceModels[String(raceId)];
-      if (entry) {
-        const countFaces = (code) => {
-          try {
-            const texDir = path.join(charsDir, 'Textures');
-            if (fs.existsSync(texDir)) {
-              const files = fs.readdirSync(texDir);
-              const pattern = new RegExp(`^${code}he00(\\d)1\\.png$`, 'i');
-              let maxFace = 0;
-              for (const f of files) {
-                const match = f.match(pattern);
-                if (match) {
-                  const faceIdx = parseInt(match[1], 10);
-                  if (faceIdx > maxFace) maxFace = faceIdx;
-                }
-              }
-              if (maxFace > 0) return maxFace + 1;
-            }
-
-            const baseFiles = fs.readdirSync(charsDir);
-            const facePattern = new RegExp(`^${code}_face(\\d+)\\.glb$`, 'i');
-            const faceFiles = baseFiles.filter(f => facePattern.test(f));
-            if (faceFiles.length > 0) return faceFiles.length + 1;
-
-            if (code === 'frm' || code === 'frf') {
-              const frogPattern = new RegExp(`^${code}_0(\\d)\\.glb$`, 'i');
-              const frogFiles = baseFiles.filter(f => frogPattern.test(f));
-              if (frogFiles.length > 0) return frogFiles.length;
-            }
-
-            return 1;
-          } catch { return 1; }
-        };
-        faceCountMale = countFaces(entry.m);
-        faceCountFemale = countFaces(entry.f);
-      }
-    } catch (e) {
-      console.log('[ENGINE] Could not scan face variants:', e.message);
-    }
-    global.faceVariantCache.set(raceId, { male: faceCountMale, female: faceCountFemale });
-  }
-  
-  data.faceCountMale = faceCountMale;
-  data.faceCountFemale = faceCountFemale;
+  attachFaceCounts(data, raceId);
 
   send(ws, { type: 'CHAR_CREATE_DATA', ...data });
-  console.log(`[ENGINE] Sent char create data for race ${raceId}: ${data.classes.length} classes, faces: M=${faceCountMale} F=${faceCountFemale}.`);
+  console.log(`[ENGINE] Sent char create data for race ${raceId}: ${data.classes.length} classes, faces: M=${data.faceCountMale} F=${data.faceCountFemale}.`);
 }
 
 async function handleLogin(ws, msg) {
@@ -663,149 +609,12 @@ async function handleCreateCharacter(ws, msg) {
     return send(ws, { type: 'ERROR', message: 'Not authenticated. Please login first.' });
   }
 
-  const name = msg.name || 'Hero';
-  const charClass = msg.class || 'warrior';
-  const race = msg.race || 'human';
-  const deity = msg.deity || 396; // Default to Agnostic
-
-  // Look up numeric IDs for validation
-  const eqemuDB = require('./eqemu_db');
-  const constants = require('./data/constants');
-  const CLASSES_MAP = constants.CLASSES;
-  const RACES_MAP = constants.RACES;
-  const raceId = RACES_MAP[race] || 1;
-  const classId = CLASSES_MAP[charClass] || 1;
-
-  // Validate race/class/deity combo against the DB
-  const createData = await eqemuDB.getCharCreateData(raceId);
-  const classEntry = createData.classes.find(c => c.classId === classId);
-  if (!classEntry) {
-    return send(ws, { type: 'ERROR', message: `${race} cannot be a ${charClass}.` });
-  }
-  if (!classEntry.deities.includes(deity)) {
-    return send(ws, { type: 'ERROR', message: `That deity is not available for this race/class combination.` });
+  const result = await createCharacterFromClientMessage(auth.accountId, msg);
+  if (result.error) {
+    return send(ws, { type: 'ERROR', message: result.error });
   }
 
-  // Use DB base stats + player-allocated bonus points
-  const dbAlloc = classEntry.allocation;
-  const totalPool = (dbAlloc.alloc_str || 0) + (dbAlloc.alloc_sta || 0) + (dbAlloc.alloc_dex || 0) +
-                    (dbAlloc.alloc_agi || 0) + (dbAlloc.alloc_int || 0) + (dbAlloc.alloc_wis || 0) +
-                    (dbAlloc.alloc_cha || 0);
-
-  // Accept player-allocated stats if provided, otherwise use DB defaults
-  let allocStr, allocSta, allocDex, allocAgi, allocInt, allocWis, allocCha;
-  if (msg.stats && typeof msg.stats === 'object') {
-    allocStr = Math.max(0, msg.stats.str || 0);
-    allocSta = Math.max(0, msg.stats.sta || 0);
-    allocDex = Math.max(0, msg.stats.dex || 0);
-    allocAgi = Math.max(0, msg.stats.agi || 0);
-    allocInt = Math.max(0, msg.stats.int || 0);
-    allocWis = Math.max(0, msg.stats.wis || 0);
-    allocCha = Math.max(0, msg.stats.cha || 0);
-    const spent = allocStr + allocSta + allocDex + allocAgi + allocInt + allocWis + allocCha;
-    if (spent > totalPool) {
-      return send(ws, { type: 'ERROR', message: `You spent ${spent} stat points but only have ${totalPool}.` });
-    }
-  } else {
-    // Use DB default allocation
-    allocStr = dbAlloc.alloc_str || 0;
-    allocSta = dbAlloc.alloc_sta || 0;
-    allocDex = dbAlloc.alloc_dex || 0;
-    allocAgi = dbAlloc.alloc_agi || 0;
-    allocInt = dbAlloc.alloc_int || 0;
-    allocWis = dbAlloc.alloc_wis || 0;
-    allocCha = dbAlloc.alloc_cha || 0;
-  }
-
-  const finalStats = {
-    str: dbAlloc.base_str + allocStr,
-    sta: dbAlloc.base_sta + allocSta,
-    agi: dbAlloc.base_agi + allocAgi,
-    dex: dbAlloc.base_dex + allocDex,
-    wis: dbAlloc.base_wis + allocWis,
-    intel: dbAlloc.base_int + allocInt,
-    cha: dbAlloc.base_cha + allocCha,
-  };
-
-  // Compute starting HP/mana from the classic EQ formulas
-  const startHp = combat.calcMaxHP(charClass, 1, finalStats.sta);
-  const startMana = combat.calcMaxMana(charClass, 1, finalStats);
-
-  // Extract appearance fields from client
-  const appearance = {
-    gender:    msg.gender    || 0,
-    face:      msg.face      || 0,
-    hairStyle: msg.hairStyle || 0,
-    hairColor: msg.hairColor || 0,
-    beard:     msg.beard     || 0,
-    beardColor:msg.beardColor|| 0,
-    eyeColor:  msg.eyeColor  || 0,
-  };
-
-  const createResult = await DB.createCharacter(
-     auth.accountId, name, charClass, race, deity,
-     finalStats.str, finalStats.sta, finalStats.agi, finalStats.dex, finalStats.wis, finalStats.intel, finalStats.cha,
-     startHp, startMana, appearance
-  );
-
-  if (createResult && createResult.error) {
-    return send(ws, { type: 'ERROR', message: createResult.error });
-  }
-
-  const char = await DB.getCharacter(name);
-
-  // Give starter gear
-  const starterItems = STARTER_GEAR[charClass] || STARTER_GEAR.warrior;
-  for (const gear of starterItems) {
-    await DB.addItem(char.id, gear.itemId, 1, gear.slot);
-  }
-
-  // Give starter spells — canonical EQ guild master hand-out (1-2 spells only)
-  // Players must buy/scribe additional spells from spell vendors
-  const STARTER_SPELLS = {
-    cleric:       ['minor_healing', 'strike'],
-    wizard:       ['frost_bolt', 'minor_shielding'],
-    necromancer:  ['lifetap', 'minor_shielding'],
-    enchanter:    ['lull', 'minor_shielding'],
-    magician:     ['flare', 'minor_shielding'],
-    druid:        ['minor_healing', 'snare'],
-    shaman:       ['minor_healing', 'inner_fire'],
-    bard:         ['chant_of_battle'],
-    ranger:       ['salve'],
-    paladin:      ['salve'],
-    shadow_knight:['spike_of_disease'],
-    // Melee classes — no starting spells
-    warrior:      [],
-    monk:         [],
-    rogue:        [],
-  };
-
-  const starterKeys = STARTER_SPELLS[charClass] || [];
-  if (starterKeys.length > 0) {
-    let slotIdx = 0;
-    for (const key of starterKeys) {
-      const spellDef = SpellDB.getByKey(key);
-      if (spellDef) {
-        DB.memorizeSpell(char.id, spellDef._key, slotIdx++);
-      } else {
-        console.warn(`[ENGINE] Starter spell '${key}' not found in spell DB for ${charClass}`);
-      }
-    }
-    console.log(`[ENGINE] Gave ${slotIdx} starter spells to ${charClass} "${name}": ${starterKeys.join(', ')}`);
-  }
-
-  console.log(`[ENGINE] Created ${charClass} "${name}" (${race}) on account '${auth.accountName}' with stats STR=${finalStats.str} STA=${finalStats.sta} AGI=${finalStats.agi} DEX=${finalStats.dex} WIS=${finalStats.wis} INT=${finalStats.intel} CHA=${finalStats.cha}.`);
-
-  // Apply racial starting skill bonuses (e.g., Dwarves +10 Mining)
-  const racialSkills = RACIAL_STARTING_SKILLS[race];
-  if (racialSkills) {
-    await DB.saveCharacterSkills(char.id, racialSkills);
-    console.log(`[ENGINE] Applied racial skill bonuses for ${race}: ${JSON.stringify(racialSkills)}`);
-  }
-
-  // Send updated character list back to character select
-  const characters = await DB.getCharactersByAccount(auth.accountId);
-  send(ws, { type: 'CHARACTER_CREATED', name: char.name, characters });
+  send(ws, { type: 'CHARACTER_CREATED', name: result.name, characters: result.characters });
 }
 
 function handleDoorClick(session, msg) {
@@ -1066,6 +875,7 @@ function handleSetTarget(session, msg) {
                   maxHp: 100,
                   level: corpse.level,
                   type: 'corpse',
+                  buffs: []
               },
           });
           sendStatus(session);
@@ -1373,12 +1183,16 @@ async function handleCastSpell(session, msg) {
   };
 
   // Notify client to show cast bar
+  const rawAnim = spellDef.castingAnimation;
+  const animNum = typeof rawAnim === 'number' && !Number.isNaN(rawAnim)
+    ? rawAnim
+    : parseInt(String(rawAnim ?? ''), 10);
   session.ws.send(JSON.stringify({
     type: 'CAST_START',
     spellName: spellDef.name,
     castTime: castTimeSec,
     slot: slotIndex,
-    animType: spellDef.castingAnimation || 44
+    animType: Number.isFinite(animNum) ? animNum : 44
   }));
 
   sendCombatLog(session, [{ event: 'MESSAGE', text: `You begin casting ${spellDef.name}.` }]);
@@ -2990,26 +2804,269 @@ function handleTargetName(session, msg) {
   }
 }
 
-function handleCorpseDrag(session) {
-  const target = session.combatTarget;
-  if (!target || target.type !== 'corpse') {
-      sendCombatLog(session, [{ event: 'MESSAGE', text: `You must have a corpse targeted to drag it.` }]);
+const CORPSE_DRAG_RANGE_SQ = 40 * 40;
+const CORPSE_DRAG_FIND_SQ = 200 * 200;
+
+function syncInMemoryCorpseConsent(charId, charName, granteeNorm, add) {
+  const nameNorm = (charName || '').trim().toLowerCase();
+  for (const inst of Object.values(zoneInstances)) {
+    if (!inst || !inst.corpses) continue;
+    for (const c of inst.corpses) {
+      if (c.type !== 'corpse' || c.isNpc !== false) continue;
+      if (c.mobId !== charId && (c.originalName || '').trim().toLowerCase() !== nameNorm) continue;
+      if (!c.lootConsentNames) c.lootConsentNames = [];
+      if (add) {
+        if (!c.lootConsentNames.includes(granteeNorm)) c.lootConsentNames.push(granteeNorm);
+      } else {
+        c.lootConsentNames = c.lootConsentNames.filter(n => String(n).toLowerCase() !== granteeNorm);
+      }
+    }
+  }
+}
+
+function clearInMemoryCorpseConsent(charId, charName) {
+  const nameNorm = (charName || '').trim().toLowerCase();
+  for (const inst of Object.values(zoneInstances)) {
+    if (!inst || !inst.corpses) continue;
+    for (const c of inst.corpses) {
+      if (c.type !== 'corpse' || c.isNpc !== false) continue;
+      if (c.mobId !== charId && (c.originalName || '').trim().toLowerCase() !== nameNorm) continue;
+      c.lootConsentNames = [];
+    }
+  }
+}
+
+function handleCorpseConsent(session, msg) {
+  const raw = (msg.targetName || msg.name || '').trim();
+  if (!raw) {
+    sendCombatLog(session, [{ event: 'MESSAGE', text: 'Usage: /consent <name>, /consent group, or /consent list' }]);
+    return;
+  }
+  const lower = raw.toLowerCase();
+  if (lower === 'list') {
+    const arr = session.corpseConsentTo ? Array.from(session.corpseConsentTo) : [];
+    sendCombatLog(session, [{
+      event: 'MESSAGE',
+      text: arr.length
+        ? `Players allowed to loot your corpse: ${arr.join(', ')}`
+        : 'No corpse loot permissions granted (besides yourself).'
+    }]);
+    return;
+  }
+  if (!session.corpseConsentTo) session.corpseConsentTo = new Set();
+  const selfNorm = session.char.name.trim().toLowerCase();
+
+  if (lower === 'group') {
+    if (!session.group || !session.group.members.length) {
+      sendCombatLog(session, [{ event: 'MESSAGE', text: 'You are not in a group.' }]);
       return;
+    }
+    let count = 0;
+    for (const m of session.group.members) {
+      const n = (m.char.name || '').trim().toLowerCase();
+      if (!n || n === selfNorm) continue;
+      session.corpseConsentTo.add(n);
+      syncInMemoryCorpseConsent(session.char.id, session.char.name, n, true);
+      if (DB.appendLootConsentForCharacterCorpses) DB.appendLootConsentForCharacterCorpses(session.char.id, n);
+      count++;
+    }
+    sendCombatLog(session, [{
+      event: 'MESSAGE',
+      text: count
+        ? `You consent your group (${count} other${count === 1 ? '' : 's'}) to loot your corpses.`
+        : 'No other players in your group to consent.'
+    }]);
+    return;
   }
 
-  const char = session.char;
-  const distSq = getDistanceSq(char.x, char.y, target.x, target.y);
-  const DRAG_RANGE = 40; // Fairly short range to start dragging
-  
-  if (distSq > DRAG_RANGE * DRAG_RANGE) {
-      sendCombatLog(session, [{ event: 'MESSAGE', text: `You are too far away to drag that corpse.` }]);
+  if (lower === selfNorm) {
+    sendCombatLog(session, [{ event: 'MESSAGE', text: 'You cannot consent yourself.' }]);
+    return;
+  }
+  session.corpseConsentTo.add(lower);
+  syncInMemoryCorpseConsent(session.char.id, session.char.name, lower, true);
+  if (DB.appendLootConsentForCharacterCorpses) DB.appendLootConsentForCharacterCorpses(session.char.id, lower);
+  sendCombatLog(session, [{ event: 'MESSAGE', text: `${raw} may now loot your corpses.` }]);
+}
+
+function handleCorpseDeny(session, msg) {
+  const raw = (msg.targetName || msg.name || '').trim();
+  if (!raw) {
+    sendCombatLog(session, [{ event: 'MESSAGE', text: 'Usage: /deny <name>, /deny group, or /deny all' }]);
+    return;
+  }
+  const lower = raw.toLowerCase();
+  const selfNorm = session.char.name.trim().toLowerCase();
+  if (!session.corpseConsentTo) session.corpseConsentTo = new Set();
+
+  if (lower === 'all') {
+    session.corpseConsentTo.clear();
+    clearInMemoryCorpseConsent(session.char.id, session.char.name);
+    if (DB.clearLootConsentForCharacterCorpses) DB.clearLootConsentForCharacterCorpses(session.char.id);
+    sendCombatLog(session, [{ event: 'MESSAGE', text: 'You revoke corpse loot consent for everyone.' }]);
+    return;
+  }
+  if (lower === 'group') {
+    if (!session.group || !session.group.members.length) {
+      sendCombatLog(session, [{ event: 'MESSAGE', text: 'You are not in a group.' }]);
       return;
+    }
+    for (const m of session.group.members) {
+      const n = (m.char.name || '').trim().toLowerCase();
+      if (!n || n === selfNorm) continue;
+      session.corpseConsentTo.delete(n);
+      syncInMemoryCorpseConsent(session.char.id, session.char.name, n, false);
+      if (DB.removeLootConsentForCharacterCorpses) DB.removeLootConsentForCharacterCorpses(session.char.id, n);
+    }
+    sendCombatLog(session, [{ event: 'MESSAGE', text: 'You revoke corpse loot consent from your group.' }]);
+    return;
+  }
+  session.corpseConsentTo.delete(lower);
+  syncInMemoryCorpseConsent(session.char.id, session.char.name, lower, false);
+  if (DB.removeLootConsentForCharacterCorpses) DB.removeLootConsentForCharacterCorpses(session.char.id, lower);
+  sendCombatLog(session, [{ event: 'MESSAGE', text: `${raw} may no longer loot your corpses (unless grouped with you).` }]);
+}
+
+function handleCorpseDrag(session) {
+  const char = session.char;
+  let target = session.combatTarget;
+  if (!target || target.type !== 'corpse') {
+    const zone = zoneInstances[char.zoneId];
+    if (zone && zone.corpses) {
+      let best = null;
+      let bestD = CORPSE_DRAG_FIND_SQ;
+      for (const c of zone.corpses) {
+        if (c.type !== 'corpse' || c.isNpc !== false) continue;
+        if (c.mobId !== char.id && (c.originalName || '').toLowerCase() !== char.name.toLowerCase()) continue;
+        const d = getDistanceSq(char.x, char.y, c.x, c.y);
+        if (d < bestD) {
+          bestD = d;
+          best = c;
+        }
+      }
+      target = best;
+    }
+  }
+
+  if (!target || target.type !== 'corpse') {
+    sendCombatLog(session, [{ event: 'MESSAGE', text: `You have no corpse in this area to drag. Target your corpse or move closer.` }]);
+    return;
+  }
+
+  if (target.isNpc !== false || (target.mobId !== char.id && (target.originalName || '').toLowerCase() !== char.name.toLowerCase())) {
+    sendCombatLog(session, [{ event: 'MESSAGE', text: `You can only drag your own corpse.` }]);
+    return;
+  }
+
+  const distSq = getDistanceSq(char.x, char.y, target.x, target.y);
+  if (distSq > CORPSE_DRAG_RANGE_SQ) {
+    sendCombatLog(session, [{ event: 'MESSAGE', text: `You are too far away to drag that corpse.` }]);
+    return;
   }
 
   target.x = char.x;
   target.y = char.y;
   target.z = char.z;
   sendCombatLog(session, [{ event: 'MESSAGE', text: `You pull the corpse towards you.` }]);
+
+  if (DB && DB.updatePlayerCorpse && target.id) {
+    DB.updatePlayerCorpse({ ...target, zone: session.char.zoneId, zoneId: session.char.zoneId });
+  }
+}
+
+async function handleTakeLootItem(session, msg) {
+  const { corpseId, lootIndex } = msg;
+  const char = session.char;
+  const zone = zoneInstances[char.zoneId];
+  if (!zone || !zone.corpses) return;
+
+  const corpse = zone.corpses.find(c => c.id === corpseId);
+  if (!corpse) {
+    sendCombatLog(session, [{ event: 'MESSAGE', text: `That corpse no longer exists.` }]);
+    return;
+  }
+
+  const distSq = getDistanceSq(char.x, char.y, corpse.x, corpse.y);
+  if (distSq > HAIL_RANGE * HAIL_RANGE) {
+    sendCombatLog(session, [{ event: 'MESSAGE', text: `You are too far away to loot that corpse.` }]);
+    return;
+  }
+
+  if (!canLootLockedCorpse(corpse, session)) {
+    sendCombatLog(session, [{ event: 'MESSAGE', text: `You do not have permission to loot this corpse.` }]);
+    return;
+  }
+
+  const lootEntry = corpse.loot[lootIndex];
+  if (!lootEntry) return;
+
+  const itemKey = lootEntry.itemKey;
+  const itemDef = ItemDB.getById(itemKey) || CombatSystem.getItems()[itemKey];
+  
+  if (!itemDef) return;
+
+  // Add to inventory
+  await DB.addItem(char.id, itemKey, 0, 0, lootEntry.qty || 1);
+  session.inventory = await DB.getInventory(char.id);
+  
+  // Remove from corpse
+  corpse.loot.splice(lootIndex, 1);
+
+  // Persist corpse loot update
+  if (DB && DB.updatePlayerCorpse) {
+    DB.updatePlayerCorpse({ ...corpse, zone: char.zoneId, zoneId: char.zoneId });
+  }
+  
+  // Send updated inventory
+  InventorySystem.sendInventory(session);
+  
+  // Broadcast loot message (Part 1 - Req 5 & 6)
+  const itemName = itemDef.name || itemKey;
+  const playerName = char.name;
+  
+  // Create clickable message for nearby players
+  const broadcastText = `<span color="#ffff00" onclick="SetTargetByName('${playerName}')">${playerName}</span> picked up [<span color="#00ff00" onclick="ItemInspect('${itemKey}')">${itemName}</span>]`;
+  
+  const NEARBY_RANGE = 15; // User asked for ~10 feet, let's use 15 units for "nearby"
+  
+  for (const [ws, s] of sessions) {
+      if (!s.char || s.char.zoneId !== char.zoneId) continue;
+      const dSq = getDistanceSq(char.x, char.y, s.char.x, s.char.y);
+      if (dSq <= NEARBY_RANGE * NEARBY_RANGE) {
+          sendCombatLog(s, [{ event: 'MESSAGE', text: broadcastText }]);
+      }
+  }
+
+  // If corpse is now empty and no coins, set it to decay faster
+  if ((!corpse.loot || corpse.loot.length === 0) && (!corpse.coins || corpse.coins === 0)) {
+      corpse.decayTime = 0;
+      if (DB && DB.deletePlayerCorpse) {
+        DB.deletePlayerCorpse(corpse.id);
+      }
+      // Also notify looter that corpse is empty and should close window
+      send(session.ws, {
+          type: 'LOOT_CORPSE_UPDATE',
+          corpseId: corpse.id,
+          items: []
+      });
+  } else {
+      // Send updated loot window data to the looter
+      const updatedLootItems = corpse.loot.map((le, index) => {
+          const def = ItemDB.getById(le.itemKey) || CombatSystem.getItems()[le.itemKey] || {};
+          return {
+              lootIndex: index,
+              itemKey: le.itemKey || "",
+              name: def.name || "Unknown Item",
+              icon: def.icon || 0,
+              qty: le.qty || 1
+          };
+      });
+      send(session.ws, {
+          type: 'LOOT_CORPSE_UPDATE',
+          corpseId: corpse.id,
+          items: updatedLootItems
+      });
+  }
 }
 
 function handlePetCommand(session, msg) {
@@ -3207,6 +3264,26 @@ function handleTrainSkill(session, msg) {
 // ── Network Helpers ─────────────────────────────────────────────────
 
 
+// Only these EQ itemtype values use idfile → res://Data/Equipment/*.glb on hand bones.
+// Allowlist (not blocklist): EQ has dozens of misc/unknown types (e.g. 48 = ItemTypeUnknown10) with
+// idfiles that are not weapon meshes — "drag items", quest objects, etc.
+// See eqemu_source/common/item_data.h ItemType enum order.
+const HELD_WEAPON_MESH_ITEMTYPES = new Set([
+  0, 1, 2, 3, 4, 5, // 1H/2H Slash, Pierce, Blunt, Bow
+  7, // Large throwing
+  8, // Shield
+  19, // Small throwing
+  35, // 2H piercing
+  45, // Martial
+]);
+
+function itemUsesHeldWeapon3dMesh(itemDef) {
+  if (!itemDef || !itemDef.idfile) return false;
+  const t = Number(itemDef.itemtype);
+  if (!Number.isFinite(t)) return false;
+  return HELD_WEAPON_MESH_ITEMTYPES.has(t);
+}
+
 // Compute per-slot armor material indices and weapon model IDs from equipped items
 // Returns: { head: 0, chest: 0, ..., primaryWeapon: 'IT10', secondaryWeapon: 'IT215' }
 function getEquipVisuals(session) {
@@ -3236,12 +3313,12 @@ function getEquipVisuals(session) {
       visuals[bodyPart] = itemDef.material;
     }
 
-    // Primary weapon (slot 13)
-    if (inv.slot === 13 && itemDef.idfile) {
+    // Primary weapon (slot 13) — only real weapons/shields use converted Equipment/*.glb meshes
+    if (inv.slot === 13 && itemUsesHeldWeapon3dMesh(itemDef)) {
       visuals.primaryWeapon = itemDef.idfile.toLowerCase();
     }
     // Secondary weapon/shield (slot 14)
-    if (inv.slot === 14 && itemDef.idfile) {
+    if (inv.slot === 14 && itemUsesHeldWeapon3dMesh(itemDef)) {
       visuals.secondaryWeapon = itemDef.idfile.toLowerCase();
     }
   }
@@ -3250,7 +3327,7 @@ function getEquipVisuals(session) {
   return visuals;
 }
 
-function sendFullState(session) {
+function sendFullState(session, opts = {}) {
   // Set a login freeze to ignore movement updates for a few seconds
   // while the client loads geometry to prevent falling through floor
   session.loginFreeze = Date.now() + 5000; 
@@ -3262,7 +3339,11 @@ function sendFullState(session) {
   SpellSystem.sendBuffs(session);
   sendMercenaries(session);
   sendStatus(session);
-  handleLook(session);
+  // After death respawn / zone teleport, force a full ZONE_STATE so the client does not delta-remove all entities
+  if (opts.forceZoneSync) {
+    session.lastZoneStateEntities = new Map();
+  }
+  handleLook(session, !!opts.forceZoneSync);
 }
 
 function sendLoginOk(session) {
@@ -3491,10 +3572,10 @@ function sendStatus(session) {
       extendedTargets: extendedTargets,
       target: session.combatTarget ? {
         id: session.combatTarget.id,
-        name: session.combatTarget.name,
-        hp: session.combatTarget.hp,
-        level: session.combatTarget.level,
-        maxHp: session.combatTarget.maxHp,
+        name: session.combatTarget.name || "A corpse",
+        hp: session.combatTarget.hp || 0,
+        level: session.combatTarget.level || 1,
+        maxHp: session.combatTarget.maxHp || 100,
         targetTarget: (() => {
           let mt = session.combatTarget.target;
           // If target is a player session, they use combatTarget
@@ -3508,7 +3589,7 @@ function sendStatus(session) {
           if (mt.char) {
             return { name: mt.char.name, hp: mt.char.hp, maxHp: mt.effectiveStats.hp };
           }
-          return { name: mt.name, hp: mt.hp, maxHp: mt.maxHp };
+          return { name: mt.name || "Unknown", hp: mt.hp || 0, maxHp: mt.maxHp || 100 };
         })(),
         buffs: (session.combatTarget.buffs || []).map(b => ({
           name: b.name,
@@ -3624,9 +3705,12 @@ function sendInventory(session) {
       weight: def.weight || 0,
       value: def.value || 0,
       sellValue: Math.max(1, Math.floor((def.value || 1) * 0.25 * StatsSystem.getChaSellMod(session))),
+      stackSize: def.stacksize || 0,
+      stackable: def.stackable || 0,
       classes: def.classes || 0,
       races: def.races || 0,
       itemtype: def.itemtype || 0,
+      bagslots: def.bagslots ?? 0, // items.bagslots — container capacity; 0 = not a bag
       equipSlot: def.slot || 0,
       icon: def.icon || 0,
       clicky: def.scrolleffect || 0,
@@ -3726,7 +3810,7 @@ function startGameLoop() {
         }
         CombatSystem.processCombatTick(session, dt);
         StatsSystem.processBuffs(session, dt);
-        SurvivalSystem.processSurvival(session, dt, sendCombatLog, sendStatus);
+        SurvivalSystem.processSurvival(session, dt, sendCombatLog, sendStatus, sendInventory);
         processSkillCooldowns(session, dt);
         sendStatus(session);
 
@@ -3840,7 +3924,8 @@ function startGameLoop() {
       breakSneak: MovementSystem.breakSneak, breakHide: MovementSystem.breakHide, despawnPet,
       breakMez: SpellSystem.breakMez,
       broadcastTargetUpdate: broadcastTargetUpdate,
-      handleTrainSkill: (session, skill) => StatsSystem.handleTrainSkill(session, skill)
+      handleTrainSkill: (session, skill) => StatsSystem.handleTrainSkill(session, skill),
+      handlePlayerDeath: (session, events) => CombatSystem.handlePlayerDeath(session, events || [])
     };
 
     for (const zoneId of Object.keys(zoneInstances)) {
@@ -3889,7 +3974,10 @@ function processEnvironment() {
       if (zone.corpses) {
           zone.corpses = zone.corpses.filter(c => {
               if (now >= c.decayTime) {
-                  // Poof!
+                  // Poof! Remove from DB if it's a persisted player corpse
+                  if (DB && DB.deletePlayerCorpse && c.id && String(c.id).startsWith('corpse_player_')) {
+                    DB.deletePlayerCorpse(c.id);
+                  }
                   return false;
               }
               return true;
@@ -3902,7 +3990,15 @@ function handleLook(session, forceSync = false) {
   try {
   const char = session.char;
   const zoneDef = ZoneSystem.getZoneDef(char.zoneId);
-  if (!zoneDef) { console.log('[ENGINE] handleLook: no zoneDef for', char.zoneId); return; }
+  if (!zoneDef) {
+    // Avoid spamming logs every tick if a zone isn't loaded yet (common during handoffs / on-demand loads)
+    if (!session._missingZoneDefLog) session._missingZoneDefLog = {};
+    if (!session._missingZoneDefLog[char.zoneId]) {
+      session._missingZoneDefLog[char.zoneId] = true;
+      console.log('[ENGINE] handleLook: no zoneDef for', char.zoneId);
+    }
+    return;
+  }
 
   // Vision Calculation (uses extracted getVisionState)
   const vision = VisionSystem.getVisionState(session, zoneDef);
@@ -3968,7 +4064,8 @@ function handleLook(session, forceSync = false) {
                       face: corpse.face || 0,
                       appearance: corpse.appearance || {},
                       equipVisuals: corpse.equipVisuals || {},
-                      size: corpse.size || 6
+                      size: corpse.size || 6,
+                      animation: corpse.animation || null
                   };
               }
               entities.push({ ...corpse.networkData, x: corpse.x, y: corpse.y, z: corpse.z || 0, heading: corpse.heading || 0, hp: 0 });
@@ -4626,7 +4723,7 @@ async function handleManualLogin(ws, data) {
     }
   }
 
-  const session = await createSession(ws, char);
+  const session = await createSession(ws, char, data);
   console.log(`[ENGINE] ${char.name} manually logged in (handoff) with full state sync.`);
   sendFullState(session);
 }
@@ -4694,7 +4791,9 @@ async function bootstrapServer() {
     interruptCasting: tryInterruptCasting,
     sendFullState: sendFullState,
     broadcastTargetUpdate: broadcastTargetUpdate,
-    handleStand: handleStand
+    handleStand: handleStand,
+    broadcastToZone: broadcastToZone,
+    getEquipVisuals: getEquipVisuals
   };
 
   // 2. Initialize Core Systems

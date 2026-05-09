@@ -1,7 +1,9 @@
 const combat = require('../combat');
 const StatsSystem = require('./stats');
 
-let handleMobDeathFn, sendCombatLog, sendStatus, despawnPet, combat_utility, zoneInstances, spellDb, spellSystem, items, db, sendFullState, calcEffectiveStats;
+let handleMobDeathFn, sendCombatLog, sendStatus, despawnPet, combat_utility, zoneInstances, spellDb, spellSystem, items, db, sendFullState, calcEffectiveStats, broadcastToZone, sessions;
+let getEquipVisuals;
+let ensureZoneLoaded;
 
 function init(deps) {
   handleMobDeathFn = deps.handleMobDeath;
@@ -16,6 +18,10 @@ function init(deps) {
   db = deps.db;
   sendFullState = deps.sendFullState;
   calcEffectiveStats = deps.calcEffectiveStats;
+  broadcastToZone = deps.broadcastToZone;
+  sessions = deps.sessions;
+  getEquipVisuals = deps.getEquipVisuals;
+  ensureZoneLoaded = deps.ensureZoneLoaded;
 }
 
 function setDependencies(deps) {
@@ -77,17 +83,20 @@ async function awardExp(session, xp, events = null, mob = null) {
   const zone = (zoneInstances && session.char) ? zoneInstances[session.char.zoneId] : null;
 
   // Generate loot (only if a mob was provided)
-  let generatedLoot = [];
+  let generatedItems = [];
+  let generatedCoins = 0;
   if (mob) {
     if (mob.loottable_id > 0 && db && db.rollLootFromTable) {
-      generatedLoot = await db.rollLootFromTable(mob.loottable_id);
+      const lootRes = await db.rollLootFromTable(mob.loottable_id);
+      generatedItems = lootRes.items || [];
+      generatedCoins = lootRes.coins || 0;
     } else if (mob.loot) {
       // Fallback to static loot
       for (const lootEntry of mob.loot) {
         if (Math.random() < lootEntry.chance) {
           const itemDef = items ? items[lootEntry.itemKey] : null;
           if (itemDef) {
-             generatedLoot.push({ itemKey: lootEntry.itemKey, qty: 1 });
+             generatedItems.push({ itemKey: lootEntry.itemKey, qty: 1 });
           }
         }
       }
@@ -100,12 +109,12 @@ async function awardExp(session, xp, events = null, mob = null) {
     
     // According to EQ rules: 30s if empty, 7.5m if items, 30m if lvl 55+ and items
     let decayMs = 30 * 1000;
-    if (generatedLoot.length > 0) {
+    if (generatedItems.length > 0 || generatedCoins > 0) {
         decayMs = (mob.level >= 55 ? 30 : 7.5) * 60 * 1000;
     }
     
     // Find all players that got credit - for now, just the killing player
-    let lootLockUntil = Date.now() + (generatedLoot.length > 0 ? (mob.level >= 55 ? 5 : 2.5) * 60 * 1000 : 0);
+    let lootLockUntil = Date.now() + (generatedItems.length > 0 || generatedCoins > 0 ? (mob.level >= 55 ? 5 : 2.5) * 60 * 1000 : 0);
     
     const corpse = {
         id: `corpse_${mob.id}_${Date.now()}`,
@@ -125,7 +134,8 @@ async function awardExp(session, xp, events = null, mob = null) {
         equipVisuals: mob.equipVisuals || {},
         size: mob.size || 6,
         isNpc: true,
-        loot: generatedLoot,
+        loot: generatedItems,
+        coins: generatedCoins,
         spawnTime: Date.now(),
         decayTime: Date.now() + decayMs,
         lootLockGroup: session.char.name,
@@ -455,52 +465,7 @@ async function processCombatTick(session, dt) {
 
   // Check player death
   if (session.char.hp <= 0) {
-    session.char.hp = 0;
-    events.push({ event: 'DEATH', who: 'YOU' });
-    events.push({ event: 'MESSAGE', text: 'You have been slain! You return to your bind point.' });
-
-    const zone = zoneInstances[session.char.zoneId];
-    if (zone) {
-        if (!zone.corpses) zone.corpses = [];
-        const corpse = {
-            id: `corpse_player_${session.char.id}_${Date.now()}`,
-            name: `${session.char.name}'s corpse`,
-            type: 'corpse',
-            originalName: session.char.name,
-            mobId: session.char.id,
-            level: session.char.level,
-            x: session.char.x,
-            y: session.char.y,
-            z: session.char.z,
-            heading: session.char.heading || 0,
-            race: session.char.race || 1,
-            gender: session.char.gender || 0,
-            face: session.char.face || 0,
-            appearance: session.char.appearance || {},
-            equipVisuals: session.char.equipVisuals || {}, // Player equipment is on the corpse!
-            size: 6,
-            isNpc: false,
-            loot: [], // Empty for MVP to prevent actual item loss, just a visual marker
-            spawnTime: Date.now(),
-            decayTime: Date.now() + 7 * 24 * 60 * 60 * 1000, // 7 days
-            lootLockGroup: session.char.name,
-            lootLockUntil: Date.now() + 7 * 24 * 60 * 60 * 1000
-        };
-        zone.corpses.push(corpse);
-    }
-
-    session.char.hp = Math.floor(session.effectiveStats.hp * 0.5);
-    session.char.mana = Math.floor(session.effectiveStats.mana * 0.5);
-    session.char.state = 'standing';
-    session.inCombat = false;
-    session.combatTarget = null;
-    if (session.pet) {
-      despawnPet(session, 'Your pet has lost its master and fades away.');
-    }
-
-    const xpPenalty = Math.floor(combat.xpForLevel(session.char.level) * 0.05);
-    session.char.experience = Math.max(0, session.char.experience - xpPenalty);
-    events.push({ event: 'MESSAGE', text: `You lost ${xpPenalty} experience.` });
+    await handlePlayerDeath(session, events);
   }
 
   if (session.skillUpMessages && session.skillUpMessages.length > 0) {
@@ -554,6 +519,246 @@ module.exports = {
   setDependencies,
   processCombatTick,
   handleMobDeath,
+  handlePlayerDeath,
   canInteract,
   awardExp
 };
+
+async function handlePlayerDeath(session, events) {
+  // Avoid double-processing (multiple damage sources in one tick)
+  if (!session || !session.char) return;
+  if (session.char.state === 'dead' || session._respawnTimer) return;
+
+  // Classic-style: full corpse + XP loss + naked bind only from this level onward (newbie protection).
+  const DEATH_FULL_PENALTY_MIN_LEVEL = 6;
+  const applyFullDeathPenalty = session.char.level >= DEATH_FULL_PENALTY_MIN_LEVEL;
+
+  session.char.hp = 0;
+  events.push({ event: 'DEATH', who: 'YOU' });
+  events.push({
+    event: 'MESSAGE',
+    text: applyFullDeathPenalty
+      ? 'You have been slain! You return to your bind point.'
+      : 'You have been slain! You return to your bind point, still clutching your gear.'
+  });
+
+  const zone = zoneInstances[session.char.zoneId];
+
+  if (db && db.getInventory) {
+    try {
+      session.inventory = await db.getInventory(session.char.id);
+    } catch (_) {
+      // keep existing session.inventory
+    }
+  }
+
+  // Snapshot visuals BEFORE stripping inventory (corpse should look like you did at death)
+  const corpseAppearance = session.char.appearance ? { ...session.char.appearance } : {};
+  const corpseEquipVisuals = getEquipVisuals ? getEquipVisuals(session) : (session.char.equipVisuals || {});
+
+  if (applyFullDeathPenalty) {
+    let playerLoot = [];
+    if (Array.isArray(session.inventory)) {
+      playerLoot = session.inventory
+        .map(it => ({
+          itemKey: it.item_key != null ? it.item_key : (it.itemKey != null ? it.itemKey : it.id),
+          qty: it.quantity || 1,
+          slot: it.slot,
+          equipped: it.equipped
+        }))
+        .filter(entry => entry.itemKey != null && entry.slot != null);
+    }
+
+    if (zone) {
+      if (!zone.corpses) zone.corpses = [];
+
+      const corpse = {
+        id: `corpse_player_${session.char.id}_${Date.now()}`,
+        name: `${session.char.name}'s corpse`,
+        type: 'corpse',
+        originalName: session.char.name,
+        mobId: session.char.id,
+        level: session.char.level,
+        x: session.char.x,
+        y: session.char.y,
+        z: session.char.z,
+        heading: session.char.heading || 0,
+        race: session.char.raceId || session.char.race || 1,
+        gender: session.char.gender || 0,
+        face: session.char.face || 0,
+        appearance: corpseAppearance,
+        equipVisuals: corpseEquipVisuals,
+        size: 6,
+        isNpc: false,
+        loot: playerLoot,
+        coins: 0,
+        spawnTime: Date.now(),
+        decayTime: Date.now() + 7 * 24 * 60 * 60 * 1000, // 7 days
+        lootLockGroup: session.char.name,
+        lootLockUntil: Date.now() + 7 * 24 * 60 * 60 * 1000,
+        animation: 'd05',
+        lootConsentNames: session.corpseConsentTo
+          ? Array.from(session.corpseConsentTo).map(n => String(n).trim().toLowerCase()).filter(Boolean)
+          : []
+      };
+      zone.corpses.push(corpse);
+
+      if (db && db.savePlayerCorpse) {
+        try {
+          await db.savePlayerCorpse({ ...corpse, zoneId: session.char.zoneId });
+        } catch (_) {}
+      }
+    }
+
+    if (db && db.deleteItem && Array.isArray(session.inventory)) {
+      const deletions = session.inventory
+        .filter(it => it && it.item_key != null && it.slot != null)
+        .map(it => db.deleteItem(session.char.id, it.item_key, it.slot));
+      try {
+        await Promise.allSettled(deletions);
+      } catch (_) {
+        // Best effort; even if deletions fail, we still proceed with death flow.
+      }
+    }
+    session.inventory = [];
+  }
+
+  // Broadcast death animation so clients play it; corpse keeps the pose
+  if (broadcastToZone) {
+    // Use animation packet (not text emote) to avoid "d05s" log spam
+    // Some clients expect numeric IDs for animation events; send both forms to be safe.
+    broadcastToZone(session.char.zoneId, { type: 'NPC_ANIM', id: session.char.id, anim: 'd05' });
+    broadcastToZone(session.char.zoneId, { type: 'NPC_ANIM', id: `player_${session.char.id}`, anim: 'd05' });
+  }
+
+  // End combat for the dead player
+  session.char.state = 'dead';
+  session.inCombat = false;
+  session.autoFight = false;
+  session.combatTarget = null;
+
+  // Remove any attackers (NPCs + players) from combat immediately
+  const attackerZone = zoneInstances[session.char.zoneId];
+  if (attackerZone && attackerZone.liveMobs) {
+    for (const mob of attackerZone.liveMobs) {
+      if (mob.target === session) {
+        mob.target = null;
+        mob.attackTarget = null;
+        if (mob.hateList) mob.hateList.removeEntFromHateList(session.char.name);
+      }
+    }
+  }
+
+  if (sessions) {
+    for (const otherSession of sessions.values()) {
+      if (!otherSession?.char) continue;
+      if (otherSession.char.zoneId === session.char.zoneId && otherSession.combatTarget === session) {
+        otherSession.combatTarget = null;
+        otherSession.inCombat = false;
+        otherSession.autoFight = false;
+        sendCombatLog(otherSession, [{ event: 'MESSAGE', text: `Your target, ${session.char.name}, has died.` }]);
+        sendStatus(otherSession);
+      }
+    }
+  }
+
+  if (session.pet) {
+    despawnPet(session, 'Your pet has lost its master and fades away.');
+  }
+
+  if (applyFullDeathPenalty) {
+    const xpPenalty = Math.floor(combat_utility.xpForLevel(session.char.level) * 0.05);
+    session.char.experience = Math.max(0, session.char.experience - xpPenalty);
+    events.push({ event: 'MESSAGE', text: `You lost ${xpPenalty} experience.` });
+  }
+
+  // Save death + naked state immediately
+  if (db && db.updateCharacterState) {
+    db.updateCharacterState(session.char);
+  }
+
+  // Delay respawn: let death animation play, then remove model (zone swap) and respawn at bind
+  const DEATH_ANIM_MS = 2500;
+  const RESPAWN_HP_FRAC = 0.5;
+  const RESPAWN_MANA_FRAC = 0.5;
+
+  session._respawnTimer = setTimeout(async () => {
+    session._respawnTimer = null;
+
+    const bindZoneId = session.char.bindZoneId || session.char.zoneId;
+    const bindX = session.char.bindX || 0;
+    const bindY = session.char.bindY || 0;
+    const bindZ = session.char.bindZ || 0;
+    const bindHeading = session.char.bindHeading || 0;
+
+    // Inventory was cleared at death — recompute max HP/mana for naked respawn before persisting
+    session.effectiveStats = calcEffectiveStats(session.char, session.inventory, session.buffs || []);
+    const respawnHp = Math.floor(session.effectiveStats.hp * RESPAWN_HP_FRAC);
+    const respawnMana = Math.floor(session.effectiveStats.mana * RESPAWN_MANA_FRAC);
+
+    const persistPayload = {
+      ...session.char,
+      hp: respawnHp,
+      mana: respawnMana,
+      state: 'standing',
+      zoneId: bindZoneId,
+      x: bindX,
+      y: bindY,
+      z: bindZ,
+      heading: bindHeading
+    };
+
+    // Different zone node: save bind state and reconnect (same path as zoneline handoff)
+    try {
+      const zoneRouter = require('../network/zoneRouter');
+      const routed = await zoneRouter.getUrlForZone(bindZoneId, db);
+      const targetUrl = routed && routed.url ? routed.url : null;
+      const targetNode = routed && routed.node ? routed.node : null;
+      const currentNode = process.env.NODE || null;
+
+      if (session.ws && targetUrl && session.auth && targetNode && currentNode && targetNode !== currentNode) {
+        if (db && db.updateCharacterState) {
+          await db.updateCharacterState(persistPayload);
+        }
+        const tokenManager = require('../network/tokenManager');
+        const zoneToken = await tokenManager.generateToken(session.auth);
+        session.ws.send(JSON.stringify({ type: 'HANDOFF', token: zoneToken, url: targetUrl }));
+        setTimeout(() => {
+          try { session.ws.close(); } catch (e) {}
+        }, 200);
+        return;
+      }
+    } catch (e) {}
+
+    // Same zone node: ensure bind zone is loaded (otherwise handleLook sends empty entities → everyone vanishes)
+    if (ensureZoneLoaded) {
+      try {
+        await ensureZoneLoaded(bindZoneId);
+      } catch (err) {
+        console.error('[COMBAT] ensureZoneLoaded(bind) failed:', err.message);
+      }
+    }
+
+    session.char.hp = respawnHp;
+    session.char.mana = respawnMana;
+    session.char.state = 'standing';
+    session.char.zoneId = bindZoneId;
+    session.char.x = bindX;
+    session.char.y = bindY;
+    session.char.z = bindZ;
+    session.char.heading = bindHeading;
+
+    session.effectiveStats = calcEffectiveStats(session.char, session.inventory, session.buffs || []);
+    session.char.maxHp = session.effectiveStats.hp;
+    session.char.maxMana = session.effectiveStats.mana;
+
+    if (db && db.updateCharacterState) {
+      await db.updateCharacterState(session.char);
+    }
+
+    // Client only reloads geometry + teleports when STATUS includes spawnPos (see sendStatus → pendingTeleport).
+    session.pendingTeleport = { x: bindX, y: bindY, z: bindZ };
+    sendFullState(session, { forceZoneSync: true });
+    sendCombatLog(session, [{ event: 'MESSAGE', text: 'You have respawned at your bind point.' }]);
+  }, DEATH_ANIM_MS);
+}

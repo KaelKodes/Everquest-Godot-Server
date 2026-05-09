@@ -34,6 +34,7 @@ let NPC_FACTION_ENTRIES = {};
 
 let pool;
 let initPromise = null;
+let ZONE_ROUTING_CACHE = null; // zone_short -> { node, continent }
 
 async function init() {
     if (!process.env.EQEMU_PASSWORD) {
@@ -86,6 +87,50 @@ async function init() {
             icon INT DEFAULT 0,
             mem_icon INT DEFAULT 0,
             saved_at BIGINT NOT NULL
+          )
+        `);
+
+        // ── EQMUD Player Corpses (persistent across zone activity) ─────────────
+        await pool.query(`
+          CREATE TABLE IF NOT EXISTS eqmud_player_corpses (
+            corpse_id VARCHAR(128) PRIMARY KEY,
+            character_id INT NOT NULL,
+            character_name VARCHAR(64) NOT NULL,
+            zone_id VARCHAR(64) NOT NULL,
+            x FLOAT NOT NULL,
+            y FLOAT NOT NULL,
+            z FLOAT NOT NULL,
+            heading FLOAT NOT NULL,
+            level INT NOT NULL,
+            race INT NOT NULL,
+            gender INT NOT NULL,
+            face INT NOT NULL,
+            appearance_json TEXT,
+            equip_visuals_json TEXT,
+            loot_json LONGTEXT,
+            coins INT DEFAULT 0,
+            animation VARCHAR(16),
+            loot_lock_group VARCHAR(64),
+            loot_lock_until BIGINT,
+            created_at BIGINT NOT NULL,
+            decay_time BIGINT NOT NULL,
+            KEY idx_zone_decay (zone_id, decay_time),
+            KEY idx_char (character_id)
+          )
+        `);
+        try {
+          await pool.query('ALTER TABLE eqmud_player_corpses ADD COLUMN loot_consent_json TEXT NULL');
+        } catch (e) { /* column exists */ }
+
+        await pool.query(`
+          CREATE TABLE IF NOT EXISTS eqmud_zone_routing (
+            zone_short VARCHAR(64) PRIMARY KEY,
+            node VARCHAR(32) NOT NULL,
+            continent VARCHAR(32) DEFAULT NULL,
+            notes VARCHAR(255) DEFAULT NULL,
+            updated_at BIGINT NOT NULL,
+            KEY idx_node (node),
+            KEY idx_continent (continent)
           )
         `);
     } catch (e) {
@@ -141,8 +186,58 @@ async function init() {
     } catch (e) {
         console.error('[DB] Failed to load faction cache:', e.message);
     }
+
+    // Load zone routing cache (best-effort)
+    try {
+        await refreshZoneRoutingCache();
+    } catch (e) {}
     })();
     return initPromise;
+}
+
+async function refreshZoneRoutingCache() {
+    if (!pool) return {};
+    try {
+        const [rows] = await pool.query('SELECT zone_short, node, continent FROM eqmud_zone_routing');
+        ZONE_ROUTING_CACHE = {};
+        for (const r of rows) {
+            if (!r.zone_short) continue;
+            ZONE_ROUTING_CACHE[String(r.zone_short).toLowerCase()] = {
+                node: r.node,
+                continent: r.continent
+            };
+        }
+        console.log(`[DB] Loaded zone routing cache (${rows.length} routes).`);
+        return ZONE_ROUTING_CACHE;
+    } catch (e) {
+        console.error('[DB] Failed to load zone routing cache:', e.message);
+        ZONE_ROUTING_CACHE = {};
+        return ZONE_ROUTING_CACHE;
+    }
+}
+
+async function getZoneRoute(zoneShort) {
+    if (!zoneShort) return null;
+    const z = String(zoneShort).toLowerCase();
+    if (ZONE_ROUTING_CACHE == null) await refreshZoneRoutingCache();
+    return ZONE_ROUTING_CACHE[z] || null;
+}
+
+async function upsertZoneRoute(zoneShort, node, continent = null, notes = null) {
+    if (!pool || !zoneShort || !node) return;
+    const z = String(zoneShort).toLowerCase();
+    try {
+        await pool.query(
+            `INSERT INTO eqmud_zone_routing (zone_short, node, continent, notes, updated_at)
+             VALUES (?, ?, ?, ?, ?)
+             ON DUPLICATE KEY UPDATE node = VALUES(node), continent = VALUES(continent), notes = VALUES(notes), updated_at = VALUES(updated_at)`,
+            [z, node, continent, notes, Date.now()]
+        );
+        if (ZONE_ROUTING_CACHE == null) ZONE_ROUTING_CACHE = {};
+        ZONE_ROUTING_CACHE[z] = { node, continent };
+    } catch (e) {
+        console.error('[DB] upsertZoneRoute error:', e.message);
+    }
 }
 
 // ── Account Queries ─────────────────────────────────────────────────
@@ -331,6 +426,21 @@ async function getCharacter(name) {
             copper: 0
         };
 
+        // Load bind point
+        try {
+            const [bindRows] = await pool.query('SELECT zone_id, x, y, z, heading FROM character_bind WHERE id = ? AND slot = 0', [result.id]);
+            if (bindRows.length > 0) {
+                const b = bindRows[0];
+                result.bindZoneId = INV_ZONES[b.zone_id] || ZONE_ID_TO_SHORT[b.zone_id] || `zone_${b.zone_id}`;
+                result.bindX = b.x;
+                result.bindY = b.y;
+                result.bindZ = b.z;
+                result.bindHeading = b.heading;
+            }
+        } catch (bindErr) {
+            console.warn(`[DB] Could not load bind point for ${result.name}:`, bindErr.message);
+        }
+
         // Load currency from separate table
         result.copper = await getCharacterCurrency(result.id);
         return result;
@@ -391,28 +501,42 @@ async function createCharacter(accountId, name, className, raceName, deityId, st
 
         // --- GRANT STARTING ITEMS ---
         try {
+            // PEQ uses pipe-separated lists (e.g. zone_id_list "3|189"); FIND_IN_SET only works on comma-separated values.
             const [starterItems] = await pool.query(
                 `SELECT item_id, item_charges, inventory_slot FROM starting_items 
                  WHERE status = 0 
-                 AND (class_list = '0' OR FIND_IN_SET(?, class_list))
-                 AND (race_list = '0' OR FIND_IN_SET(?, race_list))
-                 AND (deity_list = '0' OR FIND_IN_SET(?, deity_list))
-                 AND (zone_id_list = '0' OR FIND_IN_SET(?, zone_id_list))`,
+                 AND (class_list = '0' OR FIND_IN_SET(?, REPLACE(class_list, '|', ',')))
+                 AND (race_list = '0' OR FIND_IN_SET(?, REPLACE(race_list, '|', ',')))
+                 AND (deity_list = '0' OR FIND_IN_SET(?, REPLACE(deity_list, '|', ',')))
+                 AND (zone_id_list = '0' OR FIND_IN_SET(?, REPLACE(zone_id_list, '|', ',')))`,
                 [classId.toString(), raceId.toString(), (deityId || 396).toString(), start.zone_id.toString()]
             );
-            
-            const itemsToGive = starterItems.map(item => ({
-                id: item.item_id,
-                charges: Math.max(1, item.item_charges),
-                slot: item.inventory_slot
-            }));
-            
-            // Add custom requested universal items
-            itemsToGive.push({ id: 17005, charges: 1, slot: -1 }); // Backpack
-            itemsToGive.push({ id: 13002, charges: 1, slot: -1 }); // Torch
-            
+
+            const ItemDB = require('./data/itemDatabase');
+            const itemsToGive = [];
+            for (const item of starterItems) {
+                const def = ItemDB.getById(item.item_id);
+                let ch = Number(item.item_charges);
+                if (!Number.isFinite(ch) || ch <= 0) {
+                    ch = 1;
+                    if (def && Number(def.stackable) === 1 && Number(def.stacksize) > 1) {
+                        ch = Number(def.stacksize);
+                    }
+                }
+                itemsToGive.push({
+                    id: item.item_id,
+                    charges: Math.max(1, ch | 0),
+                    slot: item.inventory_slot,
+                });
+            }
+            // Do not inject extra backpack/torch here — PEQ `starting_items` already defines them for combos that need them,
+            // and duplicates overwrite bag slots via ON DUPLICATE KEY.
+
+            // Place fixed-slot items first so auto-slot (-1) fills gaps without colliding.
+            itemsToGive.sort((a, b) => (b.slot >= 0 ? 1 : 0) - (a.slot >= 0 ? 1 : 0));
+
             const occupiedSlots = new Set(itemsToGive.filter(i => i.slot >= 0).map(i => i.slot));
-            
+
             for (const item of itemsToGive) {
                 let targetSlot = item.slot;
                 if (targetSlot < 0) {
@@ -616,6 +740,7 @@ async function getAllItems() {
         SELECT i.id as item_key, i.Name as name, 
                i.aagi, i.acha, i.adex, i.aint, i.asta, i.astr, i.awis, 
                i.ac, i.hp, i.mana, i.damage, i.delay, i.price, 
+               i.stackable, i.stacksize,
                i.itemtype, i.slots, i.classes, i.races, i.weight, i.icon, i.material, i.idfile,
                i.reclevel, i.reqlevel, i.scrolllevel, i.scrolleffect, i.focuseffect, i.light,
                i.lore, i.magic, i.nodrop, i.norent, i.size, i.endur, i.fr, i.cr, i.mr, i.pr, i.dr,
@@ -809,6 +934,54 @@ async function deleteItem(charId, itemId, slotId) {
     } catch(e) { console.error('[DB] deleteItem error:', e.message); }
 }
 
+async function splitStackToSlot(charId, fromSlot, toSlot, count) {
+    if (!pool || count < 1 || fromSlot === toSlot) return false;
+    try {
+        const [fromRows] = await pool.query(
+            'SELECT item_id, charges FROM inventory WHERE character_id = ? AND slot_id = ? LIMIT 1',
+            [charId, fromSlot]
+        );
+        if (!fromRows.length) return false;
+        const fr = fromRows[0];
+        const q = Number(fr.charges) > 0 ? Number(fr.charges) : 1;
+        const n = Math.floor(Number(count));
+        if (!Number.isFinite(n) || n < 1 || n >= q) return false;
+
+        const [toRows] = await pool.query(
+            'SELECT item_id, charges FROM inventory WHERE character_id = ? AND slot_id = ? LIMIT 1',
+            [charId, toSlot]
+        );
+
+        if (!toRows.length) {
+            await pool.query(
+                'UPDATE inventory SET charges = ? WHERE character_id = ? AND slot_id = ? LIMIT 1',
+                [q - n, charId, fromSlot]
+            );
+            await pool.query(
+                'INSERT INTO inventory (character_id, slot_id, item_id, charges) VALUES (?, ?, ?, ?)',
+                [charId, toSlot, fr.item_id, n]
+            );
+            return true;
+        }
+
+        const tr = toRows[0];
+        if (Number(tr.item_id) !== Number(fr.item_id)) return false;
+        const tq = Number(tr.charges) > 0 ? Number(tr.charges) : 1;
+        await pool.query(
+            'UPDATE inventory SET charges = ? WHERE character_id = ? AND slot_id = ? LIMIT 1',
+            [q - n, charId, fromSlot]
+        );
+        await pool.query(
+            'UPDATE inventory SET charges = ? WHERE character_id = ? AND slot_id = ? LIMIT 1',
+            [tq + n, charId, toSlot]
+        );
+        return true;
+    } catch (e) {
+        console.error('[DB] splitStackToSlot error:', e.message);
+        return false;
+    }
+}
+
 async function moveItem(charId, fromSlot, toSlot) {
     if (!pool || fromSlot === toSlot) return;
     try {
@@ -822,6 +995,230 @@ async function moveItem(charId, fromSlot, toSlot) {
             await pool.query('UPDATE inventory SET slot_id = ? WHERE character_id = ? AND slot_id = ? LIMIT 1', [toSlot, charId, fromSlot]);
         }
     } catch(e) { console.error('[DB] moveItem error:', e.message); }
+}
+
+// ── Persistent Player Corpses ───────────────────────────────────────────────
+function safeJsonParse(str, fallback) {
+    if (!str) return fallback;
+    try { return JSON.parse(str); } catch (e) { return fallback; }
+}
+
+async function savePlayerCorpse(corpse) {
+    if (!pool || !corpse) return;
+    try {
+        const consentJson = JSON.stringify(Array.isArray(corpse.lootConsentNames) ? corpse.lootConsentNames : []);
+        await pool.query(
+            `INSERT INTO eqmud_player_corpses
+             (corpse_id, character_id, character_name, zone_id, x, y, z, heading, level, race, gender, face,
+              appearance_json, equip_visuals_json, loot_json, coins, animation, loot_lock_group, loot_lock_until,
+              loot_consent_json, created_at, decay_time)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             ON DUPLICATE KEY UPDATE
+              zone_id = VALUES(zone_id),
+              x = VALUES(x), y = VALUES(y), z = VALUES(z), heading = VALUES(heading),
+              level = VALUES(level), race = VALUES(race), gender = VALUES(gender), face = VALUES(face),
+              appearance_json = VALUES(appearance_json),
+              equip_visuals_json = VALUES(equip_visuals_json),
+              loot_json = VALUES(loot_json),
+              coins = VALUES(coins),
+              animation = VALUES(animation),
+              loot_lock_group = VALUES(loot_lock_group),
+              loot_lock_until = VALUES(loot_lock_until),
+              loot_consent_json = VALUES(loot_consent_json),
+              decay_time = VALUES(decay_time)`,
+            [
+                corpse.id,
+                corpse.mobId,
+                corpse.originalName,
+                corpse.zoneId || corpse.zone_id || corpse.zone,
+                corpse.x || 0,
+                corpse.y || 0,
+                corpse.z || 0,
+                corpse.heading || 0,
+                corpse.level || 1,
+                corpse.race || 1,
+                corpse.gender || 0,
+                corpse.face || 0,
+                JSON.stringify(corpse.appearance || {}),
+                JSON.stringify(corpse.equipVisuals || {}),
+                JSON.stringify(corpse.loot || []),
+                corpse.coins || 0,
+                corpse.animation || null,
+                corpse.lootLockGroup || null,
+                corpse.lootLockUntil || null,
+                consentJson,
+                corpse.spawnTime || Date.now(),
+                corpse.decayTime || (Date.now() + 7 * 24 * 60 * 60 * 1000)
+            ]
+        );
+    } catch (e) {
+        console.error('[DB] savePlayerCorpse error:', e.message);
+    }
+}
+
+async function getPlayerCorpsesForZone(zoneId) {
+    if (!pool || !zoneId) return [];
+    try {
+        const now = Date.now();
+        const [rows] = await pool.query(
+            `SELECT * FROM eqmud_player_corpses WHERE zone_id = ? AND decay_time > ?`,
+            [zoneId, now]
+        );
+        return rows.map(r => ({
+            id: r.corpse_id,
+            name: `${r.character_name}'s corpse`,
+            type: 'corpse',
+            originalName: r.character_name,
+            mobId: r.character_id,
+            level: r.level,
+            x: r.x, y: r.y, z: r.z,
+            heading: r.heading,
+            race: r.race,
+            gender: r.gender,
+            face: r.face,
+            appearance: safeJsonParse(r.appearance_json, {}),
+            equipVisuals: safeJsonParse(r.equip_visuals_json, {}),
+            size: 6,
+            isNpc: false,
+            loot: safeJsonParse(r.loot_json, []),
+            coins: r.coins || 0,
+            spawnTime: Number(r.created_at) || Date.now(),
+            decayTime: Number(r.decay_time) || (Date.now() + 7 * 24 * 60 * 60 * 1000),
+            lootLockGroup: r.loot_lock_group,
+            lootLockUntil: Number(r.loot_lock_until) || 0,
+            animation: r.animation || null,
+            lootConsentNames: safeJsonParse(r.loot_consent_json, [])
+        }));
+    } catch (e) {
+        console.error('[DB] getPlayerCorpsesForZone error:', e.message);
+        return [];
+    }
+}
+
+async function updatePlayerCorpse(corpse) {
+    if (!pool || !corpse) return;
+    try {
+        const consentJson = corpse.lootConsentNames !== undefined
+            ? JSON.stringify(Array.isArray(corpse.lootConsentNames) ? corpse.lootConsentNames : [])
+            : null;
+        if (consentJson != null) {
+            await pool.query(
+                `UPDATE eqmud_player_corpses
+                 SET zone_id = ?, x = ?, y = ?, z = ?, heading = ?,
+                     loot_json = ?, coins = ?, loot_lock_group = ?, loot_lock_until = ?,
+                     loot_consent_json = ?, decay_time = ?
+                 WHERE corpse_id = ?
+                 LIMIT 1`,
+                [
+                    corpse.zoneId || corpse.zone_id || corpse.zone,
+                    corpse.x || 0,
+                    corpse.y || 0,
+                    corpse.z || 0,
+                    corpse.heading || 0,
+                    JSON.stringify(corpse.loot || []),
+                    corpse.coins || 0,
+                    corpse.lootLockGroup || null,
+                    corpse.lootLockUntil || null,
+                    consentJson,
+                    corpse.decayTime || (Date.now() + 7 * 24 * 60 * 60 * 1000),
+                    corpse.id
+                ]
+            );
+        } else {
+            await pool.query(
+                `UPDATE eqmud_player_corpses
+                 SET zone_id = ?, x = ?, y = ?, z = ?, heading = ?,
+                     loot_json = ?, coins = ?, loot_lock_group = ?, loot_lock_until = ?, decay_time = ?
+                 WHERE corpse_id = ?
+                 LIMIT 1`,
+                [
+                    corpse.zoneId || corpse.zone_id || corpse.zone,
+                    corpse.x || 0,
+                    corpse.y || 0,
+                    corpse.z || 0,
+                    corpse.heading || 0,
+                    JSON.stringify(corpse.loot || []),
+                    corpse.coins || 0,
+                    corpse.lootLockGroup || null,
+                    corpse.lootLockUntil || null,
+                    corpse.decayTime || (Date.now() + 7 * 24 * 60 * 60 * 1000),
+                    corpse.id
+                ]
+            );
+        }
+    } catch (e) {
+        console.error('[DB] updatePlayerCorpse error:', e.message);
+    }
+}
+
+async function appendLootConsentForCharacterCorpses(characterId, granteeLower) {
+    if (!pool || !characterId || !granteeLower) return;
+    const now = Date.now();
+    try {
+        const [rows] = await pool.query(
+            'SELECT corpse_id, loot_consent_json FROM eqmud_player_corpses WHERE character_id = ? AND decay_time > ?',
+            [characterId, now]
+        );
+        for (const row of rows) {
+            let arr = safeJsonParse(row.loot_consent_json, []);
+            if (!Array.isArray(arr)) arr = [];
+            if (!arr.includes(granteeLower)) {
+                arr.push(granteeLower);
+                await pool.query(
+                    'UPDATE eqmud_player_corpses SET loot_consent_json = ? WHERE corpse_id = ? LIMIT 1',
+                    [JSON.stringify(arr), row.corpse_id]
+                );
+            }
+        }
+    } catch (e) {
+        console.error('[DB] appendLootConsentForCharacterCorpses error:', e.message);
+    }
+}
+
+async function removeLootConsentForCharacterCorpses(characterId, granteeLower) {
+    if (!pool || !characterId || !granteeLower) return;
+    const now = Date.now();
+    try {
+        const [rows] = await pool.query(
+            'SELECT corpse_id, loot_consent_json FROM eqmud_player_corpses WHERE character_id = ? AND decay_time > ?',
+            [characterId, now]
+        );
+        for (const row of rows) {
+            let arr = safeJsonParse(row.loot_consent_json, []);
+            if (!Array.isArray(arr)) arr = [];
+            const next = arr.filter(n => String(n).toLowerCase() !== granteeLower);
+            if (next.length !== arr.length) {
+                await pool.query(
+                    'UPDATE eqmud_player_corpses SET loot_consent_json = ? WHERE corpse_id = ? LIMIT 1',
+                    [JSON.stringify(next), row.corpse_id]
+                );
+            }
+        }
+    } catch (e) {
+        console.error('[DB] removeLootConsentForCharacterCorpses error:', e.message);
+    }
+}
+
+async function clearLootConsentForCharacterCorpses(characterId) {
+    if (!pool || !characterId) return;
+    const now = Date.now();
+    try {
+        await pool.query(
+            'UPDATE eqmud_player_corpses SET loot_consent_json = ? WHERE character_id = ? AND decay_time > ?',
+            ['[]', characterId, now]
+        );
+    } catch (e) {
+        console.error('[DB] clearLootConsentForCharacterCorpses error:', e.message);
+    }
+}
+
+async function deletePlayerCorpse(corpseId) {
+    if (!pool || !corpseId) return;
+    try {
+        await pool.query(`DELETE FROM eqmud_player_corpses WHERE corpse_id = ? LIMIT 1`, [corpseId]);
+    } catch (e) {
+        console.error('[DB] deletePlayerCorpse error:', e.message);
+    }
 }
 
 // ── EQEmu Canonical Skill ID Mapping ────────────────────────────────
@@ -1142,12 +1539,21 @@ async function removeBuybackItem(buybackId) {
 
 // ── Character Creation Data ──────────────────────────────────────────
 
+const CHAR_CREATE_DEITY_NAMES = {
+    201: 'Bertoxxulous', 202: 'Brell Serilis', 203: 'Cazic-Thule', 204: 'Erollisi Marr',
+    205: 'Bristlebane', 206: 'Innoruuk', 207: 'Karana', 208: 'Mithaniel Marr',
+    209: 'Prexus', 210: 'Quellious', 211: 'Rallos Zek', 212: 'Rodcet Nife',
+    213: 'Solusek Ro', 214: 'The Tribunal', 215: 'Tunare', 216: 'Veeshan',
+    396: 'Agnostic'
+};
+
 /**
  * Get all valid class/deity combos and their stat allocations for a given race.
- * Returns: { classes: [{ classId, deities: [deityId, ...], allocations: { allocationId, base_*, alloc_* } }] }
+ * Returns: { raceId, classes: [{ classId, className, deities, deityNames, allocation }] }
  */
 async function getCharCreateData(raceId) {
     await init();
+    const rid = parseInt(String(raceId ?? 1), 10) || 1;
     try {
         // Get all combos for this race with their stat allocation data
         const [rows] = await pool.query(`
@@ -1157,45 +1563,53 @@ async function getCharCreateData(raceId) {
                    pa.alloc_str, pa.alloc_sta, pa.alloc_dex, pa.alloc_agi,
                    pa.alloc_int, pa.alloc_wis, pa.alloc_cha
             FROM char_create_combinations ccc
-            JOIN char_create_point_allocations pa ON ccc.allocation_id = pa.id
+            LEFT JOIN char_create_point_allocations pa ON ccc.allocation_id = pa.id
             WHERE ccc.race = ?
             ORDER BY ccc.class, ccc.deity
-        `, [raceId]);
+        `, [rid]);
 
         // Group by class
         const classMap = {};
         for (const row of rows) {
             if (!classMap[row.class]) {
+                const classKey = INV_CLASSES[row.class] || `class_${row.class}`;
                 classMap[row.class] = {
                     classId: row.class,
-                    className: INV_CLASSES[row.class] || `class_${row.class}`,
+                    className: classKey.charAt(0).toUpperCase() + classKey.slice(1).replace('_', ' '),
                     deities: new Set(),
                     allocation: {
                         id: row.allocation_id,
-                        base_str: row.base_str, base_sta: row.base_sta,
-                        base_dex: row.base_dex, base_agi: row.base_agi,
-                        base_int: row.base_int, base_wis: row.base_wis,
-                        base_cha: row.base_cha,
-                        alloc_str: row.alloc_str, alloc_sta: row.alloc_sta,
-                        alloc_dex: row.alloc_dex, alloc_agi: row.alloc_agi,
-                        alloc_int: row.alloc_int, alloc_wis: row.alloc_wis,
-                        alloc_cha: row.alloc_cha,
+                        base_str: row.base_str || 75, base_sta: row.base_sta || 75,
+                        base_dex: row.base_dex || 75, base_agi: row.base_agi || 75,
+                        base_int: row.base_int || 75, base_wis: row.base_wis || 75,
+                        base_cha: row.base_cha || 75,
+                        alloc_str: row.alloc_str || 0, alloc_sta: row.alloc_sta || 0,
+                        alloc_dex: row.alloc_dex || 0, alloc_agi: row.alloc_agi || 0,
+                        alloc_int: row.alloc_int || 0, alloc_wis: row.alloc_wis || 0,
+                        alloc_cha: row.alloc_cha || 0,
                     }
                 };
             }
-            classMap[row.class].deities.add(row.deity);
+            if (row.deity) classMap[row.class].deities.add(row.deity);
         }
 
-        // Convert Sets to arrays
-        const classes = Object.values(classMap).map(c => ({
-            ...c,
-            deities: Array.from(c.deities).sort((a, b) => a - b)
-        }));
+        // Convert Sets to arrays; deityNames matches what the Godot menu expects (see MainMenu.OnClassSelected)
+        const classes = Object.values(classMap).map(c => {
+            const deities = Array.from(c.deities).sort((a, b) => a - b);
+            return {
+                ...c,
+                deities,
+                deityNames: deities.map(id => ({
+                    id,
+                    name: CHAR_CREATE_DEITY_NAMES[id] || `Unknown (${id})`
+                }))
+            };
+        });
 
-        return { raceId, classes };
+        return { raceId: rid, classes };
     } catch (e) {
         console.error('[DB] getCharCreateData Error:', e.message);
-        return { raceId, classes: [] };
+        return { raceId: rid, classes: [] };
     }
 }
 
@@ -1313,10 +1727,21 @@ async function saveCharacterBuffs(charId, buffs) {
 }
 
 async function rollLootFromTable(loottableId) {
-    if (!pool || !loottableId) return [];
+    if (!pool || !loottableId) return { items: [], coins: 0 };
     try {
-        // 1. Get all lootdrops for this loottable
-        // Note: mincash/maxcash and multiple drops logic can be added later
+        // 1. Get coins from loottable
+        const [ltRows] = await pool.query(`SELECT mincash, maxcash FROM loottable WHERE id = ?`, [loottableId]);
+        let rolledCoins = 0;
+        if (ltRows.length > 0) {
+            const { mincash, maxcash } = ltRows[0];
+            if (maxcash > mincash) {
+                rolledCoins = Math.floor(Math.random() * (maxcash - mincash + 1)) + mincash;
+            } else {
+                rolledCoins = mincash;
+            }
+        }
+
+        // 2. Get all lootdrops for this loottable
         const [entries] = await pool.query(`
             SELECT lte.lootdrop_id, lte.probability, lte.multiplier
             FROM loottable_entries lte
@@ -1327,30 +1752,31 @@ async function rollLootFromTable(loottableId) {
         for (const entry of entries) {
             // Roll for the lootdrop itself
             if (Math.random() * 100 <= entry.probability) {
-                // 2. Get items in this lootdrop
-                const [items] = await pool.query(`
-                    SELECT item_id, item_charges, chance
-                    FROM lootdrop_entries
-                    WHERE lootdrop_id = ?
-                `, [entry.lootdrop_id]);
+                // multiplier > 1 means multiple rolls on the same drop
+                const count = entry.multiplier || 1;
+                for (let i = 0; i < count; i++) {
+                    // 3. Get items in this lootdrop
+                    const [items] = await pool.query(`
+                        SELECT item_id, item_charges, chance
+                        FROM lootdrop_entries
+                        WHERE lootdrop_id = ?
+                    `, [entry.lootdrop_id]);
 
-                // Standard EQ logic: roll for items within the drop
-                // Note: There are different 'mindrop/maxdrop' rules in PEQ, but this is the core loop
-                for (const item of items) {
-                    if (Math.random() * 100 <= item.chance) {
-                        rolledItems.push({
-                            itemKey: item.item_id.toString(),
-                            qty: item.item_charges || 1
-                        });
-                        // If we only want one item per drop, we could break here depending on table rules
+                    for (const item of items) {
+                        if (Math.random() * 100 <= item.chance) {
+                            rolledItems.push({
+                                itemKey: item.item_id.toString(),
+                                qty: item.item_charges || 1
+                            });
+                        }
                     }
                 }
             }
         }
-        return rolledItems;
+        return { items: rolledItems, coins: rolledCoins };
     } catch (e) {
         console.error('[DB] rollLootFromTable Error:', e.message);
-        return [];
+        return { items: [], coins: 0 };
     }
 }
 
@@ -1377,6 +1803,18 @@ module.exports = {
     unequipSlot,
     deleteItem,
     moveItem,
+    splitStackToSlot,
+    // Persistent corpses
+    savePlayerCorpse,
+    getPlayerCorpsesForZone,
+    updatePlayerCorpse,
+    deletePlayerCorpse,
+    appendLootConsentForCharacterCorpses,
+    removeLootConsentForCharacterCorpses,
+    clearLootConsentForCharacterCorpses,
+    refreshZoneRoutingCache,
+    getZoneRoute,
+    upsertZoneRoute,
     getSkills,
     getSpells,
     memorizeSpell,

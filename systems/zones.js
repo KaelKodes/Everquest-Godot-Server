@@ -35,14 +35,24 @@ async function initZones(requestedZones = null) {
   const zonesToInit = requestedZones || Object.keys(ZONES);
 
   for (const zoneId of zonesToInit) {
-    const zoneDef = ZONES[zoneId];
+    // Accept either internal zone keys (greater_faydark) or EQEmu shortnames (gfaydark)
+    const zoneKey = resolveZoneKey(zoneId);
+    const zoneDef = ZONES[zoneKey];
     if (!zoneDef) continue;
 
-    zoneInstances[zoneId] = {
+    zoneInstances[zoneKey] = {
       def: zoneDef, liveMobs: [], spawnPointState: [], liveNodes: [], nodeSpawnState: [],
       weather: Calendar.createZoneWeather(zoneDef.climate || 'temperate'), grids: {}, doors: [], doorStates: {}
     };
-    console.log(`[ZONE] ${zoneId} (${zoneDef.name}) pre-initialized.`);
+    // Load persistent corpses (player corpses) for this zone
+    try {
+      const corpses = await eqemuDB.getPlayerCorpsesForZone(zoneKey);
+      zoneInstances[zoneKey].corpses = corpses || [];
+      if (corpses && corpses.length > 0) {
+        console.log(`[ZONE] Loaded ${corpses.length} persistent corpse(s) for ${zoneKey}.`);
+      }
+    } catch (e) {}
+    console.log(`[ZONE] ${zoneKey} (${zoneDef.name}) pre-initialized.`);
   }
   console.log(`[ENGINE] Initialized ${Object.keys(zoneInstances).length} zone(s).`);
   return { SPELLS, ITEMS };
@@ -73,6 +83,15 @@ async function ensureZoneLoaded(zoneKey, spawnMobFn, spawnMiningNodesFn, spawnMi
     def: zoneDef, liveMobs: [], spawnPointState: [], liveNodes: [], nodeSpawnState: [],
     weather: Calendar.createZoneWeather(zoneClimate), grids: {}, doors: [], doorStates: {}
   };
+
+  // Load persistent corpses for this zone
+  try {
+    const corpses = await eqemuDB.getPlayerCorpsesForZone(zoneKey);
+    zoneInstances[zoneKey].corpses = corpses || [];
+    if (corpses && corpses.length > 0) {
+      console.log(`[ZONE] Loaded ${corpses.length} persistent corpse(s) for ${zoneKey}.`);
+    }
+  } catch (e) {}
 
   let allCoords = [];
   try {

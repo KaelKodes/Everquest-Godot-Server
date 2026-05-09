@@ -180,7 +180,8 @@ function processMobAI(zone, zoneId, dt, api) {
       if (topHateName) {
         let resolvedTarget = null;
         if (api.sessions) {
-          for (const s of (api.sessions.values ? Array.from(api.sessions.values()) : Object.values(api.sessions))) {
+          const sessionList = (api.sessions.values ? Array.from(api.sessions.values()) : Object.values(api.sessions));
+          for (const s of sessionList) {
             if (s.char && s.char.name === topHateName && s.char.zoneId === zoneId && s.char.hp > 0 && s.char.state !== 'dead') {
               resolvedTarget = s;
               break;
@@ -345,7 +346,7 @@ function processMobAI(zone, zoneId, dt, api) {
         }
       } else if (targetIsSession) {
         const session = mob.target;
-        if (!session.char || session.char.hp <= 0 || session.char.zoneId !== zoneId) {
+        if (!session.char || session.char.hp <= 0 || session.char.state === 'dead' || session.char.zoneId !== zoneId) {
           mob.target = null;
           continue;
         }
@@ -579,23 +580,16 @@ function processMobAI(zone, zoneId, dt, api) {
         
           // Check player death from async mob logic
           if (session.char.hp <= 0) {
-              session.char.hp = 0;
-              events.push({ event: 'DEATH', who: 'YOU' });
-              events.push({ event: 'MESSAGE', text: 'You have been slain! You return to your bind point.' });
-              
-              session.char.hp = Math.floor(session.effectiveStats.hp * 0.5);
-              session.char.mana = Math.floor(session.effectiveStats.mana * 0.5);
-              session.char.state = 'standing';
-              session.inCombat = false;
-              session.combatTarget = null;
-              // Despawn pet on owner death
-              if (session.pet) {
-                api.despawnPet(session, 'Your pet has lost its master and fades away.');
+              // Funnel through the unified death handler (corpse, naked respawn, combat cleanup)
+              if (api.handlePlayerDeath) {
+                // NOTE: This file is not async at this callsite; death handling is safe to fire-and-forget.
+                // The handler performs immediate combat cleanup synchronously and schedules/awaits DB work internally.
+                api.handlePlayerDeath(session, events);
+              } else {
+                session.char.hp = 0;
+                events.push({ event: 'DEATH', who: 'YOU' });
+                events.push({ event: 'MESSAGE', text: 'You have been slain!' });
               }
-              
-              const xpPenalty = Math.floor(combat.xpForLevel(session.char.level) * 0.05);
-              session.char.experience = Math.max(0, session.char.experience - xpPenalty);
-              events.push({ event: 'MESSAGE', text: `You lost ${xpPenalty} experience.` });
               mob.target = null;
           }
         }

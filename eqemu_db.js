@@ -13,8 +13,45 @@ const ZONES_NUM_FALLBACK = {
     'west_karana': 12,
     'north_karana': 13,
     'gfaydark': 54,
-    'lfaydark': 57
+    'lfaydark': 57,
+    'cshome': 151,
+    'fayrtrt': 95100,
 };
+
+/** When `zone` has no row yet (migration not applied), succor still works; remove entry once PEQ has the row. */
+const EQMUD_ZONE_SUCCOR_FALLBACK = {
+    fayrtrt: { safe_x: -430, safe_y: -209, safe_z: 6.75 },
+};
+const _succorFallbackWarned = new Set();
+
+/**
+ * PEQ `zone.short_name` → basename of the zone archive on disk for Lantern / `.s3d`.
+ * Keep in sync with `LanternExtractorRunner._zoneAliases` in the Godot client.
+ * When the DB name and install file name differ, list the mapping here so the server
+ * can tell the client which archive to extract while keeping `char.zoneId` = DB short_name.
+ */
+const LANTERN_ARCHIVE_ALIASES = {
+    steamfontmts: 'steamfont',
+    qeynos2: 'qeynos',
+    highpasskeep: 'highkeep',
+    kithforest: 'kithicor',
+    neriakd: 'neriakc',
+    oldhighpass: 'highpass',
+    befallenb: 'befallen',
+    fayrtrt: 'qrg',
+    toxxulia: 'tox',
+};
+
+function getLanternArchiveBase(zoneShortName) {
+    if (zoneShortName == null || zoneShortName === '') return zoneShortName;
+    let sn = String(zoneShortName).trim().toLowerCase();
+    const m = /^zone_(\d+)$/.exec(sn);
+    if (m) {
+        const id = parseInt(m[1], 10);
+        sn = ZONE_ID_TO_SHORT[id] || INV_ZONES[id] || sn;
+    }
+    return LANTERN_ARCHIVE_ALIASES[sn] || sn;
+}
 
 const INV_CLASSES = Object.fromEntries(Object.entries(CLASSES).map(([k, v]) => [v, k]));
 const INV_RACES = Object.fromEntries(Object.entries(RACES).map(([k, v]) => [v, k]));
@@ -144,14 +181,31 @@ async function init() {
         ZONE_CACHE = {};
         ZONE_ID_TO_SHORT = {};
         for (const z of zones) {
-            INV_ZONES[z.zoneidnumber] = z.short_name;
-            ZONE_ID_TO_SHORT[z.zoneidnumber] = z.short_name;
-            ZONE_CACHE[z.short_name] = {
+            const sn = z.short_name.toLowerCase();
+            INV_ZONES[z.zoneidnumber] = sn;
+            ZONE_ID_TO_SHORT[z.zoneidnumber] = sn;
+            ZONE_CACHE[sn] = {
                 zoneidnumber: z.zoneidnumber,
+                short_name: z.short_name, // Keep original casing if needed for something else
                 long_name: z.long_name || z.short_name,
                 ztype: z.ztype || 0,
                 castoutdoor: z.castoutdoor != null ? z.castoutdoor : 1
             };
+        }
+        // EQMUD / PEQ gaps: numeric IDs in character_data must still resolve to short_name for STATUS + Lantern.
+        for (const [shortName, numId] of Object.entries(ZONES_NUM_FALLBACK)) {
+            const sn = String(shortName).toLowerCase();
+            if (!INV_ZONES[numId]) INV_ZONES[numId] = sn;
+            if (!ZONE_ID_TO_SHORT[numId]) ZONE_ID_TO_SHORT[numId] = sn;
+            if (!ZONE_CACHE[sn]) {
+                ZONE_CACHE[sn] = {
+                    zoneidnumber: numId,
+                    short_name: shortName,
+                    long_name: shortName,
+                    ztype: 0,
+                    castoutdoor: 1,
+                };
+            }
         }
         console.log(`[DB] Loaded zone metadata cache (${zones.length} zones).`);
     } catch (e) {
@@ -934,6 +988,31 @@ async function deleteItem(charId, itemId, slotId) {
     } catch(e) { console.error('[DB] deleteItem error:', e.message); }
 }
 
+/** Remove one charge from a stack at a slot, or delete the row if qty was 1. */
+async function consumeOneInventoryAtSlot(charId, slotId, itemId) {
+    if (!pool) return false;
+    try {
+        const [rows] = await pool.query(
+            'SELECT charges FROM inventory WHERE character_id = ? AND slot_id = ? AND item_id = ? LIMIT 1',
+            [charId, slotId, itemId]
+        );
+        if (!rows.length) return false;
+        const q = Number(rows[0].charges) > 0 ? Number(rows[0].charges) : 1;
+        if (q > 1) {
+            await pool.query(
+                'UPDATE inventory SET charges = ? WHERE character_id = ? AND slot_id = ? AND item_id = ? LIMIT 1',
+                [q - 1, charId, slotId, itemId]
+            );
+        } else {
+            await deleteItem(charId, itemId, slotId);
+        }
+        return true;
+    } catch (e) {
+        console.error('[DB] consumeOneInventoryAtSlot error:', e.message);
+        return false;
+    }
+}
+
 async function splitStackToSlot(charId, fromSlot, toSlot, count) {
     if (!pool || count < 1 || fromSlot === toSlot) return false;
     try {
@@ -1369,8 +1448,47 @@ async function saveCharacterCurrency(charId, totalCopper) {
 
 // ── Location Persistence ────────────────────────────────────────────
 
+/**
+ * Canonical PEQ zone short_name (same as *.s3d basename) for MySQL + client Lantern.
+ * Maps world-atlas keys (e.g. qeynos_hills → qeytoqrg) and other aliases.
+ */
+function getArchiveShortName(zoneIdOrKey) {
+    if (zoneIdOrKey == null || zoneIdOrKey === '') return zoneIdOrKey;
+    const raw = String(zoneIdOrKey).trim();
+    if (!raw) return raw;
+    let lower = raw.toLowerCase();
+
+    // Numeric fallback form from getCharacter (e.g. zone_95100) → PEQ short_name
+    const zn = /^zone_(\d+)$/.exec(lower);
+    if (zn) {
+        const id = parseInt(zn[1], 10);
+        const sn = ZONE_ID_TO_SHORT[id] || INV_ZONES[id];
+        if (sn) lower = sn;
+    }
+
+    // 1. Check if it's already a valid short_name in our cache (case-insensitive)
+    if (ZONE_CACHE[lower]) return lower;
+
+    // 2. Check WorldAtlas for aliases (e.g. qeynos_hills -> qeytoqrg)
+    try {
+        const WorldAtlas = require('./data/worldAtlas');
+        const atlas = WorldAtlas.WORLD_ATLAS[raw] || WorldAtlas.WORLD_ATLAS[lower];
+        if (atlas && atlas.shortName) return String(atlas.shortName).toLowerCase();
+    } catch (_) {}
+
+    // 3. Check hardcoded ZONES definitions
+    try {
+        const ZONES = require('./data/zones');
+        const def = ZONES[raw] || ZONES[lower];
+        if (def && def.shortName) return String(def.shortName).toLowerCase();
+    } catch (_) {}
+
+    return lower;
+}
+
 async function saveCharacterLocation(charId, zoneShortName, x, y, z) {
     if (!pool) return;
+    zoneShortName = getArchiveShortName(zoneShortName);
     let zoneId = getZoneIdByShortName(zoneShortName);
 
     // FALLBACK: If zoneShortName is already numeric, use it directly!
@@ -1395,6 +1513,37 @@ async function saveCharacterLocation(charId, zoneShortName, x, y, z) {
         await pool.query('UPDATE character_data SET zone_id = ?, x = ?, y = ?, z = ? WHERE id = ?', [zoneId, x, y, z, charId]);
     } catch (e) {
         console.error('[DB] saveCharacterLocation Error:', e.message);
+    }
+}
+
+/** PEQ `zone.safe_*` succor point (same coords as MovementSystem.handleSuccor). */
+async function getZoneSuccorCoords(shortName) {
+    await init();
+    if (!shortName) return null;
+    const sn = String(shortName).trim().toLowerCase();
+    const useFallback = () => {
+        const fb = EQMUD_ZONE_SUCCOR_FALLBACK[sn];
+        if (!fb) return null;
+        if (!_succorFallbackWarned.has(sn)) {
+            _succorFallbackWarned.add(sn);
+            console.warn(
+                `[DB] No PEQ zone row for '${sn}'; using EQMUD succor fallback until the zone table is migrated.`
+            );
+        }
+        return { safe_x: fb.safe_x, safe_y: fb.safe_y, safe_z: fb.safe_z };
+    };
+    if (!pool) return useFallback();
+    try {
+        const [rows] = await pool.query(
+            'SELECT safe_x, safe_y, safe_z FROM zone WHERE short_name = ? LIMIT 1',
+            [sn]
+        );
+        if (!rows.length) return useFallback();
+        const r = rows[0];
+        return { safe_x: r.safe_x, safe_y: r.safe_y, safe_z: r.safe_z };
+    } catch (e) {
+        console.error('[DB] getZoneSuccorCoords Error:', e.message);
+        return useFallback();
     }
 }
 
@@ -1457,15 +1606,18 @@ async function getMerchantItems(npcId) {
 }
 
 function getZoneMetadata(shortName) {
-    return ZONE_CACHE[shortName] || null;
+    if (!shortName) return null;
+    return ZONE_CACHE[shortName.toLowerCase()] || null;
 }
 
 /** Get the numeric zone ID for a short_name (used for character persistence). */
 function getZoneIdByShortName(shortName) {
-    const meta = ZONE_CACHE[shortName];
+    if (!shortName) return null;
+    const lower = shortName.toLowerCase();
+    const meta = ZONE_CACHE[lower];
     if (meta) return meta.zoneidnumber;
     // Fallback: check hardcoded map (pre-DB-init)
-    return ZONES_NUM_FALLBACK[shortName] || null;
+    return ZONES_NUM_FALLBACK[lower] || null;
 }
 
 // ── Factions & Buyback ───────────────────────────────────────────────
@@ -1782,6 +1934,9 @@ async function rollLootFromTable(loottableId) {
 
 module.exports = {
   init,
+  getArchiveShortName,
+  getLanternArchiveBase,
+  LANTERN_ARCHIVE_ALIASES,
   loginAccount,
     createAccount,
     getCharactersByAccount,
@@ -1802,6 +1957,7 @@ module.exports = {
     unequipItem,
     unequipSlot,
     deleteItem,
+    consumeOneInventoryAtSlot,
     moveItem,
     splitStackToSlot,
     // Persistent corpses
@@ -1824,6 +1980,7 @@ module.exports = {
     saveCharacterCurrency,
     getZoneMetadata,
     getZoneIdByShortName,
+    getZoneSuccorCoords,
     getMerchantItems,
     saveCharacterLocation,
     getZoneGrids,

@@ -105,6 +105,21 @@ const WORLD_ATLAS = {
     ],
   },
 
+  /** EQMUD GM zone: same footprint as Surefall; PEQ `zoneidnumber` 95100; no zone lines / spawns. */
+  faydark_retreat: {
+    name: 'Faydark Retreat',
+    shortName: 'fayrtrt',
+    continent: 'antonica',
+    environment: 'outdoor',
+    climate: 'temperate',
+    terrain: 'forest',
+    worldX: 4500,
+    worldY: 5500,
+    width: 1500,
+    height: 1500,
+    connections: [],
+  },
+
   blackburrow: {
     name: 'Blackburrow',
     shortName: 'blackburrow',
@@ -723,10 +738,26 @@ const WORLD_ATLAS = {
 // ── Helper Functions ────────────────────────────────────────────────
 
 /**
+ * Resolve a PEQ zone short_name (e.g. fayrtrt, gfaydark) or atlas key (e.g. greater_faydark) to a WORLD_ATLAS key.
+ */
+function resolveAtlasKey(zoneIdOrKey) {
+  if (zoneIdOrKey == null || zoneIdOrKey === '') return null;
+  const raw = String(zoneIdOrKey);
+  if (WORLD_ATLAS[raw]) return raw;
+  const lower = raw.toLowerCase();
+  for (const [k, z] of Object.entries(WORLD_ATLAS)) {
+    if (k.toLowerCase() === lower) return k;
+    if (z.shortName && String(z.shortName).toLowerCase() === lower) return k;
+  }
+  return null;
+}
+
+/**
  * Get the bounding box of a zone in world space.
  */
 function getZoneBounds(zoneKey) {
-  const z = WORLD_ATLAS[zoneKey];
+  const k = resolveAtlasKey(zoneKey);
+  const z = k ? WORLD_ATLAS[k] : null;
   if (!z) return null;
   return {
     minX: z.worldX - z.width / 2,
@@ -744,7 +775,8 @@ function getZoneBounds(zoneKey) {
  * Convert a local zone position to global world coordinates.
  */
 function localToWorld(zoneKey, localX, localY) {
-  const z = WORLD_ATLAS[zoneKey];
+  const k = resolveAtlasKey(zoneKey);
+  const z = k ? WORLD_ATLAS[k] : null;
   if (!z) return { x: localX, y: localY };
   return {
     x: z.worldX + localX,
@@ -756,7 +788,8 @@ function localToWorld(zoneKey, localX, localY) {
  * Convert global world coordinates to a zone's local position.
  */
 function worldToLocal(zoneKey, worldX, worldY) {
-  const z = WORLD_ATLAS[zoneKey];
+  const k = resolveAtlasKey(zoneKey);
+  const z = k ? WORLD_ATLAS[k] : null;
   if (!z) return { x: worldX, y: worldY };
   return {
     x: worldX - z.worldX,
@@ -773,14 +806,15 @@ function worldToLocal(zoneKey, worldX, worldY) {
  *   offset = { x, y } from the current zone's center to the neighbor's center
  */
 function getNeighborZones(currentZoneKey, localX, localY, radius) {
-  const current = WORLD_ATLAS[currentZoneKey];
+  const atlasKey = resolveAtlasKey(currentZoneKey);
+  const current = atlasKey ? WORLD_ATLAS[atlasKey] : null;
   if (!current) return [];
 
-  const worldPos = localToWorld(currentZoneKey, localX, localY);
+  const worldPos = localToWorld(atlasKey, localX, localY);
   const neighbors = [];
 
   for (const [key, zone] of Object.entries(WORLD_ATLAS)) {
-    if (key === currentZoneKey) continue;
+    if (key === atlasKey) continue;
 
     // Skip zones on different continents — they're across the ocean
     if (zone.continent !== current.continent) continue;
@@ -822,7 +856,8 @@ function getNeighborZones(currentZoneKey, localX, localY, radius) {
  * Get the atlas entry for a zone (if it exists).
  */
 function getAtlasEntry(zoneKey) {
-  return WORLD_ATLAS[zoneKey] || null;
+  const k = resolveAtlasKey(zoneKey);
+  return k ? WORLD_ATLAS[k] : null;
 }
 
 /**
@@ -838,6 +873,7 @@ function getContinent(continentName) {
 
 module.exports = {
   WORLD_ATLAS,
+  resolveAtlasKey,
   getZoneBounds,
   localToWorld,
   worldToLocal,

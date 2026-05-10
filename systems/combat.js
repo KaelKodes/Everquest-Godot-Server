@@ -398,6 +398,7 @@ async function processCombatTick(session, dt) {
                     if (rdsEff) {
                       const rdsDmg = Math.abs(rdsEff.base);
                       session.char.hp -= rdsDmg;
+                      if (spellSystem && spellSystem.cancelPendingScribe) spellSystem.cancelPendingScribe(session, 'damage', false);
                       events.push({ event: 'SPELL_DAMAGE', source: mbuff.name, target: 'You', spell: 'Reverse DS', damage: rdsDmg });
                     }
                   }
@@ -685,7 +686,7 @@ async function handlePlayerDeath(session, events) {
   session._respawnTimer = setTimeout(async () => {
     session._respawnTimer = null;
 
-    const bindZoneId = session.char.bindZoneId || session.char.zoneId;
+    const bindZoneId = db.getArchiveShortName(session.char.bindZoneId || session.char.zoneId);
     const bindX = session.char.bindX || 0;
     const bindY = session.char.bindY || 0;
     const bindZ = session.char.bindZ || 0;

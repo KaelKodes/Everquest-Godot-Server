@@ -9,7 +9,7 @@ const ZONES = {
     climate: 'temperate',
     shortName: 'cshome',
     levelRange: [1, 65],
-    mapSize: { width: 500, length: 500 },
+    mapSize: { width: 4000, length: 4000 },
     centerOffset: { x: 0, y: 0 },
     mobs: [
       {

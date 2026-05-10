@@ -596,6 +596,7 @@ const Skills = {
       shadowknight: { levelGranted: 9, capFormula: (level) => (level * 5) + 5, maxCap: 300 },
       ranger: { levelGranted: 9, capFormula: (level) => (level * 5) + 5, maxCap: 300 },
       beastlord: { levelGranted: 9, capFormula: (level) => (level * 5) + 5, maxCap: 300 },
+      bard: { levelGranted: 1, capFormula: (level) => (level * 5) + 5, maxCap: 300 },
     }
   },
 

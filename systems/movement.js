@@ -46,6 +46,7 @@ function init(deps) {
   module.exports.sendStatusFn = deps.sendStatus;
   module.exports.interruptCastingFn = deps.interruptCasting;
   module.exports.handleStandFn = deps.handleStand;
+  module.exports.sendFullStateFn = deps.sendFullState;
 }
 
 function handleSwimTick(session, msg) {
@@ -57,7 +58,7 @@ function handleSwimTick(session, msg) {
 
 async function handleZone(session, msg) {
   const currentZone = session.char.zoneId;
-  const targetZone = msg.zoneId;
+  const targetZone = DB.getArchiveShortName(msg.zoneId);
 
   // Zone transition cooldown — prevent instant bounce-back between adjacent zones
   const now = Date.now();
@@ -71,6 +72,11 @@ async function handleZone(session, msg) {
   if (!zoneLine) {
     return sendCombatLog(session, [{ event: 'MESSAGE', text: 'You cannot go that way.' }]);
   }
+
+  try {
+    const SpellSystem = require('./spells');
+    SpellSystem.cancelPendingScribe(session, 'zone', false);
+  } catch (_) { /* ignore */ }
 
   handleStopCombat(session);
   // Despawn pet on zone transition (P99: pets don't zone)
@@ -404,34 +410,89 @@ function handleTeleporterPad(session, door) {
   });
 }
 
+/**
+ * GM: teleport to PEQ zone succor (safe_x/safe_y/safe_z). Uses same client path as bind respawn.
+ * @param {string} zoneArg EQ `zone.short_name` (e.g. cshome, qeytoqrg) or internal key resolvable via ZONES.
+ */
+async function adminGotoZoneSuccor(session, zoneArg) {
+  const char = session.char;
+  const raw = (zoneArg || '').trim().toLowerCase();
+  if (!raw) {
+    sendCombatLog(session, [{ event: 'MESSAGE', text: 'Usage: /zone <shortname> — PEQ zone short_name (e.g. cshome, qeytoqrg).' }]);
+    return;
+  }
+
+  const ZoneSystem = require('./zones');
+  const eqemuDB = require('../eqemu_db');
+  const zoneKey = ZoneSystem.resolveZoneKey(raw);
+  const archiveShort = DB.getArchiveShortName(zoneKey);
+  let def = ZoneSystem.getZoneDef(archiveShort);
+  let dbShort = (def && def.shortName) ? def.shortName : archiveShort;
+
+  let coords = await eqemuDB.getZoneSuccorCoords(dbShort);
+  if (!coords && dbShort !== raw) {
+    coords = await eqemuDB.getZoneSuccorCoords(raw);
+    if (coords) dbShort = raw;
+  }
+  if (!coords) {
+    sendCombatLog(session, [{ event: 'MESSAGE', text: `No succor row in PEQ zone table for '${raw}' (short_name).` }]);
+    return;
+  }
+
+  try {
+    const SpellSystem = require('./spells');
+    SpellSystem.cancelPendingScribe(session, 'zone', false);
+  } catch (_) { /* ignore */ }
+
+  handleStopCombat(session);
+  if (session.pet) {
+    despawnPet(session, 'Your pet could not follow you.');
+  }
+
+  session.lastZoneTime = Date.now();
+
+  await ensureZoneLoaded(archiveShort);
+  def = ZoneSystem.getZoneDef(archiveShort);
+  if (def && def.shortName) dbShort = def.shortName;
+
+  char.zoneId = archiveShort;
+  char.roomId = (def && def.defaultRoom) || '';
+  char.x = coords.safe_x;
+  char.y = coords.safe_y;
+  char.z = coords.safe_z;
+
+  DB.saveCharacterLocation(char.id, archiveShort, char.x, char.y, char.z);
+  session.pendingTeleport = { x: char.x, y: char.y, z: char.z };
+  session.loginFreeze = Date.now() + 5000;
+  DB.forceFlushCharacter(char.id);
+
+  const sendFullState = module.exports.sendFullStateFn;
+  if (sendFullState) {
+    sendFullState(session, { forceZoneSync: true });
+  } else {
+    sendStatus(session);
+  }
+
+  const zname = (def && def.name) || dbShort;
+  sendCombatLog(session, [{ event: 'MESSAGE', text: `[GM] Zoned to ${zname} (${dbShort}) succor.` }]);
+}
+
 async function handleSuccor(session) {
   const char = session.char;
   
   try {
     const eqemuDB = require('../eqemu_db');
-    await eqemuDB.init();
-    const mysql = require('mysql2/promise');
-    const p = mysql.createPool({
-      host: process.env.EQEMU_HOST || '127.0.0.1',
-      port: process.env.EQEMU_PORT || 3307,
-      user: process.env.EQEMU_USER || 'eqemu',
-      password: process.env.EQEMU_PASSWORD || '',
-      database: process.env.EQEMU_DATABASE || 'peq',
-    });
-    
     const zoneDef = getZoneDef(char.zoneId);
-    const dbShort = zoneDef && zoneDef.shortName ? zoneDef.shortName : char.zoneId;
-    
-    const [rows] = await p.query('SELECT safe_x, safe_y, safe_z FROM zone WHERE short_name = ?', [dbShort]);
-    await p.end();
-    
-    if (rows.length === 0) {
+    const dbShort = zoneDef && zoneDef.shortName
+      ? String(zoneDef.shortName).toLowerCase()
+      : String(char.zoneId).toLowerCase();
+
+    const safe = await eqemuDB.getZoneSuccorCoords(dbShort);
+    if (!safe) {
       sendCombatLog(session, [{ event: 'MESSAGE', text: 'No safe point found for this zone.' }]);
       return;
     }
-    
-    const safe = rows[0];
-    
+
     // safe_x/safe_y/safe_z use the same coordinate system as spawn2:
     // x = horizontal, y = horizontal, z = height
     // TELEPORT handler on the client applies the EQ→Godot mapping
@@ -484,5 +545,6 @@ module.exports = {
   breakHide,
   handleTeleporterPad,
   handleSuccor,
+  adminGotoZoneSuccor,
   init,
 };

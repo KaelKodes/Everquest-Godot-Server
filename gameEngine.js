@@ -72,8 +72,10 @@ let worldCalendar = State.worldCalendar;
 // ── Session Management ──────────────────────────────────────────────
 
 async function createSession(ws, char, auth = null) {
-  // Map EQEmu short_name to our internal zone key (qeytoqrg → qeynos_hills)
   char.zoneId = ZoneSystem.resolveZoneKey(char.zoneId);
+  // Client Lantern loads <short_name>.s3d — must match PEQ archive, not world-atlas keys (e.g. qeynos_hills → qeytoqrg).
+  char.zoneId = eqemuDB.getArchiveShortName(char.zoneId);
+  if (char.bindZoneId) char.bindZoneId = eqemuDB.getArchiveShortName(char.bindZoneId);
 
   // Ensure the player's zone is loaded (dynamically loads spawns if needed)
   await ZoneSystem.ensureZoneLoaded(char.zoneId, SpawningSystem.spawnMob, MiningSystem.spawnMiningNodes, MiningSystem.spawnMiningNPCs);
@@ -171,6 +173,7 @@ async function createSession(ws, char, auth = null) {
 function removeSession(ws) {
   const session = sessions.get(ws);
   if (session) {
+    SpellSystem.cancelPendingScribe(session, 'disconnect', true);
     if (session.combatTarget) {
       session.combatTarget.target = null;
     }
@@ -328,8 +331,10 @@ async function handleMessage(ws, msg) {
       break;
     }
     case 'DESTROY_ITEM': return InventorySystem.handleDestroyItem(session, msg);
+    case 'MOVE_ITEM': return InventorySystem.handleMoveItem(session, msg);
     case 'SPLIT_MOVE_ITEM': return InventorySystem.handleSplitMoveItem(session, msg);
     case 'AUTO_EQUIP': return InventorySystem.handleAutoEquip(session, msg);
+    case 'BEGIN_SCRIBE_SCROLL': return SpellSystem.handleBeginScribeScroll(session, msg);
     case 'MEMORIZE_SPELL': return SpellSystem.handleMemorizeSpell(session, msg);
     case 'FORGET_SPELL': return SpellSystem.handleForgetSpell(session, msg);
     case 'SWAP_BOOK_SPELLS': return SpellSystem.handleSwapBookSpells(session, msg);
@@ -412,7 +417,7 @@ async function handleCreateAccount(ws, msg) {
   }
 
   // Auto-login after creation
-  authSessions.set(ws, { accountId: result.id, accountName: result.name });
+  authSessions.set(ws, { accountId: result.id, accountName: result.name, status: result.status || 0 });
   send(ws, { type: 'ACCOUNT_OK', accountName: result.name, characters: [] });
   console.log(`[ENGINE] Account '${result.name}' created (id=${result.id}).`);
 }
@@ -705,13 +710,6 @@ function handleSit(session) {
   sendStatus(session);
 }
 
-function handleStartCombat(session) {
-  if (session.char.state === 'medding') return;
-  session.combatTarget = { type: 'NPC', target: null };
-  sendCombatLog(session, [{ event: 'MESSAGE', text: `Auto attack is on.` }]);
-  session.inCombat = true;
-}
-
 function handleStartRanged(session) {
   if (session.char.state === 'medding') return;
   // Stub for ranged combat until fully implemented
@@ -723,6 +721,7 @@ function handleStopRanged(session) {
 }
 
 function handleStand(session) {
+  SpellSystem.cancelPendingScribe(session, 'stand', false);
   session.char.state = 'standing';
   sendCombatLog(session, [{ event: 'MESSAGE', text: 'You stand up.' }]);
   sendStatus(session);
@@ -730,6 +729,7 @@ function handleStand(session) {
 
 function handleStartCombat(session) {
   if (session.char.state === 'medding') {
+    SpellSystem.cancelPendingScribe(session, 'stand', false);
     session.char.state = 'standing';
   }
 
@@ -953,6 +953,7 @@ function handleAttackTarget(session, msg) {
   session.inCombat = true;
   session.autoFight = true;
   session.combatTarget = targetEntity;
+  SpellSystem.cancelPendingScribe(session, 'combat', false);
 
   // NOTE: Do NOT set mob.target here - mob only becomes aggressive
   // when the player's first melee swing actually goes through in range.
@@ -980,6 +981,7 @@ function engageNextMob(session) {
   session.combatTarget = mob;
   mob.target = session;
   session.attackTimer = 0;
+  SpellSystem.cancelPendingScribe(session, 'combat', false);
 
   sendCombatLog(session, [{ event: 'MESSAGE', text: `You engage ${mob.name}!` }]);
   sendStatus(session);
@@ -1366,6 +1368,7 @@ async function playNextMelodySong(session) {
  * Classic EQ interruption: roughly 75% base chance, modified by level difference.
  */
 function tryInterruptCasting(session, source) {
+  SpellSystem.cancelPendingScribe(session, 'damage', false);
   if (!session.casting) return;
 
   // Base 75% interrupt chance, reduced by level (higher level = harder to interrupt)
@@ -2057,15 +2060,21 @@ function broadcastMobMove(mob, zoneId) {
   }
 }
 
-/** Flush pending skill-up messages */
+/** Flush pending skill-up messages (same UX as combat tick: log + SKILLS_UPDATE) */
 function flushSkillUps(session) {
-  if (session.skillUpMessages && session.skillUpMessages.length > 0) {
-    const logs = session.skillUpMessages.map(m => ({
-      event: 'MESSAGE',
-      text: `[color=yellow]You have become better at ${m.skillName}! (${m.newLevel})[/color]`
-    }));
-    sendCombatLog(session, logs);
-    session.skillUpMessages = [];
+  if (!session.skillUpMessages || session.skillUpMessages.length === 0) return;
+  const logs = session.skillUpMessages.map(m => ({
+    event: 'MESSAGE',
+    text: `[color=yellow]You have become better at ${m.skillName}! (${m.newLevel})[/color]`
+  }));
+  sendCombatLog(session, logs);
+  session.skillUpMessages = [];
+  if (session.ws && session.ws.readyState === 1) {
+    try {
+      session.ws.send(JSON.stringify({ type: 'SKILLS_UPDATE', skills: session.char.skills }));
+    } catch (e) {
+      console.error('[ENGINE] flushSkillUps SKILLS_UPDATE failed:', e.message);
+    }
   }
 }
 
@@ -3268,26 +3277,97 @@ function handleTrainSkill(session, msg) {
 // Allowlist (not blocklist): EQ has dozens of misc/unknown types (e.g. 48 = ItemTypeUnknown10) with
 // idfiles that are not weapon meshes — "drag items", quest objects, etc.
 // See eqemu_source/common/item_data.h ItemType enum order.
+/** ItemTypeLight — torches, lanterns, lightstones (handled mesh id via resolveHeldLightMeshId). */
+const ITEM_TYPE_LIGHT = 16;
+
 const HELD_WEAPON_MESH_ITEMTYPES = new Set([
   0, 1, 2, 3, 4, 5, // 1H/2H Slash, Pierce, Blunt, Bow
   7, // Large throwing
   8, // Shield
+  ITEM_TYPE_LIGHT,
   19, // Small throwing
   35, // 2H piercing
   45, // Martial
 ]);
 
 function itemUsesHeldWeapon3dMesh(itemDef) {
-  if (!itemDef || !itemDef.idfile) return false;
+  if (!itemDef) return false;
   const t = Number(itemDef.itemtype);
   if (!Number.isFinite(t)) return false;
+  if (t === ITEM_TYPE_LIGHT) return true;
+  if (!itemDef.idfile) return false;
   return HELD_WEAPON_MESH_ITEMTYPES.has(t);
+}
+
+/** Optional: map DB idfile (lowercase) → Equipment/*.glb stem when the export uses a different name. */
+const HELD_LIGHT_MESH_OVERRIDES = {
+  // Example: 'it9979': 'lantern01',
+};
+
+/**
+ * Handheld light props under eqmud/Data/Equipment/*.glb
+ * Note: `it199` in this pack is a crossbow — do not use it as a torch stand-in.
+ */
+const DEFAULT_TORCH_HELD_MESH = 'lantern01';
+const DEFAULT_LANTERN_HELD_MESH = 'lantern01';
+
+function resolveHeldLightMeshId(itemDef) {
+  const raw = (itemDef.idfile || '').trim();
+  const idLower = raw.toLowerCase();
+  if (idLower && HELD_LIGHT_MESH_OVERRIDES[idLower]) {
+    return HELD_LIGHT_MESH_OVERRIDES[idLower];
+  }
+  const name = (itemDef.name || '').toLowerCase();
+  if (name.includes('lantern') || idLower.includes('lantern')) {
+    return DEFAULT_LANTERN_HELD_MESH;
+  }
+  if (name.includes('torch') || idLower.includes('torch')) {
+    return DEFAULT_TORCH_HELD_MESH;
+  }
+  if (name.includes('candle')) {
+    return DEFAULT_TORCH_HELD_MESH;
+  }
+  if (idLower && /^it\d+/i.test(raw)) {
+    return idLower;
+  }
+  return DEFAULT_TORCH_HELD_MESH;
+}
+
+/**
+ * True for items that should show a handheld light GLB in primary/secondary slots.
+ * Many PEQ/P99 rows use itemtype other than 16 (Light) or omit idfile; vision already
+ * keys off `light` + name for hasLightSource — keep visuals in sync.
+ */
+function itemShouldUseHandheldLightMesh(itemDef) {
+  if (!itemDef) return false;
+  if (Number(itemDef.itemtype) === ITEM_TYPE_LIGHT) return true;
+  const n = (itemDef.name || '').toLowerCase();
+  if (n.includes('torch') || n.includes('lantern') || n.includes('candle') || n.includes('lightstone')) {
+    return true;
+  }
+  if (n.includes('fire beetle eye')) return true;
+  const lum = Number(itemDef.light) || 0;
+  const dmg = Number(itemDef.damage) || 0;
+  if (lum > 0 && dmg === 0) return true;
+  return false;
 }
 
 // Compute per-slot armor material indices and weapon model IDs from equipped items
 // Returns: { head: 0, chest: 0, ..., primaryWeapon: 'IT10', secondaryWeapon: 'IT215' }
 function getEquipVisuals(session) {
-  const visuals = { head: 0, chest: 0, arms: 0, wrist: 0, hands: 0, legs: 0, feet: 0, primaryWeapon: '', secondaryWeapon: '' };
+  const visuals = {
+    head: 0,
+    chest: 0,
+    arms: 0,
+    wrist: 0,
+    hands: 0,
+    legs: 0,
+    feet: 0,
+    primaryWeapon: '',
+    secondaryWeapon: '',
+    // EQ itemtype on secondary (slot 14); 8 = shield — client picks shield_point vs l_point
+    secondaryWeaponItemType: null,
+  };
   if (!session || !session.inventory) return visuals;
 
   // EQEmu equip slot -> body part mapping
@@ -3313,13 +3393,31 @@ function getEquipVisuals(session) {
       visuals[bodyPart] = itemDef.material;
     }
 
-    // Primary weapon (slot 13) — only real weapons/shields use converted Equipment/*.glb meshes
-    if (inv.slot === 13 && itemUsesHeldWeapon3dMesh(itemDef)) {
-      visuals.primaryWeapon = itemDef.idfile.toLowerCase();
+    // Primary (slot 13)
+    if (inv.slot === 13) {
+      const asWeapon = itemUsesHeldWeapon3dMesh(itemDef);
+      const asLight = itemShouldUseHandheldLightMesh(itemDef);
+      if (asWeapon || asLight) {
+        if (asLight) {
+          visuals.primaryWeapon = resolveHeldLightMeshId(itemDef);
+        } else {
+          visuals.primaryWeapon = itemDef.idfile.toLowerCase();
+        }
+      }
     }
-    // Secondary weapon/shield (slot 14)
-    if (inv.slot === 14 && itemUsesHeldWeapon3dMesh(itemDef)) {
-      visuals.secondaryWeapon = itemDef.idfile.toLowerCase();
+    // Secondary (slot 14) — weapons, shields, torches, lanterns
+    if (inv.slot === 14) {
+      const asWeapon = itemUsesHeldWeapon3dMesh(itemDef);
+      const asLight = itemShouldUseHandheldLightMesh(itemDef);
+      if (asWeapon || asLight) {
+        const st = Number(itemDef.itemtype);
+        if (Number.isFinite(st)) visuals.secondaryWeaponItemType = st;
+        if (asLight) {
+          visuals.secondaryWeapon = resolveHeldLightMeshId(itemDef);
+        } else {
+          visuals.secondaryWeapon = itemDef.idfile.toLowerCase();
+        }
+      }
     }
   }
 
@@ -3372,6 +3470,11 @@ function sendLoginOk(session) {
       inCombat: session.inCombat,
       zone: zone ? zone.name : 'Unknown',
       zoneId: char.zoneId,
+      ...(() => {
+        const arch = eqemuDB.getLanternArchiveBase(char.zoneId);
+        const zid = String(char.zoneId).trim().toLowerCase();
+        return arch && arch !== zid ? { zoneArchiveBase: arch } : {};
+      })(),
       connections: zone ? zone.connections : [],
       copper: char.copper,
       x: char.x,
@@ -3533,6 +3636,11 @@ function sendStatus(session) {
       nextLevelXp: combat.xpForLevel(char.level + 1),
       zone: zone ? zone.name : 'Unknown',
       zoneId: char.zoneId,
+      ...(() => {
+        const arch = eqemuDB.getLanternArchiveBase(char.zoneId);
+        const zid = String(char.zoneId).trim().toLowerCase();
+        return arch && arch !== zid ? { zoneArchiveBase: arch } : {};
+      })(),
       roomId: roomId,
       roomName: roomName,
       x: char.x,
@@ -3781,8 +3889,11 @@ function startGameLoop() {
         }
 
         StatsSystem.processRegen(session, dt);
+        // Regen can skill up Meditate (non-combat); flush so messages + SKILLS_UPDATE are not stuck until next fight
+        flushSkillUps(session);
         if (session.bot) session.bot.tick();
         processCasting(session, dt);
+        SpellSystem.tickPendingScribe(session);
         
         // --- Bard Active Song / Pulse handling ---
         if (session.activeSong && !session.casting) {
@@ -3986,6 +4097,62 @@ function processEnvironment() {
   }
 }
 
+// Stable object refs for Faydark Retreat lantern lighting testers (ZONE_STATE delta uses === on equipVisuals).
+const FAYRTRT_LANTERN_TEST_APPEARANCE = {};
+const FAYRTRT_LANTERN_TEST_EQUIP = {
+  head: 0, chest: 0, arms: 0, wrist: 0, hands: 0, legs: 0, feet: 0,
+  primaryWeapon: '',
+  secondaryWeapon: 'lantern01',
+  secondaryWeaponItemType: 16, // ITEM_TYPE_LIGHT — client uses l_point, not shield_point
+};
+
+/**
+ * Client-only helpers: human NPCs at fixed spots (succor + player-tuned EQ coords), each holding lantern01 + handheld omni.
+ * Not in liveMobs (no combat); for tuning EntityCapsule lantern lighting vs zone geometry.
+ * Names: Pharos * — workshop beacons (pharos = signal fire / lighthouse); retreat_ prefix scopes IDs to this zone.
+ */
+function appendFayrtrtLanternLightingTesters(char, entities) {
+  const z = String(char.zoneId || '').toLowerCase();
+  if (z !== 'fayrtrt') return;
+  const sx = -430;
+  const sy = -209;
+  const sz = 6.75;
+  const step = 32;
+  // Pharos Ember: keep near succor. Wick / Coal / Dusk: player-picked EQ locs (see /loc Godot↔EQ dump).
+  // lightPharosVariant: client A/B harness (see EntityCapsule.SetLightPharosVariant). 0 baseline, 1 raw+lateral, 2 long reach, 3 tight pool, 4 omni@flame 360° (Pharos Eidos).
+  const tests = [
+    { id: 'retreat_pharos_ember', name: 'Pharos Ember [V0 baseline]', x: sx + step, y: sy, z: sz, heading: 0, lightPharosVariant: 0 },
+    { id: 'retreat_pharos_wick', name: 'Pharos Wick [V1 raw +0.45m R]', x: -354.2, y: -233.9, z: 1.4, heading: 128, lightPharosVariant: 1 },
+    { id: 'retreat_pharos_coal', name: 'Pharos Coal [V2 long reach]', x: -404.5, y: -279.2, z: 0.0, heading: 256, lightPharosVariant: 2 },
+    { id: 'retreat_pharos_dusk', name: 'Pharos Dusk [V3 tight pool]', x: -331.8, y: -309.8, z: 0.0, heading: 384, lightPharosVariant: 3 },
+    // Fifth slot: omni at true flame, no forward-hemisphere clamp (variant 4) — Pharos Eidos.
+    { id: 'retreat_pharos_eidos', name: 'Pharos Eidos [V4 omni 360]', x: -347.2, y: -133.6, z: 0.0, heading: 64, lightPharosVariant: 4 },
+  ];
+  for (const t of tests) {
+    entities.push({
+      id: t.id,
+      name: t.name,
+      type: 'npc',
+      npcType: 0,
+      race: 1,
+      gender: 0,
+      face: 0,
+      size: 6,
+      maxHp: 9999,
+      appearance: FAYRTRT_LANTERN_TEST_APPEARANCE,
+      equipVisuals: FAYRTRT_LANTERN_TEST_EQUIP,
+      hasLightSource: true,
+      lightPharosVariant: typeof t.lightPharosVariant === 'number' ? t.lightPharosVariant : 0,
+      isPet: false,
+      x: t.x,
+      y: t.y,
+      z: typeof t.z === 'number' ? t.z : sz,
+      heading: t.heading,
+      hp: 1,
+    });
+  }
+}
+
 function handleLook(session, forceSync = false) {
   try {
   const char = session.char;
@@ -4140,6 +4307,8 @@ function handleLook(session, forceSync = false) {
       }
   }
 
+  appendFayrtrtLanternLightingTesters(char, entities);
+
   const ambienceTrack = (zoneDef && zoneDef.ambience) ? zoneDef.ambience : (char.zoneId + "am");
 
   if (!session.lastZoneStateEntities) session.lastZoneStateEntities = new Map();
@@ -4154,11 +4323,16 @@ function handleLook(session, forceSync = false) {
     // Check if changed
     let changed = forceSync || !oldEnt;
     if (!changed) {
+      const oldLit = oldEnt.hasLightSource === true;
+      const newLit = ent.hasLightSource === true;
+      const oldPv = typeof oldEnt.lightPharosVariant === 'number' ? oldEnt.lightPharosVariant : -1;
+      const newPv = typeof ent.lightPharosVariant === 'number' ? ent.lightPharosVariant : -1;
       changed = (
         oldEnt.x !== ent.x || oldEnt.y !== ent.y || oldEnt.z !== ent.z ||
         oldEnt.heading !== ent.heading || oldEnt.hp !== ent.hp ||
         oldEnt.sneaking !== ent.sneaking || oldEnt.hidden !== ent.hidden ||
-        oldEnt.appearance !== ent.appearance || oldEnt.equipVisuals !== ent.equipVisuals
+        oldEnt.appearance !== ent.appearance || oldEnt.equipVisuals !== ent.equipVisuals ||
+        oldLit !== newLit || oldPv !== newPv
       );
     }
 
@@ -4168,7 +4342,9 @@ function handleLook(session, forceSync = false) {
       session.lastZoneStateEntities.set(ent.id, {
         x: ent.x, y: ent.y, z: ent.z, heading: ent.heading, hp: ent.hp,
         sneaking: ent.sneaking, hidden: ent.hidden,
-        appearance: ent.appearance, equipVisuals: ent.equipVisuals
+        appearance: ent.appearance, equipVisuals: ent.equipVisuals,
+        hasLightSource: ent.hasLightSource === true,
+        lightPharosVariant: typeof ent.lightPharosVariant === 'number' ? ent.lightPharosVariant : -1,
       });
     }
   }
@@ -4616,9 +4792,26 @@ async function handleHireStudent(session, msg) {
 }
 
 async function handleServerCommand(session, msg) {
-  const auth = authSessions.get(session.ws);
-  if (!auth || auth.status < 200) {
-    sendCombatLog(session, [{ event: 'MESSAGE', text: `[color=red]Unknown command: ${msg.command}[/color]` }]);
+  let auth = authSessions.get(session.ws);
+  if (!auth && session.auth && session.auth.accountId != null) {
+    auth = {
+      accountId: session.auth.accountId,
+      accountName: session.auth.accountName || '',
+      status: session.auth.status != null ? session.auth.status : 0
+    };
+  }
+  if (!auth) {
+    sendCombatLog(session, [{ event: 'MESSAGE', text: '[color=red]Not logged in.[/color]' }]);
+    return;
+  }
+  // EQEmu: status >= 200 is GM. For local dev without DB edits: EQMUD_ALLOW_GM_COMMANDS=1
+  const gmMin = process.env.EQMUD_ALLOW_GM_COMMANDS === '1' ? 0 : 200;
+  const st = auth.status ?? 0;
+  if (st < gmMin) {
+    sendCombatLog(session, [{
+      event: 'MESSAGE',
+      text: `[color=red]GM only: ${msg.command} (account status ${st}; need ≥${gmMin}. PEQ: UPDATE account SET status=255 WHERE name='…'; or set EQMUD_ALLOW_GM_COMMANDS=1 locally.)[/color]`
+    }]);
     return;
   }
 
@@ -4657,6 +4850,15 @@ async function handleServerCommand(session, msg) {
     }
     case '/succor': {
       MovementSystem.handleSuccor(session);
+      break;
+    }
+    case '/zone': {
+      const zoneShort = (msg.args || '').trim();
+      if (!zoneShort) {
+        sendCombatLog(session, [{ event: 'MESSAGE', text: 'Usage: /zone <shortname> — PEQ zone short_name (e.g. cshome).' }]);
+        break;
+      }
+      await MovementSystem.adminGotoZoneSuccor(session, zoneShort);
       break;
     }
     case '/item': {
@@ -4724,6 +4926,14 @@ async function handleManualLogin(ws, data) {
   }
 
   const session = await createSession(ws, char, data);
+  // Zone node never saw LOGIN_ACCOUNT; restore auth from handoff token for GM commands etc.
+  if (data && data.accountId != null) {
+    authSessions.set(ws, {
+      accountId: data.accountId,
+      accountName: data.accountName || '',
+      status: data.status != null ? data.status : 0
+    });
+  }
   console.log(`[ENGINE] ${char.name} manually logged in (handoff) with full state sync.`);
   sendFullState(session);
 }

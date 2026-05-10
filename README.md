@@ -25,11 +25,12 @@ The core authority of EQ.gd. A high-performance, authoritative game engine built
    - Or run `node configure.js`
    - This tool allows you to update settings and test your database connection.
 
-3. **Start the Engine:**
+3. **Start the Engine (cluster):**
    ```bash
    npm install
-   node index.js
+   npm run cluster
    ```
+   Or on Windows: `Start_Cluster.bat`. Legacy monolith: `npm run monolith` (runs `Reference/server_monolith/index.js`).
 
 ### 📁 Project Structure
 - `/systems`: Core logic (Combat, Hate, Spells, AI, Spawning)

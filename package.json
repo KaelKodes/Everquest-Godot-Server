@@ -2,11 +2,12 @@
   "name": "eqmud-server",
   "version": "1.0.0",
   "description": "Idle EverQuest MUD Server",
-  "main": "index.js",
+  "main": "master.js",
   "scripts": {
-    "start": "node index.js",
-    "dev": "node --watch index.js",
+    "start": "node master.js",
+    "dev": "node master.js",
     "cluster": "node master.js",
+    "monolith": "node ../Reference/server_monolith/index.js",
     "partition:nodes": "node tools/partition_zone_nodes.js",
     "partition:nodes:apply": "node tools/partition_zone_nodes.js --apply"
   },

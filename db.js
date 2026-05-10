@@ -96,6 +96,7 @@ module.exports = {
   flushWriteBehindCache,
 
   // Passthroughs
+  getArchiveShortName: eqemuDB.getArchiveShortName,
   getInventory: eqemuDB.getInventory,
   addItem: eqemuDB.addItem,
   updateItemQuantity: eqemuDB.updateItemQuantity,

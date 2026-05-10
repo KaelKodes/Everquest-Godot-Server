@@ -1,6 +1,9 @@
 const fs = require('fs');
 const path = require('path');
 const SpellDB = require('../data/spellDatabase');
+const ItemDB = require('../data/itemDatabase');
+const constants = require('../data/constants');
+const eqemuDB = require('../eqemu_db');
 const DB = require('../db');
 const { send } = require('../utils');
 
@@ -284,30 +287,282 @@ function buildStarterSpellbook(session) {
   console.log(`[SPELLBOOK] Built starter spellbook for ${session.char.name}: ${session.spellbook.length} spells`);
 }
 
-/** Scribe a new spell into the first empty book slot. Returns the bookSlot used, or -1 if book is full. */
-function scribeSpellToBook(session, spellKey) {
+/**
+ * Scribe a new spell into the spellbook.
+ * @param {string} spellKey
+ * @param {number|null} preferredBookSlot  If set, must be empty (0–791).
+ * @returns {number} bookSlot used, or -1 full / bad, -2 duplicate, -3 invalid slot index, -4 slot occupied
+ */
+function scribeSpellToBook(session, spellKey, preferredBookSlot = null) {
   const spellDef = SpellDB.getByKey(spellKey);
   if (!spellDef) return -1;
-  
-  // Already scribed?
+
   if (session.spellbook.find(s => s.spell_key === spellKey)) return -2;
-  
-  // Find first empty bookSlot (0-791 for 99 pages × 8)
+
   const usedSlots = new Set(session.spellbook.map(s => s.bookSlot));
   let freeSlot = -1;
-  for (let i = 0; i < 792; i++) {
-    if (!usedSlots.has(i)) { freeSlot = i; break; }
+
+  if (preferredBookSlot != null && preferredBookSlot !== undefined) {
+    const ps = Math.floor(Number(preferredBookSlot));
+    if (!Number.isFinite(ps) || ps < 0 || ps >= 792) return -3;
+    if (usedSlots.has(ps)) return -4;
+    freeSlot = ps;
+  } else {
+    for (let i = 0; i < 792; i++) {
+      if (!usedSlots.has(i)) { freeSlot = i; break; }
+    }
+    if (freeSlot < 0) return -1;
   }
-  if (freeSlot < 0) return -1; // Book full
-  
+
   session.spellbook.push({
     bookSlot: freeSlot,
     spell_key: spellKey,
     id: spellDef._spellId || spellDef.id,
   });
-  
+
   saveSpellbookToFile(session).then(() => {});
   return freeSlot;
+}
+
+function normalizedClassKey(classKey) {
+  return (classKey || '').toLowerCase().replace(/_/g, '');
+}
+
+const SCRIBE_CURVE_MAX_LEVEL = parseInt(process.env.SCRIBE_CURVE_MAX_LEVEL || '60', 10);
+const SCRIBE_MS_MIN = 2500;
+const SCRIBE_MS_MAX = 15000;
+
+function getScribeDurationMs(spellDef, session) {
+  const norm = normalizedClassKey(session.char.class);
+  const spellClassLevel = spellDef.classes && spellDef.classes[norm];
+  let lvl = typeof spellClassLevel === 'number' && spellClassLevel !== 255 ? spellClassLevel : 1;
+  const cap = Math.max(2, SCRIBE_CURVE_MAX_LEVEL);
+  const lvlClamped = Math.min(Math.max(1, lvl), cap);
+  const t = cap > 1 ? (lvlClamped - 1) / (cap - 1) : 1;
+  const baseMs = SCRIBE_MS_MIN + (SCRIBE_MS_MAX - SCRIBE_MS_MIN) * Math.max(0, Math.min(1, t));
+  const med = (session.char.skills && session.char.skills.meditate) ? session.char.skills.meditate : 0;
+  const medFactor = 1 - 0.45 * Math.min(1, med / 252);
+  return Math.max(1500, Math.round(baseMs * medFactor));
+}
+
+function validateScribeScroll(session, invSlot, requestedBookSlot) {
+  const ITEMS = module.exports.ITEMS || {};
+  const invRow = session.inventory.find(i => i.slot === invSlot);
+  if (!invRow) return { ok: false, error: 'Item not found.' };
+
+  const itemDef = ItemDB.getById(invRow.item_key) || ITEMS[invRow.item_key] || {};
+  if (!itemDef || (itemDef.scrolleffect || 0) <= 0) {
+    return { ok: false, error: 'That is not a spell scroll.' };
+  }
+  if ((itemDef.bagslots || 0) > 0) {
+    return { ok: false, error: 'You cannot scribe from a container.' };
+  }
+
+  const CLASSES_MAP = constants.CLASSES;
+  if (itemDef.classes && itemDef.classes !== 65535) {
+    const classId = CLASSES_MAP[session.char.class] || 1;
+    if (!(itemDef.classes & (1 << (classId - 1)))) {
+      return { ok: false, error: 'Your class cannot use this scroll.' };
+    }
+  }
+  if (itemDef.races && itemDef.races !== 65535) {
+    const raceId = constants.RACES[session.char.race] || 1;
+    const RACE_BIT = { 1:0, 2:1, 3:2, 4:3, 5:4, 6:5, 7:6, 8:7, 9:8, 10:9, 11:10, 12:11, 128:12, 130:13, 330:14 };
+    const bit = RACE_BIT[raceId] ?? -1;
+    if (bit >= 0 && !(itemDef.races & (1 << bit))) {
+      return { ok: false, error: 'Your race cannot use this scroll.' };
+    }
+  }
+
+  if (session.char.level < (itemDef.reqlevel || 0)) {
+    return { ok: false, error: `You must be level ${itemDef.reqlevel} to use this scroll.` };
+  }
+
+  const spellDef = SpellDB.getById(itemDef.scrolleffect);
+  if (!spellDef) return { ok: false, error: 'Unknown spell on this scroll.' };
+
+  const norm = normalizedClassKey(session.char.class);
+  const needLevel = spellDef.classes && spellDef.classes[norm];
+  if (needLevel === undefined || needLevel === 255) {
+    return { ok: false, error: 'Your class cannot learn this spell.' };
+  }
+  if (session.char.level < needLevel) {
+    return { ok: false, error: `You must be at least level ${needLevel} to scribe this spell.` };
+  }
+
+  const spellKey = spellDef._key;
+  if (!spellKey) return { ok: false, error: 'Could not resolve spell id.' };
+
+  if (session.spellbook.find(s => s.spell_key === spellKey)) {
+    const spellLabel = spellDef.name || spellKey;
+    return { ok: false, error: `You already have ${spellLabel} scribed.` };
+  }
+
+  let targetBookSlot = null;
+  if (requestedBookSlot != null && requestedBookSlot !== undefined) {
+    const bs = Math.floor(Number(requestedBookSlot));
+    if (!Number.isFinite(bs) || bs < 0 || bs >= 792) {
+      return { ok: false, error: 'Invalid spellbook slot.' };
+    }
+    if (session.spellbook.some(s => s.bookSlot === bs)) {
+      return { ok: false, error: 'That spellbook slot is not empty.' };
+    }
+    targetBookSlot = bs;
+  } else {
+    const usedSlots = new Set(session.spellbook.map(s => s.bookSlot));
+    let freeSlot = -1;
+    for (let i = 0; i < 792; i++) {
+      if (!usedSlots.has(i)) { freeSlot = i; break; }
+    }
+    if (freeSlot < 0) return { ok: false, error: 'Your spellbook is full.' };
+    targetBookSlot = freeSlot;
+  }
+
+  return {
+    ok: true,
+    invRow,
+    itemDef,
+    spellDef,
+    spellKey,
+    targetBookSlot,
+  };
+}
+
+function rejectScribeBegin(session, reason, messageText) {
+  if (!session.ws || session.ws.readyState !== 1) return;
+  send(session.ws, { type: 'SCRIBE_REJECTED', reason: reason || 'unknown' });
+  if (messageText) send(session.ws, { type: 'MESSAGE', text: messageText });
+}
+
+function handleBeginScribeScroll(session, msg) {
+  if (!session.char || !session.ws) return;
+
+  if (session.pendingScribe) {
+    rejectScribeBegin(session, 'busy', 'You are already scribing a scroll.');
+    return;
+  }
+  if (session.char.state !== 'medding') {
+    rejectScribeBegin(session, 'not_sitting', 'You must be sitting to scribe.');
+    return;
+  }
+  if (session.inCombat) {
+    rejectScribeBegin(session, 'combat', 'You cannot scribe while fighting.');
+    return;
+  }
+  const invSlot = msg.slot != null ? Math.floor(Number(msg.slot)) : null;
+  if (invSlot == null || !Number.isFinite(invSlot)) {
+    rejectScribeBegin(session, 'bad_request', null);
+    return;
+  }
+
+  const v = validateScribeScroll(session, invSlot, msg.bookSlot);
+  if (!v.ok) {
+    rejectScribeBegin(session, 'validation', v.error);
+    return;
+  }
+
+  const durationMs = getScribeDurationMs(v.spellDef, session);
+  const now = Date.now();
+  session.pendingScribe = {
+    invSlot: v.invRow.slot,
+    itemKey: v.invRow.item_key,
+    bookSlot: v.targetBookSlot,
+    spellKey: v.spellKey,
+    endsAt: now + durationMs,
+    startedAt: now,
+    durationMs,
+  };
+
+  send(session.ws, {
+    type: 'SCRIBE_STARTED',
+    spellKey: v.spellKey,
+    spellId: v.spellDef.id,
+    spellName: v.spellDef.name,
+    bookSlot: v.targetBookSlot,
+    durationMs,
+    endsAt: session.pendingScribe.endsAt,
+  });
+}
+
+function cancelPendingScribe(session, reason, silent) {
+  if (!session.pendingScribe) return;
+  session.pendingScribe = null;
+  if (!silent && session.ws && session.ws.readyState === 1) {
+    send(session.ws, { type: 'SCRIBE_CANCELLED', reason: reason || 'interrupted' });
+  }
+}
+
+function tickPendingScribe(session) {
+  const p = session.pendingScribe;
+  if (!p) return;
+  if (session.inCombat || (session.char && session.char.state !== 'medding')) {
+    cancelPendingScribe(session, session.inCombat ? 'combat' : 'stand', false);
+    return;
+  }
+  if (Date.now() < p.endsAt) return;
+  finalizePendingScribe(session).catch((err) => {
+    console.error(`[SCRIBE] finalize error for ${session?.char?.name || 'unknown'}:`, err);
+  });
+}
+
+async function finalizePendingScribe(session) {
+  const p = session.pendingScribe;
+  if (!p || Date.now() < p.endsAt) return;
+
+  session.pendingScribe = null;
+  const { invSlot, itemKey, bookSlot, spellKey } = p;
+
+  if (!session.char) return;
+
+  const v = validateScribeScroll(session, invSlot, bookSlot);
+  if (!v.ok || v.spellKey !== spellKey) {
+    if (session.ws && session.ws.readyState === 1) {
+      send(session.ws, { type: 'SCRIBE_CANCELLED', reason: 'validation' });
+      send(session.ws, { type: 'MESSAGE', text: v.ok ? 'Scribing failed.' : v.error });
+    }
+    return;
+  }
+
+  const slotUsed = scribeSpellToBook(session, spellKey, bookSlot);
+  if (slotUsed < 0) {
+    if (session.ws && session.ws.readyState === 1) {
+      send(session.ws, { type: 'SCRIBE_CANCELLED', reason: 'book' });
+      send(session.ws, { type: 'MESSAGE', text: 'Scribing failed (spellbook).' });
+    }
+    return;
+  }
+
+  const ok = await eqemuDB.consumeOneInventoryAtSlot(session.char.id, invSlot, itemKey);
+  if (!ok) {
+    session.spellbook = session.spellbook.filter(s => !(s.spell_key === spellKey && s.bookSlot === bookSlot));
+    saveSpellbookToFile(session).then(() => {});
+    if (session.ws && session.ws.readyState === 1) {
+      send(session.ws, { type: 'SCRIBE_CANCELLED', reason: 'item' });
+      send(session.ws, { type: 'MESSAGE', text: 'Scroll missing — scribing aborted.' });
+    }
+    return;
+  }
+
+  session.inventory = await DB.getInventory(session.char.id);
+  if (calcEffectiveStatsFn) {
+    session.effectiveStats = calcEffectiveStatsFn(session.char, session.inventory, session.buffs);
+  }
+  if (module.exports.sendInventoryFn) module.exports.sendInventoryFn(session);
+
+  sendSpellbookFull(session);
+  if (sendStatus) sendStatus(session);
+
+  if (session.ws && session.ws.readyState === 1) {
+    send(session.ws, {
+      type: 'SCRIBE_COMPLETE',
+      spellKey,
+      bookSlot: slotUsed,
+      spellName: v.spellDef.name || spellKey,
+    });
+  }
+  if (sendCombatLog) {
+    sendCombatLog(session, [{ event: 'MESSAGE', text: `You have scribed ${v.spellDef.name || spellKey} into your spellbook.` }]);
+  }
 }
 
 // ── Spellbook Message Handlers ──────────────────────────────────────
@@ -1285,8 +1540,9 @@ async function applySpellEffect(session, spellDef) {
     }
     case 'gate': {
       if (handleStopCombat) handleStopCombat(session);
-      const bindZone = session.char.bindZoneId || session.char.zoneId;
-      if (bindZone !== session.char.zoneId) {
+      const bindZone = DB.getArchiveShortName(session.char.bindZoneId || session.char.zoneId);
+      const curZone = DB.getArchiveShortName(session.char.zoneId);
+      if (bindZone !== curZone) {
         if (ensureZoneLoaded) await ensureZoneLoaded(bindZone);
         session.char.zoneId = bindZone;
         const targetDef = getZoneDef ? getZoneDef(bindZone) : null;
@@ -1312,24 +1568,24 @@ async function applySpellEffect(session, spellDef) {
   if (hasTeleportZone && (spaIds.includes(83) || spaNames.includes('shadowStep') || spaNames.includes('changeAggro'))) {
     const targetZone = spellDef.links.teleportZone;
     const resolvedZone = resolveZoneKey ? resolveZoneKey(targetZone) : targetZone;
-    const targetDef = getZoneDef ? getZoneDef(resolvedZone) : null;
+    const archiveZone = DB.getArchiveShortName(resolvedZone);
+    const targetDef = getZoneDef ? getZoneDef(archiveZone) : null;
     
     if (!targetDef) {
       events.push({ event: 'MESSAGE', text: `${spellDef.name} opens a portal, but the destination is beyond your reach.` });
     } else {
       if (handleStopCombat) handleStopCombat(session);
-      if (ensureZoneLoaded) await ensureZoneLoaded(resolvedZone);
+      if (ensureZoneLoaded) await ensureZoneLoaded(archiveZone);
       
-      session.char.zoneId = resolvedZone;
+      session.char.zoneId = archiveZone;
       session.char.roomId = targetDef.defaultRoom || '';
       session.char.x = 0;
       session.char.y = 0;
       session.char.z = 0;
       session.pendingTeleport = { x: 0, y: 0, z: 0 };
       
-      const DB = require('../db');
-      DB.saveCharacterLocation(session.char.id, resolvedZone, session.char.x, session.char.y, session.char.z);
-      const tpName = targetDef.name || resolvedZone;
+      DB.saveCharacterLocation(session.char.id, archiveZone, session.char.x, session.char.y, session.char.z);
+      const tpName = targetDef.name || archiveZone;
       events.push({ event: 'MESSAGE', text: `You feel the world shift around you. You have entered ${tpName}.` });
       sendStatus(session);
     }
@@ -1400,6 +1656,9 @@ module.exports = {
   saveBuffsToFile,
   buildStarterSpellbook,
   scribeSpellToBook,
+  handleBeginScribeScroll,
+  cancelPendingScribe,
+  tickPendingScribe,
   handleMemorizeSpell,
   handleForgetSpell,
   handleSwapBookSpells,

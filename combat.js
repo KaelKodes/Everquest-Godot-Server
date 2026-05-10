@@ -51,7 +51,10 @@ function getMaxSkill(charClassId, skillName, level, charRaceId) {
     11: 'halfling', 12: 'gnome', 128: 'iksar', 130: 'vah_shir', 330: 'froglok'
   };
 
-  const charClass = typeof charClassId === 'string' ? charClassId : CLASS_ID_TO_NAME[charClassId];
+  // DB / session use CLASSES keys (e.g. shadow_knight); skills.js uses legacy keys (e.g. shadowknight)
+  const CLASS_KEY_ALIAS = { shadow_knight: 'shadowknight' };
+  const rawClass = typeof charClassId === 'string' ? charClassId : CLASS_ID_TO_NAME[charClassId];
+  const charClass = rawClass ? (CLASS_KEY_ALIAS[rawClass] || rawClass) : rawClass;
   const charRace = typeof charRaceId === 'string' ? charRaceId : RACE_ID_TO_NAME[charRaceId];
 
   let classCap = 0;
@@ -564,12 +567,13 @@ function calcXPGain(playerLevel, mobLevel, mobXpBase, zoneZEM) {
   return Math.max(1, Math.floor(baseXP * con.xpMod * zem));
 }
 
+// Mana per 6s tick — intentionally conservative at low level; seated rate scales up with Meditate (stats.js).
 const CLASS_REGEN = {
   warrior: { hpSit: (lv, sta) => Math.ceil(lv / 3 + sta / 25 + 2), hpStand: (lv, sta) => Math.ceil(lv / 8 + sta / 50 + 1), manaSit: () => 0, manaStand: () => 0 },
   rogue:   { hpSit: (lv, sta) => Math.ceil(lv / 3 + sta / 25 + 2), hpStand: (lv, sta) => Math.ceil(lv / 8 + sta / 50 + 1), manaSit: () => 0, manaStand: () => 0 },
-  cleric:  { hpSit: (lv, sta) => Math.ceil(lv / 4 + sta / 30 + 1), hpStand: (lv, sta) => Math.ceil(lv / 10 + sta / 60 + 1), manaSit: (lv, wis) => Math.ceil(lv / 3 + wis / 20 + 2), manaStand: (lv, wis) => Math.ceil(lv / 15 + 1) },
-  wizard:  { hpSit: (lv, sta) => Math.ceil(lv / 5 + sta / 35 + 1), hpStand: (lv, sta) => Math.ceil(lv / 12 + 1), manaSit: (lv, intel) => Math.ceil(lv / 3 + intel / 20 + 2), manaStand: (lv, intel) => Math.ceil(lv / 15 + 1) },
-  hybrid:  { hpSit: (lv, sta) => Math.ceil(lv / 4 + sta / 30 + 1), hpStand: (lv, sta) => Math.ceil(lv / 10 + sta / 60 + 1), manaSit: (lv, stat) => Math.ceil(lv / 4 + stat / 25 + 1), manaStand: (lv, stat) => Math.ceil(lv / 15 + 1) },
+  cleric:  { hpSit: (lv, sta) => Math.ceil(lv / 4 + sta / 30 + 1), hpStand: (lv, sta) => Math.ceil(lv / 10 + sta / 60 + 1), manaSit: (lv, wis) => Math.max(1, Math.ceil(lv / 5 + wis / 45)), manaStand: (lv, wis) => Math.max(1, Math.ceil(lv / 22 + wis / 120)) },
+  wizard:  { hpSit: (lv, sta) => Math.ceil(lv / 5 + sta / 35 + 1), hpStand: (lv, sta) => Math.ceil(lv / 12 + 1), manaSit: (lv, intel) => Math.max(1, Math.ceil(lv / 5 + intel / 45)), manaStand: (lv, intel) => Math.max(1, Math.ceil(lv / 22 + intel / 120)) },
+  hybrid:  { hpSit: (lv, sta) => Math.ceil(lv / 4 + sta / 30 + 1), hpStand: (lv, sta) => Math.ceil(lv / 10 + sta / 60 + 1), manaSit: (lv, stat) => Math.max(1, Math.ceil(lv / 5 + stat / 50)), manaStand: (lv, stat) => Math.max(1, Math.ceil(lv / 22 + stat / 120)) },
 };
 
 CLASS_REGEN.paladin = CLASS_REGEN.hybrid;
@@ -604,6 +608,15 @@ function getRegenRates(charClass, level, stats) {
     manaStanding: regen.manaStand(level, castStat),
     manaCombat:   0,
   };
+}
+
+/**
+ * Seated mana regen multiplier from Meditate (skill 0 ≈ 55% of class seated baseline; 252+ = 100%).
+ * Classes without Meditate in skills.js are not scaled (handled in processRegen via max-skill check).
+ */
+function getMeditateManaRegenFactor(meditateSkill) {
+  const t = Math.min(252, Math.max(0, meditateSkill)) / 252;
+  return 0.55 + 0.45 * t;
 }
 
 function checkFizzle(casterLevel, spellLevel) {
@@ -687,7 +700,7 @@ module.exports = {
   checkCritical, checkCripplingBlow, checkDoubleAttack, checkDualWield,
   calcKickDamage, calcBashDamage, calcBackstabDamage,
   calcSpellResist, RESIST_TYPES,
-  getCon, xpForLevel, calcXPGain, getRegenRates, checkFizzle,
+  getCon, xpForLevel, calcXPGain, getRegenRates, getMeditateManaRegenFactor, checkFizzle,
   calcMaxHP, calcMaxMana, init,
   calcAvoidanceAC, calcACSum, calcMitigationAC, calcDisplayedAC, getMobAttackText,
 };

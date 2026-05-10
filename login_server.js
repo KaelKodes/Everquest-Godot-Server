@@ -73,7 +73,7 @@ async function main() {
     if (!result || result.error) {
       return ws.send(JSON.stringify({ type: 'ERROR', message: result?.error || 'Account not found' }));
     }
-    authSessions.set(ws, { accountId: result.id, accountName: result.name });
+    authSessions.set(ws, { accountId: result.id, accountName: result.name, status: result.status || 0 });
     const characters = await DB.getCharactersByAccount(result.id);
     ws.send(JSON.stringify({ type: 'ACCOUNT_OK', accountName: result.name, characters }));
   }
@@ -81,7 +81,7 @@ async function main() {
   async function handleCreateAccount(ws, msg) {
     const result = await DB.createAccount(msg.username, msg.password);
     if (result.error) return ws.send(JSON.stringify({ type: 'ERROR', message: result.error }));
-    authSessions.set(ws, { accountId: result.id, accountName: result.name });
+    authSessions.set(ws, { accountId: result.id, accountName: result.name, status: result.status || 0 });
     ws.send(JSON.stringify({ type: 'ACCOUNT_OK', accountName: result.name, characters: [] }));
   }
 
@@ -131,6 +131,7 @@ async function main() {
     const token = await tokenManager.generateToken({
         accountId: auth.accountId,
         accountName: auth.accountName,
+        status: auth.status || 0,
         characterId: character.id,
         characterName: character.name
     });

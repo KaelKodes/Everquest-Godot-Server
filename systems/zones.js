@@ -13,11 +13,13 @@ let SPELLS, ITEMS;
 // Reverse map EQEmu short_names → our internal zone keys
 const SHORTNAME_TO_KEY = {};
 for (const [key, def] of Object.entries(ZONES)) {
-  if (def.shortName) SHORTNAME_TO_KEY[def.shortName] = key;
+  if (def.shortName) SHORTNAME_TO_KEY[def.shortName.toLowerCase()] = key.toLowerCase();
 }
 
 function resolveZoneKey(zoneIdOrShort) {
-  return SHORTNAME_TO_KEY[zoneIdOrShort] || zoneIdOrShort;
+  if (!zoneIdOrShort) return zoneIdOrShort;
+  const lower = String(zoneIdOrShort).toLowerCase();
+  return SHORTNAME_TO_KEY[lower] || lower;
 }
 
 function getZoneDef(zoneKey) {
@@ -59,10 +61,18 @@ async function initZones(requestedZones = null) {
 }
 
 async function ensureZoneLoaded(zoneKey, spawnMobFn, spawnMiningNodesFn, spawnMiningNPCsFn) {
+  if (!zoneKey) return;
+  zoneKey = zoneKey.toLowerCase();
   if (zoneInstances[zoneKey]) return;
 
   console.log(`[ENGINE] Dynamically loading zone '${zoneKey}'...`);
   const zoneMeta = eqemuDB.getZoneMetadata(zoneKey);
+  if (!zoneMeta) {
+    console.warn(`[ENGINE] No metadata found in DB for zone '${zoneKey}'. This usually means the zone doesn't exist in the 'zone' table.`);
+  } else {
+    console.log(`[ENGINE] Found DB metadata for '${zoneKey}': ${zoneMeta.long_name} (ID: ${zoneMeta.zoneidnumber})`);
+  }
+
   const envType = (zoneMeta && zoneMeta.castoutdoor === 1) ? 'outdoor' : 'indoor';
   const displayName = (zoneMeta && zoneMeta.long_name) || zoneKey;
 

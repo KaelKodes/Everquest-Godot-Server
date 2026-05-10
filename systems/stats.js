@@ -338,8 +338,13 @@ function processRegen(session, dt) {
     if (char.state === 'medding') {
       char.hp = combat.clamp(char.hp + Math.max(0, Math.floor(rates.hpSitting * penalty)), 0, effective.hp);
       if (effective.mana > 0) {
-        char.mana = combat.clamp(char.mana + Math.max(0, Math.floor(rates.manaSitting * penalty)), 0, effective.mana);
-        // Meditate skill up check
+        let manaSit = rates.manaSitting;
+        const maxMed = combat.getMaxSkill(char.class, 'meditate', char.level, char.race);
+        if (manaSit > 0 && maxMed > 0) {
+          const medSkill = combat.getCharSkill(char, 'meditate');
+          manaSit *= combat.getMeditateManaRegenFactor(medSkill);
+        }
+        char.mana = combat.clamp(char.mana + Math.max(0, Math.floor(manaSit * penalty)), 0, effective.mana);
         combat.trySkillUp(session, 'meditate');
       }
     } else if (!session.inCombat) {

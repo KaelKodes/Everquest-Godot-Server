@@ -7,7 +7,6 @@
     "start": "node master.js",
     "dev": "node master.js",
     "cluster": "node master.js",
-    "monolith": "node ../Reference/server_monolith/index.js",
     "partition:nodes": "node tools/partition_zone_nodes.js",
     "partition:nodes:apply": "node tools/partition_zone_nodes.js --apply"
   },

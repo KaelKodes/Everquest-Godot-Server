@@ -33,7 +33,7 @@ async function init() {
         });
 
     } catch (e) {
-        console.warn('[BROKER] Could not connect to Redis. Running in standalone monolithic mode.');
+        console.warn('[BROKER] Could not connect to Redis. Running without cluster pub/sub (single process).');
         isConnected = false;
     }
 }

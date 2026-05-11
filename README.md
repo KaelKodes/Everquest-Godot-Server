@@ -4,7 +4,7 @@ The EQMUD game engine: WebSockets, JSON protocol, MariaDB (PEQ / EQEmu schema), 
 
 **Hosting:** There is no built-in **server browser / lobby** yet; you point the client at your WebSocket URL and supply your own MariaDB/Redis stack.
 
-**Full stack install, Akk/PEQ database, hosting expectations, and quick start:** open **`README_SETUP.md`** in the **repository root** (the parent folder of `server/`—same level as `README.md`).
+**Full stack install, Akk/PEQ database, hosting expectations, and quick start:** **[README_SETUP.md](./README_SETUP.md)** — same folder as this file (`server/`).
 
 ---
 
@@ -125,9 +125,9 @@ The Godot client’s default WebSocket URL is **`ws://localhost:3005`** (login).
 
 ## Documentation elsewhere
 
-- Repo root **`README.md`** and **`README_SETUP.md`** — overview vs full setup/hosting.  
-- **`eqmud/DEVELOPER_REFERENCE.md`** — coordinate mapping (EQ ↔ Godot), boot order, DB host notes.  
-- **`Reference/`** — upstream or legacy reference code; not required to run the Node cluster.
+- **`README_SETUP.md`** (this folder) — full setup/hosting; **`README.md`** (this folder) — server overview.  
+- **`../eqmud/DEVELOPER_REFERENCE.md`** — coordinate mapping (EQ ↔ Godot), boot order, DB host notes.  
+- **`../Reference/`** — upstream or legacy reference code; not required to run the Node cluster.
 
 ---
 

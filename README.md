@@ -2,7 +2,7 @@
 
 The EQMUD game engine: WebSockets, JSON protocol, MariaDB (PEQ / EQEmu schema), and Redis for multi-process coordination. This is **not** the legacy EQEmu C++ zone binary; it is a custom Node server that **reads** classic EQEmu-style SQL data.
 
-**Hosting:** There is no built-in **server browser / lobby** yet; you point the client at your WebSocket URL and supply your own MariaDB/Redis stack. See the root **[README.md](../README.md)** (“Open source, hosting, and support expectations”) for how we set expectations around self-hosting and support.
+**Hosting:** There is no built-in **server browser / lobby** yet; you point the client at your WebSocket URL and supply your own MariaDB/Redis stack. See the repository root [README.md](../README.md#hosting-expectations) for open-source use, self-hosting, and support expectations.
 
 ---
 
@@ -123,7 +123,7 @@ The Godot client’s default WebSocket URL is **`ws://localhost:3005`** (login).
 
 ## Documentation elsewhere
 
-- Repo root **[README.md](../README.md)** — project overview and client pointer.  
+- Repo root [README.md](../README.md) — project overview and client pointer.  
 - **`eqmud/DEVELOPER_REFERENCE.md`** — coordinate mapping (EQ ↔ Godot), boot order, DB host notes.  
 - **`Reference/`** — upstream or legacy reference code; not required to run the Node cluster.
 

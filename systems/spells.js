@@ -905,7 +905,12 @@ async function applySpellEffect(session, spellDef) {
   } else if (session.combatTarget) {
       if (session.combatTarget.char) { // It's a player session
           const combat = require('./combat');
-          if (combat.canInteract(session, session.combatTarget, true)) {
+          const isRezSpell = spellDef.effect === 'resurrect' || (spellDef.effects || []).some((e) => e.spa === 111);
+          const deadish = session.combatTarget.char.hp <= 0 || session.combatTarget.char.state === 'dead';
+          if (isRezSpell && deadish) {
+            instantTargetSession = session.combatTarget;
+            instantTarget = instantTargetSession.char;
+          } else if (combat.canInteract(session, session.combatTarget, true)) {
               instantTargetSession = session.combatTarget;
               instantTarget = instantTargetSession.char;
           }
@@ -1324,6 +1329,32 @@ async function applySpellEffect(session, spellDef) {
     }
     if (sendCombatLog) sendCombatLog(session, events);
     if (targetSession && targetSession !== session) sendStatus(targetSession);
+    return;
+  }
+
+  // SPA 111: Resurrection (raise dead player; `effect` is also `resurrect` from parse_spells)
+  const rezSpa = (spellDef.effects || []).find((e) => e.spa === 111);
+  if (rezSpa && spellDef.goodEffect && instantTargetSession && instantTargetSession.char) {
+    const tc = instantTargetSession.char;
+    if (tc.hp > 0 && tc.state !== 'dead') {
+      events.push({ event: 'MESSAGE', text: `${tc.name} is still among the living.` });
+      if (sendCombatLog) sendCombatLog(session, events);
+      return;
+    }
+    let pct = rezSpa.base != null ? Number(rezSpa.base) : 0;
+    if (!Number.isFinite(pct) || pct <= 0) pct = 50;
+    if (pct > 100) pct = 90;
+    pct = Math.min(100, Math.max(5, pct));
+    const maxHp = instantTargetSession.effectiveStats
+      ? instantTargetSession.effectiveStats.hp
+      : (tc.maxHp || 100);
+    tc.state = 'standing';
+    tc.hp = Math.max(1, Math.floor(maxHp * (pct / 100)));
+    if (handleStopCombat) handleStopCombat(instantTargetSession);
+    const nm = tc.name || 'ally';
+    events.push({ event: 'MESSAGE', text: `You restore ${nm} to life. (${pct}% vitality)` });
+    if (sendCombatLog) sendCombatLog(session, events);
+    if (typeof sendStatus === 'function') sendStatus(instantTargetSession);
     return;
   }
 

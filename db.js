@@ -51,6 +51,10 @@ module.exports = {
   getStartZone: eqemuDB.getStartZone,
   getValidDeities: eqemuDB.getValidDeities,
   getCharacter: eqemuDB.getCharacter,
+  getCharacterById: eqemuDB.getCharacterById,
+  getMentorStudents: eqemuDB.getMentorStudents,
+  countStudentsForMentor: eqemuDB.countStudentsForMentor,
+  countMainsForAccount: eqemuDB.countMainsForAccount,
   createCharacter: eqemuDB.createCharacter,
   deleteCharacter: eqemuDB.deleteCharacter,
   

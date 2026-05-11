@@ -170,6 +170,20 @@ async function init() {
             KEY idx_continent (continent)
           )
         `);
+        await pool.query(`
+          CREATE TABLE IF NOT EXISTS eqmud_learning_fatigue (
+            character_id INT NOT NULL PRIMARY KEY,
+            fatigue DOUBLE NOT NULL DEFAULT 0
+          )
+        `);
+
+        // Students: full character_data rows owned by a main (mentor) character; excluded from login character list.
+        try {
+            await pool.query('ALTER TABLE character_data ADD COLUMN mentor_character_id INT NULL DEFAULT NULL');
+        } catch (e) { /* column exists */ }
+        try {
+            await pool.query('CREATE INDEX idx_character_mentor ON character_data (mentor_character_id)');
+        } catch (e) { /* exists */ }
     } catch (e) {
         console.error('[DB] Failed to create custom EQMUD tables:', e.message);
     }
@@ -328,10 +342,13 @@ async function createAccount(username, password) {
 }
 
 async function getCharactersByAccount(accountId) {
+    await init();
     if (!pool) return [];
     try {
         const [rows] = await pool.query(
-            'SELECT id, name, class, race, level, zone_id, gender, face FROM character_data WHERE account_id = ? ORDER BY name',
+            `SELECT id, name, class, race, level, zone_id, gender, face FROM character_data
+             WHERE account_id = ? AND (mentor_character_id IS NULL OR mentor_character_id = 0)
+             ORDER BY name`,
             [accountId]
         );
         return rows.map(c => ({
@@ -347,6 +364,62 @@ async function getCharactersByAccount(accountId) {
         }));
     } catch (e) {
         console.error('[DB] getCharactersByAccount Error:', e.message);
+        return [];
+    }
+}
+
+async function countMainsForAccount(accountId) {
+    await init();
+    if (!pool) return 0;
+    try {
+        const [rows] = await pool.query(
+            `SELECT COUNT(*) AS cnt FROM character_data
+             WHERE account_id = ? AND (mentor_character_id IS NULL OR mentor_character_id = 0)`,
+            [accountId]
+        );
+        return rows[0] ? Number(rows[0].cnt) || 0 : 0;
+    } catch (e) {
+        console.error('[DB] countMainsForAccount Error:', e.message);
+        return 0;
+    }
+}
+
+async function countStudentsForMentor(mentorCharacterId) {
+    await init();
+    if (!pool) return 0;
+    try {
+        const [rows] = await pool.query(
+            'SELECT COUNT(*) AS cnt FROM character_data WHERE mentor_character_id = ?',
+            [mentorCharacterId]
+        );
+        return rows[0] ? Number(rows[0].cnt) || 0 : 0;
+    } catch (e) {
+        console.error('[DB] countStudentsForMentor Error:', e.message);
+        return 0;
+    }
+}
+
+/** Student roster for a main (mentor) character — up to UI slot count elsewhere. */
+async function getMentorStudents(mentorCharacterId) {
+    await init();
+    if (!pool) return [];
+    try {
+        const [rows] = await pool.query(
+            `SELECT id, name, class, race, level FROM character_data
+             WHERE mentor_character_id = ? ORDER BY id ASC`,
+            [mentorCharacterId]
+        );
+        return rows.map((c) => ({
+            id: c.id,
+            name: c.name,
+            class: c.class,
+            race: c.race,
+            level: c.level,
+            classStr: INV_CLASSES[c.class] || 'warrior',
+            raceStr: INV_RACES[c.race] || 'human'
+        }));
+    } catch (e) {
+        console.error('[DB] getMentorStudents Error:', e.message);
         return [];
     }
 }
@@ -433,125 +506,219 @@ async function getZonePoints(zoneShortName) {
     }
 }
 
+async function loadLearningFatigue(characterId) {
+    if (!pool || !characterId) return 0;
+    try {
+        const [rows] = await pool.query(
+            'SELECT fatigue FROM eqmud_learning_fatigue WHERE character_id = ?',
+            [characterId]
+        );
+        if (!rows.length) return 0;
+        const v = Number(rows[0].fatigue);
+        return Number.isFinite(v) ? v : 0;
+    } catch (e) {
+        console.warn('[DB] loadLearningFatigue:', e.message);
+        return 0;
+    }
+}
+
+async function upsertLearningFatigue(characterId, fatigue) {
+    if (!pool || !characterId) return;
+    const raw = Number.isFinite(fatigue) ? fatigue : 0;
+    const f = Math.max(0, Math.min(1000, raw));
+    try {
+        await pool.query(
+            `INSERT INTO eqmud_learning_fatigue (character_id, fatigue) VALUES (?, ?)
+             ON DUPLICATE KEY UPDATE fatigue = VALUES(fatigue)`,
+            [characterId, f]
+        );
+    } catch (e) {
+        console.warn('[DB] upsertLearningFatigue:', e.message);
+    }
+}
+
+/** Map a `character_data` row to the in-memory char object used by the game engine. */
+async function mapCharacterDataRow(char) {
+    const result = {
+        id: char.id,
+        accountId: char.account_id,
+        name: char.name,
+        class: INV_CLASSES[char.class] || 'warrior',
+        classId: char.class || 1,
+        race: INV_RACES[char.race] || 'human',
+        raceId: char.race || 1,
+        deityId: char.deity || 396,
+        gender: char.gender || 0,
+        face: char.face || 0,
+        hairStyle: char.hair_style || 0,
+        hairColor: char.hair_color || 0,
+        beard: char.beard || 0,
+        beardColor: char.beard_color || 0,
+        eyeColor1: char.eye_color_1 || 0,
+        eyeColor2: char.eye_color_2 || 0,
+        level: char.level,
+        experience: char.exp,
+        hp: char.cur_hp,
+        maxHp: char.cur_hp > 0 ? char.cur_hp : char.level * 25,
+        mana: char.mana,
+        str: char.str,
+        sta: char.sta,
+        agi: char.agi,
+        dex: char.dex,
+        wis: char.wis,
+        intel: char.int,
+        cha: char.cha,
+        hunger: char.hunger_level != null ? char.hunger_level : 100,
+        thirst: char.thirst_level != null ? char.thirst_level : 100,
+        zoneId: INV_ZONES[char.zone_id] || ZONE_ID_TO_SHORT[char.zone_id] || `zone_${char.zone_id}`,
+        roomId: null,
+        state: 'standing',
+        practices: char.training_points != null ? char.training_points : (char.level * 5),
+        x: char.x,
+        y: char.y,
+        z: char.z,
+        copper: 0,
+        mentorCharacterId: char.mentor_character_id != null && char.mentor_character_id !== 0
+            ? char.mentor_character_id
+            : null
+    };
+
+    try {
+        const [bindRows] = await pool.query('SELECT zone_id, x, y, z, heading FROM character_bind WHERE id = ? AND slot = 0', [result.id]);
+        if (bindRows.length > 0) {
+            const b = bindRows[0];
+            result.bindZoneId = INV_ZONES[b.zone_id] || ZONE_ID_TO_SHORT[b.zone_id] || `zone_${b.zone_id}`;
+            result.bindX = b.x;
+            result.bindY = b.y;
+            result.bindZ = b.z;
+            result.bindHeading = b.heading;
+        }
+    } catch (bindErr) {
+        console.warn(`[DB] Could not load bind point for ${result.name}:`, bindErr.message);
+    }
+
+    result.copper = await getCharacterCurrency(result.id);
+    result.learningFatigue = await loadLearningFatigue(result.id);
+    return result;
+}
+
 async function getCharacter(name) {
     await init();
     try {
         const [rows] = await pool.query(`SELECT * FROM character_data WHERE name = ?`, [name]);
         if (rows.length === 0) return null;
-        
-        const char = rows[0];
-        const result = {
-            id: char.id,
-            name: char.name,
-            class: INV_CLASSES[char.class] || 'warrior',
-            classId: char.class || 1,
-            race: INV_RACES[char.race] || 'human',
-            raceId: char.race || 1,
-            deityId: char.deity || 396,
-            gender: char.gender || 0,
-            face: char.face || 0,
-            hairStyle: char.hair_style || 0,
-            hairColor: char.hair_color || 0,
-            beard: char.beard || 0,
-            beardColor: char.beard_color || 0,
-            eyeColor1: char.eye_color_1 || 0,
-            eyeColor2: char.eye_color_2 || 0,
-            level: char.level,
-            experience: char.exp,
-            hp: char.cur_hp,
-            maxHp: char.cur_hp > 0 ? char.cur_hp : char.level * 25,
-            mana: char.mana,
-            str: char.str,
-            sta: char.sta,
-            agi: char.agi,
-            dex: char.dex,
-            wis: char.wis,
-            intel: char.int,
-            cha: char.cha,
-            hunger: char.hunger_level != null ? char.hunger_level : 100,
-            thirst: char.thirst_level != null ? char.thirst_level : 100,
-            zoneId: INV_ZONES[char.zone_id] || ZONE_ID_TO_SHORT[char.zone_id] || `zone_${char.zone_id}`,
-            roomId: null,
-            state: 'standing',
-            practices: char.training_points != null ? char.training_points : (char.level * 5),
-            x: char.x,
-            y: char.y,
-            z: char.z,
-            copper: 0
-        };
-
-        // Load bind point
-        try {
-            const [bindRows] = await pool.query('SELECT zone_id, x, y, z, heading FROM character_bind WHERE id = ? AND slot = 0', [result.id]);
-            if (bindRows.length > 0) {
-                const b = bindRows[0];
-                result.bindZoneId = INV_ZONES[b.zone_id] || ZONE_ID_TO_SHORT[b.zone_id] || `zone_${b.zone_id}`;
-                result.bindX = b.x;
-                result.bindY = b.y;
-                result.bindZ = b.z;
-                result.bindHeading = b.heading;
-            }
-        } catch (bindErr) {
-            console.warn(`[DB] Could not load bind point for ${result.name}:`, bindErr.message);
-        }
-
-        // Load currency from separate table
-        result.copper = await getCharacterCurrency(result.id);
-        return result;
+        return await mapCharacterDataRow(rows[0]);
     } catch (e) {
         console.error('[DB] getCharacter Error:', e);
         return null;
     }
 }
 
-async function createCharacter(accountId, name, className, raceName, deityId, str, sta, agi, dex, wis, intel, cha, hp, mana, appearance = {}) {
+async function getCharacterById(characterId) {
     await init();
-    
+    try {
+        const [rows] = await pool.query(`SELECT * FROM character_data WHERE id = ?`, [characterId]);
+        if (rows.length === 0) return null;
+        return await mapCharacterDataRow(rows[0]);
+    } catch (e) {
+        console.error('[DB] getCharacterById Error:', e);
+        return null;
+    }
+}
+
+async function createCharacter(accountId, name, className, raceName, deityId, str, sta, agi, dex, wis, intel, cha, hp, mana, appearance = {}, options = {}) {
+    await init();
+
+    const mentorCharacterId = options.mentorCharacterId != null && options.mentorCharacterId !== 0
+        ? Number(options.mentorCharacterId)
+        : null;
+    const initialLevel = Math.max(1, Math.floor(Number(options.initialLevel) || 1));
+    const spawnOverride = options.spawnOverride && options.spawnOverride.zoneNumericId != null ? options.spawnOverride : null;
+
     const classId = CLASSES[className.toLowerCase()] || 1;
     const raceId = RACES[raceName.toLowerCase()] || 1;
-    
-    // Capitalize first letter of name
+
     const formattedName = name.charAt(0).toUpperCase() + name.slice(1).toLowerCase();
 
-    // Check character limit (8 per account)
-    const [existing] = await pool.query('SELECT COUNT(*) as cnt FROM character_data WHERE account_id = ?', [accountId]);
-    if (existing[0].cnt >= 8) return { error: 'Maximum 8 characters per account.' };
+    if (mentorCharacterId) {
+        const [stCount] = await pool.query(
+            'SELECT COUNT(*) as cnt FROM character_data WHERE mentor_character_id = ?',
+            [mentorCharacterId]
+        );
+        if (Number(stCount[0].cnt) >= 2) {
+            return { error: 'That character already has the maximum number of students (2).' };
+        }
+    } else {
+        const mainCount = await countMainsForAccount(accountId);
+        if (mainCount >= 8) return { error: 'Maximum 8 characters per account.' };
+    }
 
-    // Check name uniqueness
     const [nameTaken] = await pool.query('SELECT id FROM character_data WHERE name = ?', [formattedName]);
     if (nameTaken.length > 0) return { error: 'Character name is already taken.' };
 
-    // Look up authentic start zone from the database
-    const start = await getStartZone(raceId, classId, deityId || 396);
-    console.log(`[DB] Start zone for race=${raceId} class=${classId} deity=${deityId}: zone_id=${start.zone_id} (${start.zone_short}) at ${start.x},${start.y},${start.z}`);
+    let start;
+    if (spawnOverride) {
+        const zn = Number(spawnOverride.zoneNumericId);
+        const zKey = INV_ZONES[zn] || ZONE_ID_TO_SHORT[zn] || `zone_${zn}`;
+        start = {
+            zone_id: zn,
+            zone_short: zKey,
+            x: spawnOverride.x,
+            y: spawnOverride.y,
+            z: spawnOverride.z,
+            heading: spawnOverride.heading || 0,
+            bind_id: zn,
+            bind_x: spawnOverride.x,
+            bind_y: spawnOverride.y,
+            bind_z: spawnOverride.z
+        };
+        console.log(`[DB] Student spawn at mentor zone_id=${zn} (${start.zone_short}) ${start.x},${start.y},${start.z}`);
+    } else {
+        start = await getStartZone(raceId, classId, deityId || 396);
+        console.log(`[DB] Start zone for race=${raceId} class=${classId} deity=${deityId}: zone_id=${start.zone_id} (${start.zone_short}) at ${start.x},${start.y},${start.z}`);
+    }
 
-    // Appearance defaults
-    const gender    = appearance.gender    || 0;
-    const face      = appearance.face      || 0;
-    const hairStyle = appearance.hairStyle || 0;
-    const hairColor = appearance.hairColor || 0;
-    const beard     = appearance.beard     || 0;
-    const beardColor= appearance.beardColor|| 0;
-    const eyeColor1 = appearance.eyeColor  || 0;
-    const eyeColor2 = appearance.eyeColor  || 0;
+    const gender = appearance.gender != null ? appearance.gender : 0;
+    const face = appearance.face != null ? appearance.face : 0;
+    const hairStyle = appearance.hairStyle != null ? appearance.hairStyle : 0;
+    const hairColor = appearance.hairColor != null ? appearance.hairColor : 0;
+    const beard = appearance.beard != null ? appearance.beard : 0;
+    const beardColor = appearance.beardColor != null ? appearance.beardColor : 0;
+    const eyeColor1 = appearance.eyeColor != null ? appearance.eyeColor : 0;
+    const eyeColor2 = appearance.eyeColor != null ? appearance.eyeColor : 0;
 
     const query = `
         INSERT INTO character_data 
         (account_id, name, class, race, deity, level, exp, cur_hp, mana, str, sta, agi, dex, wis, \`int\`, cha, zone_id, x, y, z,
-         gender, face, hair_style, hair_color, beard, beard_color, eye_color_1, eye_color_2) 
+         gender, face, hair_style, hair_color, beard, beard_color, eye_color_1, eye_color_2, mentor_character_id) 
         VALUES 
         (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-         ?, ?, ?, ?, ?, ?, ?, ?)
+         ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
-    
+
     const params = [
-        accountId, formattedName, classId, raceId, deityId || 396, 1, 0, hp, mana, str, sta, agi, dex, wis, intel, cha, start.zone_id, start.x, start.y, start.z,
-        gender, face, hairStyle, hairColor, beard, beardColor, eyeColor1, eyeColor2
+        accountId, formattedName, classId, raceId, deityId || 396, initialLevel, 0, hp, mana, str, sta, agi, dex, wis, intel, cha, start.zone_id, start.x, start.y, start.z,
+        gender, face, hairStyle, hairColor, beard, beardColor, eyeColor1, eyeColor2, mentorCharacterId
     ];
 
     try {
         const [result] = await pool.query(query, params);
         const charId = result.insertId;
+
+        if (spawnOverride) {
+            try {
+                await updateCharacterBind({
+                    id: charId,
+                    bindZoneId: start.zone_short,
+                    bindX: start.x,
+                    bindY: start.y,
+                    bindZ: start.z,
+                    bindHeading: spawnOverride.heading || 0
+                });
+            } catch (bindE) {
+                console.warn('[DB] updateCharacterBind after student create:', bindE.message);
+            }
+        }
 
         // --- GRANT STARTING ITEMS ---
         try {
@@ -610,6 +777,15 @@ async function createCharacter(accountId, name, className, raceName, deityId, st
         } catch(e) {
             console.error('[DB] Starting items error:', e.message);
         }
+
+        try {
+            await pool.query(
+                'INSERT INTO eqmud_learning_fatigue (character_id, fatigue) VALUES (?, 0)',
+                [charId]
+            );
+        } catch (e) {
+            console.warn('[DB] eqmud_learning_fatigue insert:', e.message);
+        }
         
         // Return the mapped schema object exactly as getCharacter would
         return {
@@ -620,7 +796,7 @@ async function createCharacter(accountId, name, className, raceName, deityId, st
             raceId: raceId,
             gender: gender,
             face: face,
-            level: 1,
+            level: initialLevel,
             experience: 0,
             hp: hp,
             maxHp: hp,
@@ -634,13 +810,14 @@ async function createCharacter(accountId, name, className, raceName, deityId, st
             cha: cha,
             hunger: 100,
             thirst: 100,
+            learningFatigue: 0,
             zoneId: start.zone_short || INV_ZONES[start.zone_id] || `zone_${start.zone_id}`,
             roomId: null,
             state: 'standing',
             x: start.x,
             y: start.y,
             z: start.z,
-            copper: 1000  // Starter money
+            copper: mentorCharacterId ? 0 : 1000
         };
     } catch (e) {
         console.error('[DB] createCharacter Error:', e.message);
@@ -651,8 +828,27 @@ async function createCharacter(accountId, name, className, raceName, deityId, st
 async function deleteCharacter(charId) {
     if (!pool) return;
     try {
+        // Full student characters (character_data.mentor_character_id) — delete dependents first
+        const [mentees] = await pool.query(
+            'SELECT id FROM character_data WHERE mentor_character_id = ?',
+            [charId]
+        );
+        for (const row of mentees || []) {
+            const mid = row && row.id;
+            if (mid && Number(mid) !== Number(charId)) {
+                await deleteCharacter(mid);
+            }
+        }
+        // Legacy / bot roster rows keyed to this main
+        try {
+            await pool.query('DELETE FROM character_students WHERE owner_id = ?', [charId]);
+        } catch (e) { /* table optional */ }
+
         await pool.query('DELETE FROM inventory WHERE character_id = ?', [charId]);
         await pool.query('DELETE FROM character_skills WHERE id = ?', [charId]);
+        try {
+            await pool.query('DELETE FROM eqmud_learning_fatigue WHERE character_id = ?', [charId]);
+        } catch (e) { /* table may be missing on very old installs */ }
         await pool.query('DELETE FROM character_data WHERE id = ?', [charId]);
         console.log(`[DB] Deleted character id=${charId} and related data.`);
     } catch (e) {
@@ -686,6 +882,7 @@ async function updateCharacterState(char) {
                 [char.x, char.y, char.z || 0, char.hp || 0, char.mana || 0, char.experience || 0, char.level || 1, char.practices || 0, char.hunger || 0, char.thirst || 0, char.id]
             );
             await saveCharacterCurrency(char.id, char.copper || 0);
+            if (char.learningFatigue != null) await upsertLearningFatigue(char.id, char.learningFatigue);
         } catch (e) {
             console.error('[DB] updateCharacterState (no-zone) Error:', e.message);
         }
@@ -699,6 +896,7 @@ async function updateCharacterState(char) {
         );
         // Save currency to the separate table
         await saveCharacterCurrency(char.id, char.copper || 0);
+        if (char.learningFatigue != null) await upsertLearningFatigue(char.id, char.learningFatigue);
     } catch (e) {
         console.error('[DB] updateCharacterState Error:', e.message);
     }
@@ -1064,15 +1262,64 @@ async function splitStackToSlot(charId, fromSlot, toSlot, count) {
 async function moveItem(charId, fromSlot, toSlot) {
     if (!pool || fromSlot === toSlot) return;
     try {
-        // Check if toSlot is occupied
-        const [toRows] = await pool.query('SELECT slot_id FROM inventory WHERE character_id = ? AND slot_id = ?', [charId, toSlot]);
-        if (toRows.length > 0) {
-            // Swap: move the item currently in toSlot to the Cursor (Slot 30)
-            await pool.query('UPDATE inventory SET slot_id = 30 WHERE character_id = ? AND slot_id = ? LIMIT 1', [charId, toSlot]);
-            await pool.query('UPDATE inventory SET slot_id = ? WHERE character_id = ? AND slot_id = ? LIMIT 1', [toSlot, charId, fromSlot]);
-        } else {
-            await pool.query('UPDATE inventory SET slot_id = ? WHERE character_id = ? AND slot_id = ? LIMIT 1', [toSlot, charId, fromSlot]);
+        const [fromRows] = await pool.query(
+            'SELECT item_id, charges FROM inventory WHERE character_id = ? AND slot_id = ? LIMIT 1',
+            [charId, fromSlot]
+        );
+        if (!fromRows.length) return;
+
+        const [toRows] = await pool.query(
+            'SELECT item_id, charges FROM inventory WHERE character_id = ? AND slot_id = ? LIMIT 1',
+            [charId, toSlot]
+        );
+
+        if (toRows.length === 0) {
+            await pool.query(
+                'UPDATE inventory SET slot_id = ? WHERE character_id = ? AND slot_id = ? LIMIT 1',
+                [toSlot, charId, fromSlot]
+            );
+            return;
         }
+
+        const fr = fromRows[0];
+        const tr = toRows[0];
+        if (Number(fr.item_id) === Number(tr.item_id)) {
+            const ItemDB = require('./data/itemDatabase');
+            const def = ItemDB.getById(fr.item_id) || {};
+            const maxStack = Number(def.stackable) === 1 && Number(def.stacksize) > 1
+                ? Number(def.stacksize)
+                : 0;
+            if (maxStack > 1) {
+                const fromQ = Number(fr.charges) > 0 ? Number(fr.charges) : 1;
+                const toQ = Number(tr.charges) > 0 ? Number(tr.charges) : 1;
+                const space = maxStack - toQ;
+                if (space > 0) {
+                    const xfer = Math.min(fromQ, space);
+                    const newToQ = toQ + xfer;
+                    const newFromQ = fromQ - xfer;
+                    await pool.query(
+                        'UPDATE inventory SET charges = ? WHERE character_id = ? AND slot_id = ? LIMIT 1',
+                        [newToQ, charId, toSlot]
+                    );
+                    if (newFromQ <= 0) {
+                        await pool.query(
+                            'DELETE FROM inventory WHERE character_id = ? AND slot_id = ? LIMIT 1',
+                            [charId, fromSlot]
+                        );
+                    } else {
+                        await pool.query(
+                            'UPDATE inventory SET charges = ? WHERE character_id = ? AND slot_id = ? LIMIT 1',
+                            [newFromQ, charId, fromSlot]
+                        );
+                    }
+                    return;
+                }
+            }
+        }
+
+        // Destination occupied by a different item, or same item but no stack room — swap via cursor
+        await pool.query('UPDATE inventory SET slot_id = 30 WHERE character_id = ? AND slot_id = ? LIMIT 1', [charId, toSlot]);
+        await pool.query('UPDATE inventory SET slot_id = ? WHERE character_id = ? AND slot_id = ? LIMIT 1', [toSlot, charId, fromSlot]);
     } catch(e) { console.error('[DB] moveItem error:', e.message); }
 }
 
@@ -1659,27 +1906,45 @@ function getFactionCaches() {
 
 async function addBuybackItem(charId, npcId, itemId, charges, price) {
     if (!pool) return;
-    try {
-        await pool.query(
-            'INSERT INTO merchant_buyback (character_id, npc_id, item_id, charges, price) VALUES (?, ?, ?, ?, ?)',
-            [charId, npcId, itemId, charges, price]
-        );
-    } catch(e) { console.error('[DB] addBuybackItem error:', e.message); }
+    const attempts = [
+        ['INSERT INTO merchant_buyback (character_id, npc_id, item_id, charges, price) VALUES (?, ?, ?, ?, ?)', [charId, npcId, itemId, charges, price]],
+        ['INSERT INTO merchant_buyback (char_id, npc_id, item_id, charges, price) VALUES (?, ?, ?, ?, ?)', [charId, npcId, itemId, charges, price]],
+    ];
+    for (const [sql, params] of attempts) {
+        try {
+            await pool.query(sql, params);
+            return;
+        } catch (e) {
+            const badCol = e.errno === 1054 || e.code === 'ER_BAD_FIELD_ERROR';
+            if (!badCol) {
+                console.error('[DB] addBuybackItem error:', e.message);
+                return;
+            }
+        }
+    }
+    console.error('[DB] addBuybackItem: merchant_buyback schema has neither character_id nor char_id');
 }
 
 async function getBuybackItems(charId, npcId) {
     if (!pool) return [];
     if (typeof npcId === 'number' && isNaN(npcId)) return [];
-    try {
-        const [rows] = await pool.query(
-            'SELECT id, item_id, charges, price FROM merchant_buyback WHERE character_id = ? AND npc_id = ? ORDER BY sold_at DESC',
-            [charId, npcId]
-        );
-        return rows;
-    } catch(e) {
-        console.error('[DB] getBuybackItems error:', e.message);
-        return [];
+    const attempts = [
+        'SELECT id, item_id, charges, price FROM merchant_buyback WHERE character_id = ? AND npc_id = ? ORDER BY sold_at DESC',
+        'SELECT id, item_id, charges, price FROM merchant_buyback WHERE char_id = ? AND npc_id = ? ORDER BY sold_at DESC',
+    ];
+    for (const sql of attempts) {
+        try {
+            const [rows] = await pool.query(sql, [charId, npcId]);
+            return rows;
+        } catch (e) {
+            const badCol = e.errno === 1054 || e.code === 'ER_BAD_FIELD_ERROR';
+            if (!badCol) {
+                console.error('[DB] getBuybackItems error:', e.message);
+                return [];
+            }
+        }
     }
+    return [];
 }
 
 async function removeBuybackItem(buybackId) {
@@ -1947,8 +2212,12 @@ module.exports = {
     getZonePoints,
     getAllItems,
     getCharacter,
+    getCharacterById,
     createCharacter,
     deleteCharacter,
+    countMainsForAccount,
+    countStudentsForMentor,
+    getMentorStudents,
     updateCharacterState,
     getInventory,
     addItem,

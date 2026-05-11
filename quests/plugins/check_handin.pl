@@ -75,3 +75,5 @@ sub return_bot_items {
 
 	return $items_returned;
 }
+
+1;

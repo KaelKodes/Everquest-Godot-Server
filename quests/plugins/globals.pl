@@ -1,3 +1,5 @@
+package plugin;
+
 sub nullzero
 {
   my $value = shift;
@@ -340,3 +342,5 @@ sub returnUnusedItems
 {
   #returnUnusedItems-no-op - This is now handled by the source entirely
 }
+
+1;

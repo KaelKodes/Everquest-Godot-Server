@@ -348,7 +348,9 @@ function processRegen(session, dt) {
         combat.trySkillUp(session, 'meditate');
       }
     } else if (!session.inCombat) {
-      char.hp = combat.clamp(char.hp + Math.max(0, Math.floor(rates.hpStanding * penalty)), 0, effective.hp);
+      // Standing OOC HP regen — keep lower than classic tick math so chip damage / bot heals stay noticeable.
+      const standHpFactor = 0.38;
+      char.hp = combat.clamp(char.hp + Math.max(0, Math.floor(rates.hpStanding * penalty * standHpFactor)), 0, effective.hp);
       if (effective.mana > 0) {
         char.mana = combat.clamp(char.mana + Math.max(0, Math.floor(rates.manaStanding * penalty)), 0, effective.mana);
       }

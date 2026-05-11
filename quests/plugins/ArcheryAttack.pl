@@ -162,3 +162,5 @@ sub CritOrMiss {
 		$DidCrit = "no";
 	}
 }
+
+1;

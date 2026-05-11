@@ -479,7 +479,7 @@ async function adminGotoZoneSuccor(session, zoneArg) {
 
 async function handleSuccor(session) {
   const char = session.char;
-  
+
   try {
     const eqemuDB = require('../eqemu_db');
     const zoneDef = getZoneDef(char.zoneId);
@@ -493,26 +493,62 @@ async function handleSuccor(session) {
       return;
     }
 
-    // safe_x/safe_y/safe_z use the same coordinate system as spawn2:
-    // x = horizontal, y = horizontal, z = height
-    // TELEPORT handler on the client applies the EQ→Godot mapping
     console.log(`[ENGINE] Succor: ${char.name} teleporting to safe point (${safe.safe_x}, ${safe.safe_y}, ${safe.safe_z}) in ${dbShort}`);
-    
+
     char.x = safe.safe_x;
     char.y = safe.safe_y;
     char.z = safe.safe_z;
-    
+
     send(session.ws, {
       type: 'TELEPORT',
       x: char.x,
       y: char.y,
       z: char.z,
     });
-    
+
     sendCombatLog(session, [{ event: 'MESSAGE', text: 'You have been transported to safety.' }]);
   } catch (e) {
     console.error('[ENGINE] Succor error:', e.message);
     sendCombatLog(session, [{ event: 'MESSAGE', text: 'Succor failed.' }]);
+  }
+}
+
+/**
+ * GM: succor everyone in the leader's group who is in the same zone (online clients only).
+ */
+async function handleGmGroupSuccor(session) {
+  const char = session.char;
+  try {
+    const eqemuDB = require('../eqemu_db');
+    const zoneDef = getZoneDef(char.zoneId);
+    const dbShort = zoneDef && zoneDef.shortName
+      ? String(zoneDef.shortName).toLowerCase()
+      : String(char.zoneId).toLowerCase();
+    const safe = await eqemuDB.getZoneSuccorCoords(dbShort);
+    if (!safe) {
+      sendCombatLog(session, [{ event: 'MESSAGE', text: 'No safe point found for this zone.' }]);
+      return;
+    }
+    const zoneId = char.zoneId;
+    const group = session.group;
+    const members = (group && group.members && group.members.length > 0)
+      ? group.members
+      : [session];
+    const moved = [];
+    for (const m of members) {
+      if (!m || !m.char || !m.ws) continue;
+      if (m.char.zoneId !== zoneId) continue;
+      m.char.x = safe.safe_x;
+      m.char.y = safe.safe_y;
+      m.char.z = safe.safe_z;
+      send(m.ws, { type: 'TELEPORT', x: m.char.x, y: m.char.y, z: m.char.z });
+      sendCombatLog(m, [{ event: 'MESSAGE', text: 'You have been transported to safety. (Group succor)' }]);
+      moved.push(m.char.name);
+    }
+    sendCombatLog(session, [{ event: 'MESSAGE', text: `[GM] Group succor in ${dbShort}: ${moved.length} member(s) — ${moved.join(', ')}` }]);
+  } catch (e) {
+    console.error('[ENGINE] GM group succor error:', e.message);
+    sendCombatLog(session, [{ event: 'MESSAGE', text: 'Group succor failed.' }]);
   }
 }
 
@@ -545,6 +581,7 @@ module.exports = {
   breakHide,
   handleTeleporterPad,
   handleSuccor,
+  handleGmGroupSuccor,
   adminGotoZoneSuccor,
   init,
 };

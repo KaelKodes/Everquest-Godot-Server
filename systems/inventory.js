@@ -96,8 +96,22 @@ function getFirstEmptySlot(inventory) {
   return slot > 29 ? -1 : slot;
 }
 
-function processQuestActions(session, target, actions) {
-  if (processQuestActionsFn) return processQuestActionsFn(session, target, actions);
+async function processQuestActions(session, target, actions) {
+  if (processQuestActionsFn) return await processQuestActionsFn(session, target, actions);
+}
+
+/** Remove handed-in items using character_id + slot + PEQ item_id (DB.pool is not part of the public DB API). */
+async function deleteHandedItemsFromCharacter(char, items) {
+  for (const it of items) {
+    const eqId = it.item_id;
+    if (!eqId) continue;
+    const slotId = it.slotId;
+    if (typeof slotId === 'number' && slotId >= 0) {
+      await DB.deleteItem(char.id, eqId, slotId);
+    } else {
+      await DB.deleteItem(char.id, eqId, null);
+    }
+  }
 }
 
 async function handleBuy(session, msg) {
@@ -273,7 +287,7 @@ async function handleNPCGiveItems(session, msg) {
     const fallbackActions = [
       { action: 'say', source: target.id, msg: `I will not trade with someone like you, ${char.name}.` }
     ];
-    processQuestActions(session, target, fallbackActions);
+    await processQuestActions(session, target, fallbackActions);
     sendInventory(session);
     return;
   }
@@ -374,17 +388,13 @@ async function handleNPCGiveItems(session, msg) {
       const fallbackActions = [
         { action: 'say', source: target.id, msg: isFull ? `Master, my inventory is full. Please take some items first.` : `I have no use for this, master.` }
       ];
-      processQuestActions(session, target, fallbackActions);
+      await processQuestActions(session, target, fallbackActions);
     } else {
-      processQuestActions(session, target, [{ action: 'say', source: target.id, msg: `Thank you, master.` }]);
+      await processQuestActions(session, target, [{ action: 'say', source: target.id, msg: `Thank you, master.` }]);
     }
 
     // Delete consumed items from player
-    for (const it of itemsToConsume) {
-      if (it.inst_id) {
-        await DB.pool.query('DELETE FROM inventory WHERE id = ? AND char_id = ?', [it.inst_id, char.id]);
-      }
-    }
+    await deleteHandedItemsFromCharacter(char, itemsToConsume);
 
     session.inventory = await DB.getInventory(char.id);
     session.effectiveStats = calcEffectiveStats(char, session.inventory, session.buffs);
@@ -423,22 +433,18 @@ async function handleNPCGiveItems(session, msg) {
         }
       }
     }
-    processQuestActions(session, target, actions);
+    await processQuestActions(session, target, actions);
   } else {
     // Unhandled trade: return all items to player
     itemsToConsume = [];
     const fallbackActions = [
       { action: 'say', source: target.id, msg: `I have no need for this, ${char.name}, you can have it back.` }
     ];
-    processQuestActions(session, target, fallbackActions);
+    await processQuestActions(session, target, fallbackActions);
   }
 
   // Delete only the consumed items from inventory
-  for (const it of itemsToConsume) {
-    if (it.inst_id) {
-      await DB.pool.query('DELETE FROM inventory WHERE id = ? AND char_id = ?', [it.inst_id, char.id]);
-    }
-  }
+  await deleteHandedItemsFromCharacter(char, itemsToConsume);
   
   // Refresh inventory
   session.inventory = await DB.getInventory(char.id);

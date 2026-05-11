@@ -1,5 +1,6 @@
 const Calendar = require('../data/calendar');
 const State = require('../state');
+const ExpFatigue = require('./expFatigue');
 
 function processEnvironment(engineCtx) {
   const { zoneInstances, sessions, getZoneDef, sendCombatLog } = engineCtx;
@@ -13,6 +14,11 @@ function processEnvironment(engineCtx) {
     // Advance the Norrathian calendar by one hour
     const calendarEvents = Calendar.advanceHour(worldCalendar);
     const currentSeason = Calendar.getMonth(worldCalendar.month).season;
+
+    // Slight learning-fatigue recovery as Norrath time passes (while connected)
+    for (const [, session] of sessions) {
+      if (session.char) ExpFatigue.relieveInGameHour(session, sendCombatLog);
+    }
 
     // Roll weather changes for each loaded zone
     for (const [zoneId, zone] of Object.entries(zoneInstances)) {

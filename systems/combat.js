@@ -1,5 +1,6 @@
 const combat = require('../combat');
 const StatsSystem = require('./stats');
+const ExpFatigue = require('./expFatigue');
 
 let handleMobDeathFn, sendCombatLog, sendStatus, despawnPet, combat_utility, zoneInstances, spellDb, spellSystem, items, db, sendFullState, calcEffectiveStats, broadcastToZone, sessions;
 let getEquipVisuals;
@@ -43,10 +44,36 @@ async function handleMobDeath(session, mob, events) {
   }
 }
 
-async function awardExp(session, xp, events = null, mob = null) {
+async function awardExp(session, xp, events = null, mob = null, meta = {}) {
   const localEvents = events || [];
-  session.char.experience += xp;
-  localEvents.push({ event: 'XP_GAIN', amount: xp });
+  if (!session || !session.char) return;
+
+  let safeXp = Number(xp);
+  if (!Number.isFinite(safeXp) || safeXp < 0) {
+    console.warn('[COMBAT] awardExp: invalid xp, using 0', xp);
+    safeXp = 0;
+  }
+  xp = safeXp;
+
+  let source = meta.source != null ? meta.source : (mob ? 'kill' : 'restorative');
+  // Real mob kills must always apply kill fatigue; mis-tagged sources must not skip fatigue while still looting.
+  if (mob && xp > 0 && (source === 'restorative' || source === 'rp')) {
+    source = 'kill';
+  }
+
+  let grantXp = xp;
+  if (source === 'kill' && mob && xp > 0) {
+    const mult = ExpFatigue.getKillXpMultiplier(session.char.learningFatigue || 0);
+    grantXp = Math.max(1, Math.floor(xp * mult));
+    ExpFatigue.addFromKillXp(session, xp, sendCombatLog);
+  } else if (source === 'restorative' && xp > 0) {
+    ExpFatigue.relieveFromRestorativeXp(session, xp, sendCombatLog);
+  } else if (source === 'rp' && xp > 0) {
+    ExpFatigue.relieveFromRpTick(session, sendCombatLog);
+  }
+
+  session.char.experience += grantXp;
+  localEvents.push({ event: 'XP_GAIN', amount: grantXp });
 
   // Level up check
   let levelsGained = 0;
@@ -209,7 +236,7 @@ async function processCombatTick(session, dt) {
     }
   }
   // -- The Cleric Loop --
-  else if (session.char.class === 'cleric') {
+  else if (session.char.class === 'cleric' && !(session.isBot && mob && !mob.char)) {
     if (session.char.hp < session.effectiveStats.hp * 0.5 && session.char.mana >= 20 && !session.abilityCooldowns['cast']) {
       session.char.mana -= 20;
       session.char.hp = Math.min(session.char.hp + 60, session.effectiveStats.hp);

@@ -14,6 +14,9 @@ our $class = $args->{class} || '';
 our $race = $args->{race} || '';
 our $ulevel = $args->{ulevel} || 1;
 our %itemcount = %{ $args->{itemcount} || {} };
+# Stubs for plugin::val('$client') / plugin::val('$npc') via globals.pl (package plugin)
+our $client = bless { name => $name }, 'ClientProxy';
+our $npc = bless {}, 'NPCProxy';
 my $script_path = $args->{script_path};
 my $event_type = $args->{event_type} || 'EVENT_SAY';
 
@@ -24,7 +27,9 @@ if (-d $plugins_dir) {
     while (my $file = readdir($dh)) {
         next if ($file =~ /^\./);
         if ($file =~ /\.pl$/i) {
-            require "$plugins_dir/$file";
+            # Use do() so plugins need not end with `1;` (PEQ require() would die otherwise).
+            my $path = "$plugins_dir/$file";
+            eval { do $path; 1 } or warn "Quest plugin $file: $@\n";
         }
     }
     closedir($dh);
@@ -41,6 +46,11 @@ sub emit {
 }
 
 sub say { emit('say', { text => $_[0] }); }
+# EQEmu quest::saylink(phrase, unused, display) — phrase only; scripts wrap in brackets
+sub saylink {
+    my ($phrase, $unused, $display) = @_;
+    return (defined($display) && $display ne '') ? $display : $phrase;
+}
 sub shout { emit('shout', { text => $_[0] }); }
 sub emote { emit('emote', { text => $_[0] }); }
 sub summonitem { emit('summonitem', { item_id => $_[0], count => $_[1] || 1 }); }
@@ -61,25 +71,8 @@ sub targlobal { 1; }
 
 package plugin;
 
-# Provide access to global quest variables (EQEmu plugin compat)
-sub val {
-    my $varname = shift;
-    if ($varname eq '$text') { return $main::text; }
-    if ($varname eq '$name') { return $main::name; }
-    if ($varname eq '$class') { return $main::class; }
-    if ($varname eq '$race') { return $main::race; }
-    if ($varname eq '$ulevel') { return $main::ulevel; }
-    # Return stub proxy objects for $client and $npc
-    if ($varname eq '$client') {
-        return bless { name => $main::name }, 'ClientProxy';
-    }
-    if ($varname eq '$npc') {
-        return bless {}, 'NPCProxy';
-    }
-    return '';
-}
-sub nullzero { return $_[0] || 0; }
-sub random { return $_[int(rand(scalar @_))]; }
+# val, nullzero, random, var, takeItems, etc. come from globals.pl (also package plugin).
+# Minimal stubs not provided by globals:
 sub assocName { return $main::name; }
 sub fixNPCName { return ''; }
 sub cityName { return ''; }
@@ -108,6 +101,26 @@ package ClientProxy;
 sub GetName { return $_[0]->{name}; }
 sub Message { quest::emit('message', { color => $_[1], text => $_[2] }); }
 
+# Minimal NPC proxy for plugin::takeItems / givenItems (globals.pl) — mutates hand-in hash like EQEmu CheckHandin
+package NPCProxy;
+sub CheckHandin {
+    my ($self, $client, $handin, $required, @item_insts) = @_;
+    return 0 unless ref($handin) eq 'HASH' && ref($required) eq 'HASH';
+    for my $k (keys %$required) {
+        my $need = $required->{$k};
+        next if !defined($need) || $need <= 0;
+        my $have = $handin->{$k} || 0;
+        return 0 if $have < $need;
+    }
+    for my $k (keys %$required) {
+        my $need = $required->{$k};
+        next if !defined($need) || $need <= 0;
+        $handin->{$k} = ($handin->{$k} || 0) - $need;
+        delete $handin->{$k} if ($handin->{$k} <= 0);
+    }
+    return 1;
+}
+
 package main;
 
 # Execute the script
@@ -119,7 +132,7 @@ if ($@) {
 # Call the appropriate event function if it exists
 if ($event_type eq 'EVENT_SAY' && defined &EVENT_SAY) {
     EVENT_SAY();
-} elsif ($event_type eq 'EVENT_ITEM' && defined &EVENT_ITEM) {
+} elsif (($event_type eq 'EVENT_ITEM' || $event_type eq 'EVENT_TRADE') && defined &EVENT_ITEM) {
     EVENT_ITEM();
 } elsif ($event_type eq 'EVENT_COMBAT' && defined &EVENT_COMBAT) {
     EVENT_COMBAT();

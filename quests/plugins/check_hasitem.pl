@@ -1,3 +1,5 @@
+package plugin;
+
 #plugin::check_hasitem($client, $item_id);
 sub check_hasitem {
 	my $client = shift;
@@ -39,4 +41,4 @@ sub check_hasitem {
   	return 0;
 }
 
-return 1;
+1;

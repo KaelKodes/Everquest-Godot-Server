@@ -7,36 +7,126 @@ const QuestManager = require('../questManager');
 const FactionSystem = require('./faction');
 const GroupManager = require('./groups');
 const { GUILD_MASTER_CLASS, getTaughtClassId, CLASSES_MAP } = require('../utils/npcUtils');
-
+const combat = require('../combat');
+const ChatSpamGuard = require('./chatSpamGuard');
+const CombatSystem = require('./combat');
 
 function getDistanceSq(x1, y1, x2, y2) {
   return (x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1);
 }
 
-let sendCombatLogFn, processQuestActionsFn, handleHailFn, awardExpFn;
+let sendCombatLogFn, processQuestActionsFn, handleHailFn, awardExpFn, sendStatusFn;
 
 function sendCombatLog(session, events) {
   if (sendCombatLogFn) return sendCombatLogFn(session, events);
 }
-function processQuestActions(session, target, actions) {
-  if (processQuestActionsFn) return processQuestActionsFn(session, target, actions);
+async function processQuestActions(session, target, actions) {
+  if (processQuestActionsFn) return await processQuestActionsFn(session, target, actions);
 }
 function handleHail(session, msg) {
   if (handleHailFn) return handleHailFn(session, msg);
 }
 
 const RP_CHAR_THRESHOLD = 60; // Characters needed to trigger a tick check
-const RP_TICK_CHANCE = 0.33;  // 33% chance to actually receive the exp on tick
+/** Base RP tick chance when other players are nearby (say range). */
+const RP_TICK_CHANCE_SOCIAL = 0.33;
+/** Much lower when you are effectively talking to yourself (no other PCs in range). */
+const RP_TICK_CHANCE_SOLO = 0.09;
 
 function init(deps) {
   sendCombatLogFn = deps.sendCombatLog;
   processQuestActionsFn = deps.processQuestActions;
   handleHailFn = deps.handleHail;
   awardExpFn = deps.awardExp;
+  sendStatusFn = deps.sendStatus;
 }
 
-function processRPExperience(session, text) {
+/** Say / group / tell to a student: phrase triggers hired bots to mirror the mentor's combat target. */
+function isStudentAssistPhrase(text) {
+  const s = String(text || '').trim();
+  if (!s) return false;
+  return /assist\s+me\b/i.test(s);
+}
+
+/**
+ * @param {object} mentorSession — player giving the order (must own the bots)
+ * @param {string} text — chat line to scan
+ */
+function tryOrderStudentsAssist(mentorSession, text) {
+  if (!mentorSession || !mentorSession.char || !isStudentAssistPhrase(text)) return;
+  if (!sendCombatLogFn || !sendStatusFn) return;
+
+  const ct = mentorSession.combatTarget;
+  if (!ct) {
+    sendCombatLogFn(mentorSession, [{ event: 'MESSAGE', text: 'You have no target.' }]);
+    return;
+  }
+
+  const isPlayer = !!ct.char;
+  if (isPlayer) {
+    if (ct.char.id === mentorSession.char.id) return;
+    if (!CombatSystem.canInteract(mentorSession, ct, false)) {
+      sendCombatLogFn(mentorSession, [{ event: 'MESSAGE', text: 'Your students cannot attack that target.' }]);
+      return;
+    }
+  } else if (ct.type === 'corpse' || (ct.hp != null && ct.hp <= 0)) {
+    sendCombatLogFn(mentorSession, [{ event: 'MESSAGE', text: 'Your students cannot attack that target.' }]);
+    return;
+  } else if (ct.npcType != null && ct.npcType !== NPC_TYPES.MOB) {
+    sendCombatLogFn(mentorSession, [{ event: 'MESSAGE', text: 'Your students only assist against valid combat targets.' }]);
+    return;
+  }
+
+  const z = mentorSession.char.zoneId;
+  let n = 0;
+  for (const [, s] of sessions) {
+    if (!s.isBot || !s.char || s.char.ownerId !== mentorSession.char.id) continue;
+    if (s.char.zoneId !== z) continue;
+    if (s.char.hp <= 0 || s.char.state === 'dead') continue;
+
+    s.combatTarget = ct;
+    s.inCombat = true;
+    s.autoFight = true;
+    if (s.char.state === 'medding') s.char.state = 'standing';
+    s.attackTimer = 0;
+    sendStatusFn(s);
+    n++;
+  }
+
+  if (n === 0) {
+    sendCombatLogFn(mentorSession, [{ event: 'MESSAGE', text: 'You have no students here to assist you.' }]);
+  } else {
+    const tlabel = isPlayer ? ct.char.name : (ct.name || 'target');
+    sendCombatLogFn(mentorSession, [{ event: 'MESSAGE', text: `${n} student(s) assist you against ${tlabel}!` }]);
+  }
+}
+
+/** Other player characters in the same zone within radius (excluding self). */
+function countNearbyOtherPlayers(session, radius) {
+  const char = session.char;
+  if (!char) return 0;
+  let n = 0;
+  const r2 = radius * radius;
+  for (const [, other] of sessions) {
+    if (!other.char || other.char.id === char.id) continue;
+    if (other.char.zoneId !== char.zoneId) continue;
+    if (getDistanceSq(char.x, char.y, other.char.x, other.char.y) <= r2) n++;
+  }
+  return n;
+}
+
+function rpTickProbability(nearbyOthers) {
+  const n = Math.max(0, nearbyOthers | 0);
+  if (n <= 0) return RP_TICK_CHANCE_SOLO;
+  return Math.min(0.52, RP_TICK_CHANCE_SOCIAL + n * 0.04);
+}
+
+function processRPExperience(session, text, opts = {}) {
   if (!text) return;
+
+  const nearby = opts.nearbyPlayerCount != null
+    ? Math.max(0, opts.nearbyPlayerCount | 0)
+    : countNearbyOtherPlayers(session, 200);
   
   // Initialize character buffer if it doesn't exist
   if (session.rpCharBuffer === undefined) {
@@ -54,12 +144,28 @@ function processRPExperience(session, text) {
     // Reset buffer (or you could subtract the threshold if you want rollover)
     session.rpCharBuffer = 0;
     
-    // 33% chance to get an RP tick
-    if (Math.random() <= RP_TICK_CHANCE) {
-      const rpExp = Math.floor(Math.random() * 20) + 10; // 10-30 exp
-      if (awardExpFn) {
-         awardExpFn(session, rpExp, null);
-         sendCombatLog(session, [{ event: 'MESSAGE', text: `[color=yellow]You feel a sense of immersion. You gained ${rpExp} experience for roleplaying.[/color]` }]);
+    const tickChance = rpTickProbability(nearby);
+    if (Math.random() <= tickChance) {
+      const level = Math.max(1, session.char.level || 1);
+      const xpThisLevel = combat.xpForLevel(level + 1) - combat.xpForLevel(level);
+      if (xpThisLevel > 0 && awardExpFn) {
+        const pct = 0.001 + Math.random() * (0.005 - 0.001);
+        const rpExp = Math.max(1, Math.floor(xpThisLevel * pct));
+        void awardExpFn(session, rpExp, null, null, { source: 'rp' }).catch((e) => console.error('[CHAT] RP awardExp:', e.message));
+        const RP_FLOURISH = [
+          'The moment listens back. Something in you loosens into place.',
+          'Words and world trade weight for a heartbeat—you are not sure who paid.',
+          'For a breath, Norrath feels less like a ledger and more like a story.',
+          'You catch yourself believing the scene, not only performing it.',
+          'The air remembers kindness when strangers pretend to be kin.',
+        ];
+        const rare = Math.random() < 0.1;
+        const i = Math.abs((session.char.id || 0) + (nearby | 0) * 3) % RP_FLOURISH.length;
+        let line = `[color=yellow]${RP_FLOURISH[i]}[/color]`;
+        if (rare) {
+          line += ' [color=gray](A small truth settles—too subtle to count.)[/color]';
+        }
+        sendCombatLog(session, [{ event: 'MESSAGE', text: line }]);
       }
     }
   }
@@ -70,10 +176,23 @@ async function handleSay(session, msg) {
   const text = (msg.text || '').trim();
   if (!text) return;
 
+  if (ChatSpamGuard.isMuted(session)) {
+    ChatSpamGuard.onMutedChatAttempt(session, sendCombatLog);
+    return;
+  }
+  const spam = ChatSpamGuard.onPublicMessage(session, text, sendCombatLog);
+  if (spam.block) return;
+
   // Echo the player's speech via CHAT
   send(session.ws, { type: 'CHAT', channel: 'say', sender: char.name, text: text });
-  
-  processRPExperience(session, text);
+
+  if (!spam.skipRp) {
+    processRPExperience(session, text, {
+      nearbyPlayerCount: countNearbyOtherPlayers(session, 200),
+    });
+  }
+
+  tryOrderStudentsAssist(session, text);
 
   // If we have a targeted NPC, check for keyword responses
   if (session.combatTarget && session.combatTarget.npcType) {
@@ -101,7 +220,7 @@ async function handleSay(session, msg) {
     let handledByQuest = false;
 
     if (actions && actions.length > 0) {
-      processQuestActions(session, target, actions);
+      await processQuestActions(session, target, actions);
       handledByQuest = true;
     }
 
@@ -204,9 +323,21 @@ function handleShout(session, msg) {
   const char = session.char;
   const text = (msg.text || '').trim();
   if (!text) return;
+
+  if (ChatSpamGuard.isMuted(session)) {
+    ChatSpamGuard.onMutedChatAttempt(session, sendCombatLog);
+    return;
+  }
+  const spam = ChatSpamGuard.onPublicMessage(session, text, sendCombatLog);
+  if (spam.block) return;
+
   send(session.ws, { type: 'CHAT', channel: 'shout', sender: char.name, text: text });
   broadcastChat(session, 'shout', text, 600);
-  processRPExperience(session, text);
+  if (!spam.skipRp) {
+    processRPExperience(session, text, {
+      nearbyPlayerCount: countNearbyOtherPlayers(session, 600),
+    });
+  }
 }
 
 // ── /ooc — same as say radius (200u), local only ────────────────────
@@ -214,6 +345,14 @@ function handleOOC(session, msg) {
   const char = session.char;
   const text = (msg.text || '').trim();
   if (!text) return;
+
+  if (ChatSpamGuard.isMuted(session)) {
+    ChatSpamGuard.onMutedChatAttempt(session, sendCombatLog);
+    return;
+  }
+  const spam = ChatSpamGuard.onPublicMessage(session, text, sendCombatLog);
+  if (spam.block) return;
+
   send(session.ws, { type: 'CHAT', channel: 'ooc', sender: char.name, text: text });
   broadcastChat(session, 'ooc', text, 200);
 }
@@ -222,6 +361,14 @@ function handleOOC(session, msg) {
 function handleYell(session, msg) {
   const char = session.char;
   const text = (msg.text || '').trim() || 'Help!!';
+
+  if (ChatSpamGuard.isMuted(session)) {
+    ChatSpamGuard.onMutedChatAttempt(session, sendCombatLog);
+    return;
+  }
+  const spam = ChatSpamGuard.onPublicMessage(session, text, sendCombatLog);
+  if (spam.block) return;
+
   send(session.ws, { type: 'CHAT', channel: 'yell', sender: char.name, text: text });
   broadcastChat(session, 'yell', text, 400);
 
@@ -290,6 +437,10 @@ function handleWhisper(session, msg) {
   send(targetSession.ws, { type: 'CHAT', channel: 'whisper', sender: char.name, text: text, direction: 'from' });
   // Echo to sender
   send(session.ws, { type: 'CHAT', channel: 'whisper', sender: targetName, text: text, direction: 'to' });
+
+  if (targetSession.isBot && targetSession.char && targetSession.char.ownerId === char.id) {
+    tryOrderStudentsAssist(session, text);
+  }
 }
 
 // ── /group — broadcast to party ────────────────────────────────────
@@ -297,6 +448,7 @@ function handleGroup(session, msg) {
   const text = (msg.text || '').trim();
   if (!text) return;
   GroupManager.handleGroupChat(session, text);
+  tryOrderStudentsAssist(session, text);
 }
 
 // ── /invite — invite player to group ────────────────────────────────
@@ -342,7 +494,7 @@ function handleRaid(session, msg) {
   }
 }
 
-// ── /announcement — admin-only global broadcast ─────────────────────
+// ── /announcement — admin-only global broadcast (no spam guard; use for bulk GM text) ──
 function handleAnnouncement(session, msg) {
   const text = (msg.text || '').trim();
   if (!text) return;
@@ -377,4 +529,6 @@ module.exports = {
   broadcastChat,
   init,
   processRPExperience,
+  countNearbyOtherPlayers,
+  tryOrderStudentsAssist,
 };

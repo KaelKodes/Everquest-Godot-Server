@@ -65,7 +65,28 @@ async function main() {
       case 'SELECT_CHARACTER':
         await handleSelectCharacter(ws, msg);
         break;
+      case 'SERVER_INFO_REQUEST':
+        await handleServerInfoRequest(ws, msg);
+        break;
     }
+  }
+
+  // Lightweight, unauthenticated status probe used by the client's
+  // Server Select screen. Reports the cluster-wide online player count
+  // (populated by zone servers via broker.setGlobalState('player_count_total'))
+  // and falls back to 0 when the broker isn't connected yet.
+  async function handleServerInfoRequest(ws, _msg) {
+    let playerCount = 0;
+    try {
+      const v = await broker.getGlobalState('player_count_total');
+      if (typeof v === 'number') playerCount = v;
+    } catch (_) { /* broker not ready — keep default */ }
+
+    ws.send(JSON.stringify({
+      type: 'SERVER_INFO',
+      name: process.env.SERVER_NAME || 'EQMUD',
+      playerCount,
+    }));
   }
 
   async function handleLogin(ws, msg) {

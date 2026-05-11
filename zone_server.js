@@ -4,6 +4,7 @@ const http = require('http');
 const { WebSocketServer } = require('ws');
 const DB = require('./db');
 const engine = require('./gameEngine');
+const State = require('./state');
 const broker = require('./network/broker');
 const tokenManager = require('./network/tokenManager');
 const zoneRouter = require('./network/zoneRouter');
@@ -19,6 +20,17 @@ async function main() {
   // Don't pre-initialize zones in cluster mode; load on-demand.
   await engine.initZones([]);
   engine.startGameLoop();
+
+  // Publish active session count so the Server Select screen on the
+  // client can show a real player number. Single-node usage just reads
+  // 'player_count_total' directly; multi-node setups can swap this out
+  // for a per-NODE key and aggregate in the login server later.
+  setInterval(() => {
+    try {
+      const count = State.sessions ? State.sessions.size : 0;
+      broker.setGlobalState('player_count_total', count);
+    } catch (_) { /* broker not available */ }
+  }, 5000);
 
   const app = express();
   const server = http.createServer(app);

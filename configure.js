@@ -53,43 +53,50 @@ function ask(question) {
 
 async function mainMenu() {
     const config = loadEnv();
-    
-    // Ensure default port is in config if missing
+
+    // Ensure defaults are present if missing
     if (!config.PORT) config.PORT = '3005';
+    if (!config.PUBLIC_HOST) config.PUBLIC_HOST = 'localhost';
+    if (!config.MARIADB_CONTAINER) config.MARIADB_CONTAINER = 'akk-stack-mariadb-1';
 
     while (true) {
         console.clear();
         console.log('========================================');
         console.log('      🛠️  EQMUD SERVER TOOLKIT         ');
         console.log('========================================');
-        console.log(` 1. Game Port:      ${config.PORT || '3005'}`);
-        console.log(` 2. DB Host:       ${config.EQEMU_HOST || '127.0.0.1'}`);
-        console.log(` 3. DB Port:       ${config.EQEMU_PORT || '3307'}`);
-        console.log(` 4. DB User:       ${config.EQEMU_USER || 'eqemu'}`);
-        console.log(` 5. DB Password:   ${config.EQEMU_PASSWORD ? '********' : '(empty)'}`);
-        console.log(` 6. DB Name:       ${config.EQEMU_DATABASE || 'peq'}`);
+        console.log(` 1. Game Port:           ${config.PORT}`);
+        console.log(` 2. Public Host:         ${config.PUBLIC_HOST}     (advertised to remote clients)`);
         console.log('----------------------------------------');
-        console.log(' 7. Test DB Connection');
-        console.log(' 8. Save and Exit');
-        console.log(' 9. Exit Without Saving');
+        console.log(` 3. DB Host:             ${config.EQEMU_HOST || '127.0.0.1'}`);
+        console.log(` 4. DB Port:             ${config.EQEMU_PORT || '3307'}`);
+        console.log(` 5. DB User:             ${config.EQEMU_USER || 'eqemu'}`);
+        console.log(` 6. DB Password:         ${config.EQEMU_PASSWORD ? '********' : '(empty)'}`);
+        console.log(` 7. DB Name:             ${config.EQEMU_DATABASE || 'peq'}`);
+        console.log(` 8. MariaDB Container:   ${config.MARIADB_CONTAINER}`);
+        console.log('----------------------------------------');
+        console.log(' 9. Test DB Connection');
+        console.log('10. Save and Exit');
+        console.log('11. Exit Without Saving');
         console.log('========================================');
 
-        const choice = await ask('Choice (1-9): ');
+        const choice = (await ask('Choice (1-11): ')).trim();
 
         switch (choice) {
-            case '1': config.PORT = await ask(`New Port [${config.PORT}]: `) || config.PORT; break;
-            case '2': config.EQEMU_HOST = await ask(`New DB Host [${config.EQEMU_HOST}]: `) || config.EQEMU_HOST; break;
-            case '3': config.EQEMU_PORT = await ask(`New DB Port [${config.EQEMU_PORT}]: `) || config.EQEMU_PORT; break;
-            case '4': config.EQEMU_USER = await ask(`New DB User [${config.EQEMU_USER}]: `) || config.EQEMU_USER; break;
-            case '5': config.EQEMU_PASSWORD = await ask(`New DB Password: `); break;
-            case '6': config.EQEMU_DATABASE = await ask(`New DB Name [${config.EQEMU_DATABASE}]: `) || config.EQEMU_DATABASE; break;
-            case '7': await testConnection(config); await ask('\nPress Enter to continue...'); break;
-            case '8': 
-                saveEnv(config); 
+            case '1':  config.PORT              = await ask(`New Port [${config.PORT}]: `) || config.PORT; break;
+            case '2':  config.PUBLIC_HOST       = await ask(`New Public Host [${config.PUBLIC_HOST}]: `) || config.PUBLIC_HOST; break;
+            case '3':  config.EQEMU_HOST        = await ask(`New DB Host [${config.EQEMU_HOST}]: `) || config.EQEMU_HOST; break;
+            case '4':  config.EQEMU_PORT        = await ask(`New DB Port [${config.EQEMU_PORT}]: `) || config.EQEMU_PORT; break;
+            case '5':  config.EQEMU_USER        = await ask(`New DB User [${config.EQEMU_USER}]: `) || config.EQEMU_USER; break;
+            case '6':  config.EQEMU_PASSWORD    = await ask(`New DB Password: `); break;
+            case '7':  config.EQEMU_DATABASE    = await ask(`New DB Name [${config.EQEMU_DATABASE}]: `) || config.EQEMU_DATABASE; break;
+            case '8':  config.MARIADB_CONTAINER = await ask(`New Container Name [${config.MARIADB_CONTAINER}]: `) || config.MARIADB_CONTAINER; break;
+            case '9':  await testConnection(config); await ask('\nPress Enter to continue...'); break;
+            case '10':
+                saveEnv(config);
                 console.log('✅ Configuration saved.');
                 rl.close();
                 return;
-            case '9': 
+            case '11':
                 rl.close();
                 return;
         }

@@ -1,0 +1,9 @@
+EverQuestDirectory=D:\everquest_rof2\everquest_rof2
+ModelExportFormat=2
+ExportAllAnimationFrames=true
+ExportGltfInGlbFormat=true
+ExportCharacterToSingleFolder=true
+ExportGltfVertexColors=false
+ExportZoneMeshGroups=false
+ExportHiddenGeometry=false
+LoggerVerbosity=0

@@ -4,6 +4,9 @@ yarn-error.log
 .env
 data/spells_*.json
 data/items_*.json
-tools/LanternExtractor/
-tools/LanternExtractor.zip
+tools/LanternExtractor/Exports/
+tools/LanternExtractor/Exports/**
 *.db
+# DB snapshots produced by Dump_DB.bat — large + contains world state
+dumps/
+*.sql

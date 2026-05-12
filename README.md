@@ -2,7 +2,7 @@
 
 The EQMUD game engine: WebSockets, JSON protocol, MariaDB (PEQ / EQEmu schema), and Redis for multi-process coordination. This is **not** the legacy EQEmu C++ zone binary; it is a custom Node server that **reads** classic EQEmu-style SQL data.
 
-**Hosting:** There is no built-in **server browser / lobby** yet; you point the client at your WebSocket URL and supply your own MariaDB/Redis stack.
+**Hosting:** There is a built-in **server browser / lobby** on the client that will detect your local server or the Dev Branches. You can host publicly by editting the files, though a server browser is planned.
 
 **Full stack install, Akk/PEQ database, hosting expectations, and quick start:** **[README_SETUP.md](./README_SETUP.md)** — same folder as this file (`server/`).
 
@@ -111,7 +111,11 @@ Windows: `Start_Cluster.bat`.
 The Godot client’s default WebSocket URL is **`ws://localhost:3005`** (login). After login, the client is redirected toward **world** / **zone** URLs supplied by the server.
 
 ---
+## Connecting as a Client
+- [EverQuest.gd Launcher](https://github.com/KaelKodes/Everquest-Godot-Launcher/releases/download/Dev-v0.0.1/EQ.gd.Launcher.zip) - will install the client
+- It will detect your local host, and/or the Dev Branches if they are online
 
+---
 ## Project layout
 
 - `systems/` — Combat, spells, zones, movement, AI, etc.  

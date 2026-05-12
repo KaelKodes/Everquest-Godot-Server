@@ -11,8 +11,9 @@ const NPC_TYPES = {
   BANK:      'bank',       // Banker — item/coin storage
 };
 
-// Interaction range for non-combat NPCs (in world units).
-// Players must be within this distance to Hail and interact.
-const HAIL_RANGE = 15;
+// Interaction range for non-combat NPCs (world X/Y units, same plane as getDistanceSq).
+// Used for Hail, merchants, trainers, bankers, etc. Too small feels "nose to nose"; classic
+// play is a short conversation distance without shouting across the zone.
+const HAIL_RANGE = 25;
 
 module.exports = { NPC_TYPES, HAIL_RANGE };

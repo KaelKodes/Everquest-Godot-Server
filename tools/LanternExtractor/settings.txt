@@ -1,4 +1,4 @@
-EverQuestDirectory=D:\everquest_rof2\everquest_rof2
+EverQuestDirectory=D:\EQ
 ModelExportFormat=2
 ExportAllAnimationFrames=true
 ExportGltfInGlbFormat=true

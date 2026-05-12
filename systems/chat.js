@@ -10,6 +10,7 @@ const { GUILD_MASTER_CLASS, getTaughtClassId, CLASSES_MAP } = require('../utils/
 const combat = require('../combat');
 const ChatSpamGuard = require('./chatSpamGuard');
 const CombatSystem = require('./combat');
+const OocRegen = require('./oocRegen');
 
 function getDistanceSq(x1, y1, x2, y2) {
   return (x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1);
@@ -85,6 +86,7 @@ function tryOrderStudentsAssist(mentorSession, text) {
     if (s.char.hp <= 0 || s.char.state === 'dead') continue;
 
     s.combatTarget = ct;
+    if (!s.inCombat) OocRegen.markCombatStarted(s);
     s.inCombat = true;
     s.autoFight = true;
     if (s.char.state === 'medding') s.char.state = 'standing';

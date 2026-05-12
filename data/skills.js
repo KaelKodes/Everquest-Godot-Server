@@ -399,14 +399,13 @@ const Skills = {
       bard: { levelGranted: 1, capFormula: (level) => Math.min((level * 5) + 5, 100), maxCap: 100 },
     }
   },
-  'foraging': {
+  'forage': {
     name: 'Forage',
     type: 'skill',
     classes: {
-      ranger: { levelGranted: 3, capFormula: (level) => (level * 5) + 5, maxCap: 200 },
-      druid: { levelGranted: 5, capFormula: (level) => Math.min((level * 5) + 5, 55), maxCap: 55 },
+      ranger: { levelGranted: 3, capFormula: (level) => Math.min((level * 5) + 5, 200), maxCap: 200 },
+      druid: { levelGranted: 5, capFormula: (level) => Math.min((level * 5) + 5, 200), maxCap: 200 },
       bard: { levelGranted: 12, capFormula: (level) => Math.min((level * 5) + 5, 55), maxCap: 55 },
-      beastlord: { levelGranted: 3, capFormula: (level) => Math.min((level * 5) + 5, 55), maxCap: 55 },
     }
   },
   'bind_wound': {
@@ -837,11 +836,15 @@ const RACIAL_SKILLS = {
     hide: { levelGranted: 1, capFormula: () => 50, maxCap: 50 }
   },
   wood_elf: {
-    hide: { levelGranted: 1, capFormula: () => 50, maxCap: 50 }
+    hide: { levelGranted: 1, capFormula: () => 50, maxCap: 50 },
+    forage: { levelGranted: 1, capFormula: () => 50, maxCap: 50 },
   },
   halfling: {
     hide:  { levelGranted: 1, capFormula: () => 50, maxCap: 50 },
     sneak: { levelGranted: 1, capFormula: () => 50, maxCap: 50 }
+  },
+  iksar: {
+    forage: { levelGranted: 1, capFormula: () => 50, maxCap: 50 }
   }
 };
 

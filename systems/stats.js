@@ -1,7 +1,9 @@
 const DB = require('../db');
 const combat = require('../combat');
+const OocRegen = require('./oocRegen');
 const State = require('../state');
 const ItemDB = require('../data/itemDatabase');
+const SpellDB = require('../data/spellDatabase');
 let ITEMS;
 let spellSystem, sendCombatLog, sendBuffs, broadcastTargetUpdate;
 
@@ -77,7 +79,9 @@ function calcEffectiveStats(char, inventory, buffs = []) {
     // Resists (SPA 46-50)
     resistFire: 0, resistCold: 0, resistPoison: 0, resistDisease: 0, resistMagic: 0,
     // ATK bonus (SPA 2)
-    atkBonus: 0
+    atkBonus: 0,
+    wornHpRegenPerTick: 0,
+    wornManaRegenPerTick: 0
   };
 
   // 1. Equipment Stat Bonuses (Primary Stats + Resists + ATK)
@@ -182,14 +186,32 @@ function calcEffectiveStats(char, inventory, buffs = []) {
   stats.hp = combat.calcMaxHP(char.class, char.level, stats.sta);
   stats.mana = combat.calcMaxMana(char.class, char.level, stats);
 
-  // 5. Equipment HP/Mana and Flat Bonuses
+  // 5. Equipment HP/Mana and Flat Bonuses + worn regen (DB columns + worneffect spells)
+  let wornHpTick = 0;
+  let wornManaTick = 0;
   for (const row of inventory) {
     if (row.equipped !== 1) continue;
     const itemDef = ItemDB.getById(row.item_key) || ITEMS[row.item_key];
     if (!itemDef) continue;
     if (itemDef.hp) stats.hp += itemDef.hp;
     if (itemDef.mana) stats.mana += itemDef.mana;
+    if (itemDef.regen) wornHpTick += Number(itemDef.regen) || 0;
+    if (itemDef.manaregen) wornManaTick += Number(itemDef.manaregen) || 0;
+    const we = Number(itemDef.worneffect);
+    if (we > 0) {
+      const sp = SpellDB.getById(we);
+      if (sp && Array.isArray(sp.effects)) {
+        for (const eff of sp.effects) {
+          if (!eff || eff.base <= 0) continue;
+          if (eff.spa === 100) wornHpTick += eff.base;
+          else if (eff.spa === 15) wornManaTick += eff.base;
+          else if (eff.spa === 0) wornHpTick += eff.base;
+        }
+      }
+    }
   }
+  stats.wornHpRegenPerTick = wornHpTick;
+  stats.wornManaRegenPerTick = wornManaTick;
 
   // 6. Buff Flat HP/Mana Bonuses
   if (Array.isArray(buffs)) {
@@ -266,6 +288,13 @@ function getWeaponSkillName(inventory) {
   return 'hand_to_hand';
 }
 
+/** Mana per 6s tick after survival penalty; avoids floor(base*penalty)=0 when base is positive (e.g. 1 * 0.1). */
+function tickManaAfterPenalty(base, penalty) {
+  if (base <= 0) return 0;
+  const floored = Math.floor(base * penalty);
+  return floored < 1 ? 1 : floored;
+}
+
 function processRegen(session, dt) {
   if (!session.abilityCooldowns) session.abilityCooldowns = {};
   for (let key in session.abilityCooldowns) {
@@ -335,25 +364,58 @@ function processRegen(session, dt) {
     const SurvivalSystem = require('./survival');
     const penalty = SurvivalSystem.getRegenPenalty(char);
 
-    if (char.state === 'medding') {
-      char.hp = combat.clamp(char.hp + Math.max(0, Math.floor(rates.hpSitting * penalty)), 0, effective.hp);
-      if (effective.mana > 0) {
-        let manaSit = rates.manaSitting;
-        const maxMed = combat.getMaxSkill(char.class, 'meditate', char.level, char.race);
-        if (manaSit > 0 && maxMed > 0) {
-          const medSkill = combat.getCharSkill(char, 'meditate');
-          manaSit *= combat.getMeditateManaRegenFactor(medSkill);
+    // OOC regen tuning (6s tick): standing HP/MP are stingy; rested medding uses sit rates + meditate.
+    // After combat, OocRegen.fastMeddingRegen is false for 15s — sitting uses standing MP/HP (no meditate skill-ups).
+    const standHpFactor = 0.22;
+    const meddingHpFromSitTable = 0.52;
+    /** Sitting/medding HP tick multiplier (1 = prior tuning; below 1 weakens sit regen only). */
+    const sitHpRegenMul = 0.8;
+    /** Class standing-tier MP5 (processRegen) only; buff/item tick mana (e.g. SPA 15 in processBuffs) is unchanged. */
+    const standManaRegenMul = 0.85;
+    const fastMedding = OocRegen.fastMeddingRegen(session);
+    const isResting = char.state === 'medding' || char.state === 'sitting';
+
+    if (isResting) {
+      if (fastMedding) {
+        const hpMedTick = Math.max(
+          Math.floor(rates.hpStanding * penalty * standHpFactor),
+          Math.floor(rates.hpSitting * penalty * meddingHpFromSitTable)
+        );
+        char.hp = combat.clamp(char.hp + Math.max(0, Math.floor(hpMedTick * sitHpRegenMul)), 0, effective.hp);
+        if (effective.mana > 0) {
+          let manaSit = rates.manaSitting;
+          const maxMed = combat.getMaxSkill(char.class, 'meditate', char.level, char.race);
+          if (manaSit > 0 && maxMed > 0) {
+            const medSkill = combat.getCharSkill(char, 'meditate');
+            manaSit *= combat.getMeditateManaRegenFactor(medSkill);
+          }
+          char.mana = combat.clamp(char.mana + tickManaAfterPenalty(manaSit, penalty), 0, effective.mana);
+          session._meditateSkillTick = (session._meditateSkillTick || 0) + 1;
+          if (session._meditateSkillTick % 2 === 0) {
+            combat.trySkillUp(session, 'meditate');
+          }
         }
-        char.mana = combat.clamp(char.mana + Math.max(0, Math.floor(manaSit * penalty)), 0, effective.mana);
-        combat.trySkillUp(session, 'meditate');
+      } else if (!session.inCombat) {
+        char.hp = combat.clamp(char.hp + Math.max(0, Math.floor(rates.hpStanding * penalty * standHpFactor * sitHpRegenMul)), 0, effective.hp);
+        if (effective.mana > 0) {
+          char.mana = combat.clamp(char.mana + tickManaAfterPenalty(rates.manaStanding * standManaRegenMul, penalty), 0, effective.mana);
+        }
       }
     } else if (!session.inCombat) {
-      // Standing OOC HP regen — keep lower than classic tick math so chip damage / bot heals stay noticeable.
-      const standHpFactor = 0.38;
       char.hp = combat.clamp(char.hp + Math.max(0, Math.floor(rates.hpStanding * penalty * standHpFactor)), 0, effective.hp);
       if (effective.mana > 0) {
-        char.mana = combat.clamp(char.mana + Math.max(0, Math.floor(rates.manaStanding * penalty)), 0, effective.mana);
+        char.mana = combat.clamp(char.mana + tickManaAfterPenalty(rates.manaStanding * standManaRegenMul, penalty), 0, effective.mana);
       }
+    }
+
+    // Gear regen (Fungi tunic, Coldain shawl, etc.): per 6s tick, stacks with buff ticks; works in combat.
+    const wornHp = effective.wornHpRegenPerTick || 0;
+    const wornMana = effective.wornManaRegenPerTick || 0;
+    if (wornHp > 0) {
+      char.hp = combat.clamp(char.hp + wornHp, 0, effective.hp);
+    }
+    if (wornMana > 0 && (effective.mana || 0) > 0) {
+      char.mana = combat.clamp(char.mana + tickManaAfterPenalty(wornMana, penalty), 0, effective.mana);
     }
   }
 }

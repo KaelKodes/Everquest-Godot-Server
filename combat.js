@@ -92,7 +92,7 @@ function trySkillUp(session, skillName, targetLevel) {
   if (!char.skills) char.skills = {};
   
   const currentSkill = getCharSkill(char, skillName);
-  const maxSkill = getMaxSkill(char.class, skillName, char.level);
+  const maxSkill = getMaxSkill(char.class, skillName, char.level, char.race);
   
   if (currentSkill >= maxSkill) return false;
   
@@ -106,7 +106,7 @@ function trySkillUp(session, skillName, targetLevel) {
   
   let catchUpBonus = 0;
   if (targetLevel !== undefined) {
-    const targetMax = getMaxSkill(char.class, skillName, targetLevel);
+    const targetMax = getMaxSkill(char.class, skillName, targetLevel, char.race);
     if (currentSkill < targetMax * 0.5) {
       catchUpBonus = 5 + (targetMax - currentSkill) / 10;
     }
@@ -567,13 +567,13 @@ function calcXPGain(playerLevel, mobLevel, mobXpBase, zoneZEM) {
   return Math.max(1, Math.floor(baseXP * con.xpMod * zem));
 }
 
-// Mana per 6s tick — intentionally conservative at low level; seated rate scales up with Meditate (stats.js).
+// Mana per 6s tick — seated rate scales with Meditate (stats.js). Standing MP5 is intentionally low so sitting matters.
 const CLASS_REGEN = {
   warrior: { hpSit: (lv, sta) => Math.ceil(lv / 3 + sta / 25 + 2), hpStand: (lv, sta) => Math.ceil(lv / 8 + sta / 50 + 1), manaSit: () => 0, manaStand: () => 0 },
   rogue:   { hpSit: (lv, sta) => Math.ceil(lv / 3 + sta / 25 + 2), hpStand: (lv, sta) => Math.ceil(lv / 8 + sta / 50 + 1), manaSit: () => 0, manaStand: () => 0 },
-  cleric:  { hpSit: (lv, sta) => Math.ceil(lv / 4 + sta / 30 + 1), hpStand: (lv, sta) => Math.ceil(lv / 10 + sta / 60 + 1), manaSit: (lv, wis) => Math.max(1, Math.ceil(lv / 5 + wis / 45)), manaStand: (lv, wis) => Math.max(1, Math.ceil(lv / 22 + wis / 120)) },
-  wizard:  { hpSit: (lv, sta) => Math.ceil(lv / 5 + sta / 35 + 1), hpStand: (lv, sta) => Math.ceil(lv / 12 + 1), manaSit: (lv, intel) => Math.max(1, Math.ceil(lv / 5 + intel / 45)), manaStand: (lv, intel) => Math.max(1, Math.ceil(lv / 22 + intel / 120)) },
-  hybrid:  { hpSit: (lv, sta) => Math.ceil(lv / 4 + sta / 30 + 1), hpStand: (lv, sta) => Math.ceil(lv / 10 + sta / 60 + 1), manaSit: (lv, stat) => Math.max(1, Math.ceil(lv / 5 + stat / 50)), manaStand: (lv, stat) => Math.max(1, Math.ceil(lv / 22 + stat / 120)) },
+  cleric:  { hpSit: (lv, sta) => Math.ceil(lv / 4 + sta / 30 + 1), hpStand: (lv, sta) => Math.ceil(lv / 10 + sta / 60 + 1), manaSit: (lv, wis) => Math.max(1, Math.ceil(lv / 5 + wis / 45)), manaStand: (lv, wis) => Math.max(1, Math.ceil(lv / 48 + wis / 220)) },
+  wizard:  { hpSit: (lv, sta) => Math.ceil(lv / 5 + sta / 35 + 1), hpStand: (lv, sta) => Math.ceil(lv / 12 + 1), manaSit: (lv, intel) => Math.max(1, Math.ceil(lv / 5 + intel / 45)), manaStand: (lv, intel) => Math.max(1, Math.ceil(lv / 48 + intel / 220)) },
+  hybrid:  { hpSit: (lv, sta) => Math.ceil(lv / 4 + sta / 30 + 1), hpStand: (lv, sta) => Math.ceil(lv / 10 + sta / 60 + 1), manaSit: (lv, stat) => Math.max(1, Math.ceil(lv / 5 + stat / 50)), manaStand: (lv, stat) => Math.max(1, Math.ceil(lv / 48 + stat / 220)) },
 };
 
 CLASS_REGEN.paladin = CLASS_REGEN.hybrid;

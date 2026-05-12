@@ -15,6 +15,7 @@ const { INV_CLASSES, INV_RACES } = constants;
 const SpellDB = require('./data/spellDatabase');
 const { RACIAL_STARTING_SKILLS } = require('./data/skills');
 const { STARTER_GEAR } = require('./data/items');
+const ItemDB = require('./data/itemDatabase');
 
 const STARTER_SPELLS = {
 	cleric: ['minor_healing', 'strike'],
@@ -189,17 +190,40 @@ async function grantCharacterCreationExtras(charId, charClass, race) {
 		await DB.saveCharacterSkills(charId, racialSkills);
 	}
 
-	// Basic rations + water (PEQ starting_items may omit these for some race/class rows)
-	const STARTER_WATER_ID = 10739;
-	const STARTER_FOOD_ID = 5294;
+	// Basic drink + food (PEQ starting_items may omit these for some race/class rows).
+	// Drink id must match your `items` table — resolve by name so a wrong hardcoded id
+	// (e.g. 10739 pointing at another item in a custom DB) does not grant junk.
+	await ItemDB.loadItems();
+	const drinkNames = ['Flask of Water', 'Flask of Pure Water', 'Canteen of Murky Water'];
+	let starterDrinkId = null;
+	for (const nm of drinkNames) {
+		const d = ItemDB.getByName(nm);
+		if (d && d._id != null) {
+			starterDrinkId = d._id;
+			break;
+		}
+	}
+	if (starterDrinkId == null) starterDrinkId = 13042;
+
+	const foodNames = ['Iron Ration', "Brell's Blessed Stale Biscuits", "Baker's Loaf"];
+	let starterFoodId = null;
+	for (const nm of foodNames) {
+		const f = ItemDB.getByName(nm);
+		if (f && f._id != null) {
+			starterFoodId = f._id;
+			break;
+		}
+	}
+	if (starterFoodId == null) starterFoodId = 5294;
+
 	let inv = await DB.getInventory(charId);
 	let slot = InventorySystem.getFirstEmptySlot(inv);
 	if (slot >= 0) {
-		await DB.addItem(charId, STARTER_WATER_ID, 0, slot, 1);
+		await DB.addItem(charId, starterDrinkId, 0, slot, 1);
 		inv = await DB.getInventory(charId);
 		slot = InventorySystem.getFirstEmptySlot(inv);
 		if (slot >= 0) {
-			await DB.addItem(charId, STARTER_FOOD_ID, 0, slot, 1);
+			await DB.addItem(charId, starterFoodId, 0, slot, 1);
 		}
 	}
 }

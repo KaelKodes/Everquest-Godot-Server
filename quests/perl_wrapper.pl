@@ -73,6 +73,13 @@ package plugin;
 
 # val, nullzero, random, var, takeItems, etc. come from globals.pl (also package plugin).
 # Minimal stubs not provided by globals:
+# quests/plugins/default.pl wires EVENT_* to these — must exist before EVENT_* runs.
+sub defaultSay { 1; }
+sub defaultItem { 1; }
+sub defaultCombat { 1; }
+sub defaultSlay { 1; }
+sub defaultDeath { 1; }
+
 sub assocName { return $main::name; }
 sub fixNPCName { return ''; }
 sub cityName { return ''; }

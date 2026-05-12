@@ -1,5 +1,6 @@
 const combat = require('../combat');
 const StatsSystem = require('./stats');
+const OocRegen = require('./oocRegen');
 const ExpFatigue = require('./expFatigue');
 
 let handleMobDeathFn, sendCombatLog, sendStatus, despawnPet, combat_utility, zoneInstances, spellDb, spellSystem, items, db, sendFullState, calcEffectiveStats, broadcastToZone, sessions;
@@ -180,6 +181,7 @@ async function awardExp(session, xp, events = null, mob = null, meta = {}) {
   }
 
   session.combatTarget = null;
+  if (session.inCombat) OocRegen.markCombatEnded(session);
   session.inCombat = false;
   session.autoFight = false;
 
@@ -485,6 +487,7 @@ async function processCombatTick(session, dt) {
     mob.char.hp = 0;
     // For now, let the player's own combat tick handle their death, or force it here.
     // We will just wait for their own process loop to kill them.
+    if (session.inCombat) OocRegen.markCombatEnded(session);
     session.inCombat = false;
     session.autoFight = false;
     session.combatTarget = null;
@@ -661,6 +664,7 @@ async function handlePlayerDeath(session, events) {
 
   // End combat for the dead player
   session.char.state = 'dead';
+  if (session.inCombat) OocRegen.markCombatEnded(session);
   session.inCombat = false;
   session.autoFight = false;
   session.combatTarget = null;
@@ -682,6 +686,7 @@ async function handlePlayerDeath(session, events) {
       if (!otherSession?.char) continue;
       if (otherSession.char.zoneId === session.char.zoneId && otherSession.combatTarget === session) {
         otherSession.combatTarget = null;
+        if (otherSession.inCombat) OocRegen.markCombatEnded(otherSession);
         otherSession.inCombat = false;
         otherSession.autoFight = false;
         sendCombatLog(otherSession, [{ event: 'MESSAGE', text: `Your target, ${session.char.name}, has died.` }]);

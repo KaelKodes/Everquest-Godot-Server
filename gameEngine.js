@@ -6,6 +6,7 @@ const SPELLS = SpellDB.createLegacyProxy(); // Legacy proxy for backwards compat
 const { Skills, RACIAL_STARTING_SKILLS } = require('./data/skills');
 const { STARTER_GEAR, SUMMON_ITEM_MAP } = require('./data/items');
 const ItemDB = require('./data/itemDatabase');
+const ForageLoot = require('./data/forageLoot');
 const ITEMS = ItemDB.createLegacyProxy(); // Legacy proxy for backwards compatibility
 const DB = require('./db');
 const eqemuDB = require('./eqemu_db');
@@ -33,7 +34,9 @@ const InventorySystem = require('./systems/inventory');
 const GroupManager = require('./systems/groups');
 
 const MovementSystem = require('./systems/movement');
+const FallDamageSystem = require('./systems/fallDamage');
 const StatsSystem = require('./systems/stats');
+const OocRegen = require('./systems/oocRegen');
 const SpawningSystem = require('./systems/spawning');
 const MiningSystem = require('./systems/mining');
 const ZoneSystem = require('./systems/zones');
@@ -91,6 +94,7 @@ async function createSession(ws, char, auth = null) {
   await ZoneSystem.ensureZoneLoaded(char.zoneId, SpawningSystem.spawnMob, MiningSystem.spawnMiningNodes, MiningSystem.spawnMiningNPCs);
 
   const skills = {};
+  let skillsChanged = false;
   let inventory = [];
   let spells = [];
 
@@ -101,13 +105,17 @@ async function createSession(ws, char, auth = null) {
         skills[row.skill_id] = row.value;
       }
     }
+    if (skills.foraging != null && skills.forage === undefined) {
+      skills.forage = skills.foraging;
+      delete skills.foraging;
+      skillsChanged = true;
+    }
     inventory = await DB.getInventory(char.id);
     spells = await DB.getSpells(char.id);
   }
 
   // ── Skill Initialization / Migration ──
   // Grant any missing skills that the character qualifies for based on class/level
-  let skillsChanged = false;
   for (const [skillKey, skillDef] of Object.entries(Skills)) {
     if (skills[skillKey] === undefined) {
       const classReq = skillDef.classes[char.class];
@@ -212,6 +220,7 @@ async function attachCharacterDataToSession(session, char) {
   await ZoneSystem.ensureZoneLoaded(char.zoneId, SpawningSystem.spawnMob, MiningSystem.spawnMiningNodes, MiningSystem.spawnMiningNPCs);
 
   const skills = {};
+  let skillsChanged = false;
   if (char.id && !String(char.id).startsWith('bot_')) {
     const skillsList = await DB.getSkills(char.id);
     if (Array.isArray(skillsList)) {
@@ -219,9 +228,13 @@ async function attachCharacterDataToSession(session, char) {
         skills[row.skill_id] = row.value;
       }
     }
+    if (skills.foraging != null && skills.forage === undefined) {
+      skills.forage = skills.foraging;
+      delete skills.foraging;
+      skillsChanged = true;
+    }
   }
 
-  let skillsChanged = false;
   for (const [skillKey, skillDef] of Object.entries(Skills)) {
     if (skills[skillKey] === undefined) {
       const classReq = skillDef.classes[char.class];
@@ -256,6 +269,7 @@ async function attachCharacterDataToSession(session, char) {
   session.inventory = await DB.getInventory(char.id);
   session.spells = await DB.getSpells(char.id);
   session.effectiveStats = StatsSystem.calcEffectiveStats(char, session.inventory);
+  if (session.inCombat) OocRegen.markCombatEnded(session);
   session.inCombat = false;
   session.autoFight = false;
   session.combatTarget = null;
@@ -366,9 +380,10 @@ async function handleMessage(ws, msg) {
     case 'USE_HIDE': return MovementSystem.handleHide(session, msg);
     case 'SWIM_TICK': return MovementSystem.handleSwimTick(session, msg);
     case 'JUMP': return MovementSystem.handleJump(session);
+    case 'FALL_IMPACT': return await FallDamageSystem.handleFallImpact(session, msg);
     case 'CAMP': return handleCamp(session);
     case 'TRAIN_SKILL': return handleTrainSkill(session, msg);
-    case 'ABILITY': return handleAbility(session, msg);
+    case 'ABILITY': return await handleAbility(session, msg);
     case 'SET_TACTIC': return handleTactic(session, msg);
     case 'GET_TRACKING_LIST': return handleGetTrackingList(session);
     case 'SET_TRACKING_TARGET': return handleSetTrackingTarget(session, msg);
@@ -843,6 +858,7 @@ function handleStartCombat(session) {
 
   // Only engage if we already have a combat target set via ATTACK_TARGET
   if (session.combatTarget && !session.inCombat) {
+    OocRegen.markCombatStarted(session);
     session.inCombat = true;
     session.autoFight = true;
     // Don't set mob.target here — mob only aggros when first melee hit lands in range
@@ -856,6 +872,7 @@ function handleStartCombat(session) {
 
 function handleStopCombat(session) {
   session.autoFight = false;
+  if (session.inCombat) OocRegen.markCombatEnded(session);
   session.inCombat = false;
   session.combatTarget = null;
   sendCombatLog(session, [{ event: 'MESSAGE', text: 'You cease your attack.' }]);
@@ -1058,17 +1075,17 @@ function handleAttackTarget(session, msg) {
     }
   }
 
-  session.inCombat = true;
-  session.autoFight = true;
   session.combatTarget = targetEntity;
   SpellSystem.cancelPendingScribe(session, 'combat', false);
 
   // NOTE: Do NOT set mob.target here - mob only becomes aggressive
   // when the player's first melee swing actually goes through in range.
-  
-  sendCombatLog(session, [{ event: 'MESSAGE', text: `Auto attack is on.` }]);
-  session.inCombat = true;
 
+  if (!session.inCombat) OocRegen.markCombatStarted(session);
+  session.inCombat = true;
+  session.autoFight = true;
+
+  sendCombatLog(session, [{ event: 'MESSAGE', text: `Auto attack is on.` }]);
 }
 
 function engageNextMob(session) {
@@ -1085,6 +1102,7 @@ function engageNextMob(session) {
     return false;
   }
 
+  if (!session.inCombat) OocRegen.markCombatStarted(session);
   session.inCombat = true;
   session.combatTarget = mob;
   mob.target = session;
@@ -1650,7 +1668,7 @@ async function applySpellEffect(session, spellDef) {
   return result;
 }
 
-function handleAbility(session, msg) {
+async function handleAbility(session, msg) {
   const ability = (msg.ability || '').toLowerCase().trim();
   const char = session.char;
 
@@ -1684,27 +1702,49 @@ function handleAbility(session, msg) {
     if (skill <= 0) {
       return sendCombatLog(session, [{ event: 'MESSAGE', text: `You have no idea how to forage.` }]);
     }
-    const roll = Math.floor(Math.random() * 200) + 1;
-    const success = roll <= (skill + 25);
-    combat.trySkillUp(session, 'forage');
-
-    if (success) {
-      // Zone-aware forage table — common generic items
-      const FORAGE_TABLE = [
-        { name: 'Roots', weight: 0.1 },
-        { name: 'Berries', weight: 0.1 },
-        { name: 'Pod of Water', weight: 0.4 },
-        { name: 'Fishing Grubs', weight: 0.1 },
-        { name: 'Vegetables', weight: 0.2 },
-        { name: 'Fruit', weight: 0.2 },
-        { name: 'Rabbit Meat', weight: 0.3 },
-      ];
-      const item = FORAGE_TABLE[Math.floor(Math.random() * FORAGE_TABLE.length)];
-      sendCombatLog(session, [{ event: 'MESSAGE', text: `[color=green]You have foraged ${item.name}![/color]` }]);
-    } else {
-      sendCombatLog(session, [{ event: 'MESSAGE', text: `You fail to find anything useful.` }]);
-    }
     session.abilityCooldowns['forage'] = 10;
+
+    const roll = Math.floor(Math.random() * 200);
+    const success = roll < skill;
+
+    if (!success) {
+      sendCombatLog(session, [{ event: 'MESSAGE', text: `You fail to locate any food nearby.` }]);
+      combat.trySkillUp(session, 'forage');
+      flushSkillUps(session);
+      return;
+    }
+
+    let pick = null;
+    const dbItemId = await eqemuDB.rollForageItemId(char.zoneId, skill);
+    if (dbItemId) {
+      const def = ItemDB.getById(dbItemId) || ITEMS[dbItemId];
+      if (def) pick = { itemKey: dbItemId, def };
+    }
+    if (!pick) pick = ForageLoot.pickFallbackForageItem(ItemDB, ITEMS);
+    if (!pick) {
+      sendCombatLog(session, [{ event: 'MESSAGE', text: 'You fail to locate any food nearby.' }]);
+      combat.trySkillUp(session, 'forage');
+      flushSkillUps(session);
+      return;
+    }
+
+    const emptySlot = InventorySystem.getFirstEmptySlot(session.inventory);
+    if (emptySlot === -1) {
+      sendCombatLog(session, [{ event: 'MESSAGE', text: 'Your inventory is full.' }]);
+      combat.trySkillUp(session, 'forage');
+      flushSkillUps(session);
+      return;
+    }
+
+    await DB.addItem(session.char.id, pick.itemKey, 0, emptySlot, 1);
+    session.inventory = await DB.getInventory(session.char.id);
+    session.effectiveStats = StatsSystem.calcEffectiveStats(session.char, session.inventory, session.buffs);
+    sendInventory(session);
+    sendStatus(session);
+
+    const msgText = ForageLoot.forageSuccessMessage(pick.def);
+    sendCombatLog(session, [{ event: 'MESSAGE', text: msgText }]);
+    combat.trySkillUp(session, 'forage');
     flushSkillUps(session);
     return;
   }
@@ -2458,6 +2498,7 @@ function charmMob(session, mob, spellDef) {
   session.pet = mob;
 
   // Stop combat
+  if (session.inCombat) OocRegen.markCombatEnded(session);
   session.inCombat = false;
   session.autoFight = false;
   session.combatTarget = null;
@@ -3672,6 +3713,7 @@ function sendLoginOk(session) {
       maxMana: effective.mana,
       state: char.state,
       inCombat: session.inCombat,
+      restedRegen: OocRegen.isRestedRegenActive(session),
       ...ExpFatigue.statusPayload(char),
       zone: zone ? zone.name : 'Unknown',
       zoneId: char.zoneId,
@@ -3831,7 +3873,9 @@ function sendStatus(session) {
       hasteMod: _hasteMod,
       state: char.state,
       inCombat: session.inCombat,
+      restedRegen: OocRegen.isRestedRegenActive(session),
       autoFight: session.autoFight,
+      isLevitating: !!session.char.isLevitating,
       ...ExpFatigue.statusPayload(char),
       // Vision flags for stats panel
       ...(() => {
@@ -5465,6 +5509,11 @@ async function bootstrapServer() {
   // 3. Initialize Utility Systems
   ChatSystem.init(deps);
   MovementSystem.init(deps);
+  FallDamageSystem.init({
+    sendCombatLog,
+    sendStatus,
+    flushSkillUps,
+  });
 
   // 4. Initialize Zones
   // await ZoneSystem.initZones(); // Removed from here, called explicitly in main() or zone_server.js

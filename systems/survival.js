@@ -1,7 +1,9 @@
 const DB = require('../db');
 const ItemDB = require('../data/itemDatabase');
 
-const TICK_SECONDS = 180; // 3 minutes real-time for each hunger tick
+// Wall-clock between hunger/thirst drain ticks. Larger = mellower pacing (food/drink lasts longer).
+// Was 180s (3 min); 540s ≈ one tick every 9 min, ~3× less frequent than before.
+const TICK_SECONDS = 540;
 const MAX_HUNGER = 100;
 const DRAIN_AMOUNT = 5;
 const CONSUME_THRESHOLD = 50;

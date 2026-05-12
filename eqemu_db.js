@@ -995,6 +995,7 @@ async function getAllItems() {
                i.stackable, i.stacksize,
                i.itemtype, i.slots, i.classes, i.races, i.weight, i.icon, i.material, i.idfile,
                i.reclevel, i.reqlevel, i.scrolllevel, i.scrolleffect, i.focuseffect, i.light,
+               i.regen, i.manaregen, i.worneffect, i.wornlevel,
                i.lore, i.magic, i.nodrop, i.norent, i.size, i.endur, i.fr, i.cr, i.mr, i.pr, i.dr,
                i.elemdmgtype, i.elemdmgamt, i.banedmgrace, i.banedmgamt, i.placeable,
                i.augslot1type, i.augslot2type, i.augslot3type, i.augslot4type, i.augslot5type, i.augslot6type,
@@ -1208,6 +1209,33 @@ async function consumeOneInventoryAtSlot(charId, slotId, itemId) {
     } catch (e) {
         console.error('[DB] consumeOneInventoryAtSlot error:', e.message);
         return false;
+    }
+}
+
+/** Remove up to removeCount charges from one bag slot; delete row if stack emptied. Returns amount removed. */
+async function reduceItemStackAtSlot(charId, slotId, itemId, removeCount) {
+    if (!pool || removeCount < 1) return 0;
+    try {
+        const [rows] = await pool.query(
+            'SELECT charges FROM inventory WHERE character_id = ? AND slot_id = ? AND item_id = ? LIMIT 1',
+            [charId, slotId, itemId]
+        );
+        if (!rows.length) return 0;
+        let q = Number(rows[0].charges) > 0 ? Number(rows[0].charges) : 1;
+        const take = Math.min(removeCount, q);
+        if (take <= 0) return 0;
+        if (take >= q) {
+            await deleteItem(charId, itemId, slotId);
+            return take;
+        }
+        await pool.query(
+            'UPDATE inventory SET charges = ? WHERE character_id = ? AND slot_id = ? AND item_id = ? LIMIT 1',
+            [q - take, charId, slotId, itemId]
+        );
+        return take;
+    } catch (e) {
+        console.error('[DB] reduceItemStackAtSlot error:', e.message);
+        return 0;
     }
 }
 
@@ -1556,7 +1584,7 @@ const SKILL_NAME_TO_ID = {
     'brass_instruments': 12, 'channeling': 13, 'conjuration': 14, 'defense': 15,
     'disarm': 16, 'disarm_traps': 17, 'divination': 18, 'dodge': 19,
     'double_attack': 20, 'dragon_punch': 21, 'dual_wield': 22, 'eagle_strike': 23,
-    'evocation': 24, 'feign_death': 25, 'flying_kick': 26, 'foraging': 27,
+    'evocation': 24, 'feign_death': 25, 'flying_kick': 26, 'forage': 27,
     'hand_to_hand': 28, 'hide': 29, 'kick': 30, 'meditate': 31,
     'mend': 32, 'offense': 33, 'parry': 34, 'pick_lock': 35,
     'piercing': 36, 'riposte': 37, 'round_kick': 38, 'safe_fall': 39,
@@ -2100,14 +2128,22 @@ async function getCharacterBuffs(charId) {
         for (const b of rows) {
             const spellDef = SpellDB.getById(b.spell_id);
             if (!spellDef) continue;
-            
+
+            const durSec = (b.ticsremaining != null ? b.ticsremaining : 0) * 6; // ticks → seconds (matches save)
+
             restored.push({
-                name: spellDef._key,
-                duration: b.ticsremaining * 6, // Convert ticks back to seconds
+                name: spellDef.buffName || spellDef.name || spellDef._key,
+                duration: durSec,
+                maxDuration: durSec,
                 casterLevel: b.caster_level,
                 casterName: b.caster_name,
                 spellId: b.spell_id,
-                beneficial: true // Assume beneficial for now or look up in spellDef
+                beneficial: spellDef.goodEffect !== false,
+                stackingGroup: spellDef.stackingGroup || 0,
+                icon: spellDef.visual?.icon || 0,
+                memIcon: spellDef.visual?.memIcon || 0,
+                effects: spellDef.effects || [],
+                isSong: spellDef.derived?.isBardSong === true,
             });
         }
         return restored;
@@ -2197,6 +2233,48 @@ async function rollLootFromTable(loottableId) {
     }
 }
 
+/**
+ * Roll one item_id from PEQ `forage` (same cumulative-chance algorithm as EQEmu ZoneDatabase::LoadForage).
+ * @param {string} zoneShortName character zone short_name
+ * @param {number} skillLevel forage skill 1..255
+ * @returns {Promise<number|null>}
+ */
+async function rollForageItemId(zoneShortName, skillLevel) {
+  await init();
+  if (!pool) return null;
+  const zoneNum = getZoneIdByShortName(zoneShortName);
+  const zid = zoneNum != null ? zoneNum : 0;
+  const skill = Math.max(0, Math.min(255, Math.floor(Number(skillLevel) || 0)));
+  const limit = 500;
+  try {
+    const [rows] = await pool.query(
+      `SELECT Itemid AS item_id, chance FROM forage WHERE (zoneid = ? OR zoneid = 0) AND \`level\` <= ? LIMIT ${limit}`,
+      [zid, skill]
+    );
+    if (!rows || rows.length === 0) return null;
+    let cumulative = 0;
+    const buckets = [];
+    for (const r of rows) {
+      const ch = Math.max(0, Math.floor(Number(r.chance) || 0));
+      if (ch <= 0) continue;
+      const itemId = Math.floor(Number(r.item_id));
+      if (!itemId) continue;
+      cumulative += ch;
+      buckets.push({ top: cumulative, itemId });
+    }
+    if (cumulative <= 0 || buckets.length === 0) return null;
+    const roll = Math.floor(Math.random() * cumulative) + 1;
+    for (const b of buckets) {
+      if (roll <= b.top) return b.itemId;
+    }
+    return buckets[buckets.length - 1].itemId;
+  } catch (e) {
+    if (e.code === 'ER_NO_SUCH_TABLE' || e.code === 'ER_BAD_FIELD_ERROR') return null;
+    console.error('[DB] rollForageItemId error:', e.message);
+    return null;
+  }
+}
+
 module.exports = {
   init,
   getArchiveShortName,
@@ -2227,6 +2305,7 @@ module.exports = {
     unequipSlot,
     deleteItem,
     consumeOneInventoryAtSlot,
+    reduceItemStackAtSlot,
     moveItem,
     splitStackToSlot,
     // Persistent corpses
@@ -2270,7 +2349,8 @@ module.exports = {
     saveCharacterSpellLoadouts,
     getCharacterBuffs,
     saveCharacterBuffs,
-    rollLootFromTable
+    rollLootFromTable,
+    rollForageItemId
   };
 
 

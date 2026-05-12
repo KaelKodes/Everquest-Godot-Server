@@ -60,6 +60,75 @@ function getDistanceSq(x1, y1, x2, y2) {
   return (x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1);
 }
 
+/**
+ * Inventory rows use `id` === PEQ item_id (catalog key), not a unique instance id.
+ * Prefer slotId from the client so stacks / duplicate item_ids resolve to the correct row.
+ */
+function resolveInvRowForTrade(session, itemId, slotId) {
+  const inv = session.inventory || [];
+  if (slotId != null && slotId !== '' && Number.isFinite(Number(slotId))) {
+    const s = Number(slotId);
+    const row = inv.find((i) => Number(i.slot) === s);
+    if (row) return row;
+  }
+  if (itemId == null || itemId === '') return null;
+  const sid = String(itemId);
+  const matches = inv.filter((i) => String(i.item_key) === sid || String(i.id) === sid);
+  if (matches.length === 1) return matches[0];
+  return null;
+}
+
+const MERCHANT_QTY_CAP = 999;
+
+/** Max units of itemKey that fit in main pockets (22–29), counting stack merge room. */
+function computeMaxBuyOnPerson(session, itemKey, stackSize) {
+  const key = Number(itemKey);
+  const stack = Math.max(1, stackSize || 1);
+  let room = 0;
+  const inv = session.inventory || [];
+  for (let slot = 22; slot <= 29; slot++) {
+    const row = inv.find((i) => Number(i.slot) === slot);
+    if (!row) {
+      room += stack;
+      continue;
+    }
+    if (Number(row.item_key) !== key) continue;
+    const q = Math.max(1, Number(row.quantity) || 1);
+    room += Math.max(0, stack - q);
+  }
+  return room;
+}
+
+/** Grant count units of addKey into main pockets; merges stacks then fills empty slots. Returns how many were placed. */
+async function grantPurchasedItems(charId, addKey, count, stackSize, session) {
+  let remaining = count;
+  const stack = Math.max(1, stackSize || 1);
+  while (remaining > 0) {
+    session.inventory = await DB.getInventory(charId);
+    let merged = false;
+    for (let slot = 22; slot <= 29; slot++) {
+      const row = session.inventory.find((i) => Number(i.slot) === slot);
+      if (!row || Number(row.item_key) !== Number(addKey)) continue;
+      const q = Math.max(1, Number(row.quantity) || 1);
+      const space = stack - q;
+      if (space <= 0) continue;
+      const take = Math.min(remaining, space);
+      await DB.updateItemQuantity(addKey, charId, take, slot);
+      remaining -= take;
+      merged = true;
+      break;
+    }
+    if (merged) continue;
+    const emptySlot = getFirstEmptySlot(session.inventory);
+    if (emptySlot < 22 || emptySlot > 29) break;
+    const chunk = Math.min(remaining, stack);
+    await DB.addItem(charId, addKey, 0, emptySlot, chunk);
+    remaining -= chunk;
+  }
+  session.inventory = await DB.getInventory(charId);
+  return count - remaining;
+}
+
 let calcEffectiveStatsFn, sendCombatLogFn, sendInventoryFn, sendStatusFn, processQuestActionsFn, handleTrainSkillFn;
 
 function calcEffectiveStats(char, inventory, buffs) {
@@ -115,7 +184,8 @@ async function deleteHandedItemsFromCharacter(char, items) {
 }
 
 async function handleBuy(session, msg) {
-  const { npcId, itemKey } = msg;
+  const { npcId, itemKey, quantity: qtyRaw } = msg;
+  const qtyRequested = Math.max(1, Math.min(MERCHANT_QTY_CAP, Number(qtyRaw) || 1));
   const char = session.char;
   const instance = zoneInstances[char.zoneId];
 
@@ -127,14 +197,12 @@ async function handleBuy(session, msg) {
     return;
   }
 
-  // Proximity check
   const distSq = getDistanceSq(char.x, char.y, merchant.x, merchant.y);
   if (distSq > HAIL_RANGE * HAIL_RANGE) {
     sendCombatLog(session, [{ event: 'MESSAGE', text: 'You are too far away to trade.' }]);
     return;
   }
 
-  // Try static merchant data first, then DB merchantlist
   let itemName = String(itemKey);
   let basePrice = 10;
 
@@ -149,8 +217,7 @@ async function handleBuy(session, msg) {
     itemName = itemDef ? itemDef.name : itemKey;
     basePrice = itemInfo.price || (itemDef ? itemDef.value || 10 : 10);
   } else {
-    // DB-sourced merchant — validate against cached merchantlist
-    const eqemuDB = require('./eqemu_db');
+    const eqemuDB = require('../eqemu_db');
     const dbItems = await eqemuDB.getMerchantItems(parseInt(merchant.key));
     const parsedKey = parseInt(itemKey) || itemKey;
     const dbItem = dbItems.find(i => i.itemKey === parsedKey || i.itemKey === itemKey);
@@ -163,36 +230,50 @@ async function handleBuy(session, msg) {
   }
 
   const buyMod = await getChaBuyMod(session, merchant.id);
-  const price = Math.max(1, Math.floor(basePrice * buyMod));
+  const unitPrice = Math.max(1, Math.floor(basePrice * buyMod));
 
-  if (char.copper < price) {
-    sendCombatLog(session, [{ event: 'MESSAGE', text: `You don't have enough money! That costs ${formatCurrency(price)}.` }]);
+  const addKey = parseInt(itemKey, 10) || itemKey;
+  const itemDef = ItemDB.getById(addKey) || ITEMS[addKey] || {};
+  const stackSize = (Number(itemDef.stackable) > 0 && Number(itemDef.stacksize) > 0)
+    ? Number(itemDef.stacksize)
+    : 1;
+
+  const maxFromInv = computeMaxBuyOnPerson(session, addKey, stackSize);
+  const maxAfford = Math.floor(char.copper / unitPrice);
+  const toBuy = Math.min(qtyRequested, maxFromInv, maxAfford);
+
+  if (toBuy < 1) {
+    if (maxFromInv < 1) {
+      sendCombatLog(session, [{ event: 'MESSAGE', text: 'Your inventory is too full for that purchase.' }]);
+    } else {
+      sendCombatLog(session, [{ event: 'MESSAGE', text: `You don't have enough money! (${formatCurrency(unitPrice)} each.)` }]);
+    }
     return;
   }
 
-  // Transaction — use the numeric itemKey for DB items
-  const addKey = parseInt(itemKey) || itemKey;
-  const emptySlot = getFirstEmptySlot(session.inventory);
-  if (emptySlot === -1) {
-    sendCombatLog(session, [{ event: 'MESSAGE', text: 'Your inventory is full!' }]);
-    return;
-  }
+  const totalPrice = unitPrice * toBuy;
+  char.copper -= totalPrice;
+  await DB.updateCharacterState(char);
 
-  // Transaction
-  char.copper -= price;
-  await DB.addItem(char.id, addKey, 0, emptySlot);
+  const granted = await grantPurchasedItems(char.id, addKey, toBuy, stackSize, session);
+  if (granted < toBuy) {
+    char.copper += unitPrice * (toBuy - granted);
+  }
   await DB.updateCharacterState(char);
 
   session.inventory = await DB.getInventory(char.id);
   session.effectiveStats = calcEffectiveStats(char, session.inventory, session.buffs);
 
-  if (module.exports.sendInventoryFn) module.exports.sendInventoryFn(session);
-  sendCombatLog(session, [{ event: 'MESSAGE', text: `You bought ${itemName} for ${formatCurrency(price)}.` }]);
-  if (module.exports.sendStatusFn) module.exports.sendStatusFn(session);
+  sendInventory(session);
+  const spent = unitPrice * granted;
+  const qtyNote = granted !== 1 ? `${granted} ` : '';
+  sendCombatLog(session, [{ event: 'MESSAGE', text: `You bought ${qtyNote}${itemName} for ${formatCurrency(spent)}.` }]);
+  sendStatus(session);
 }
 
 async function handleSell(session, msg) {
-  const { npcId, itemId, slotId } = msg;
+  const { npcId, itemId, slotId, itemInstanceId, quantity: qtyRaw } = msg;
+  const slotHint = slotId != null ? slotId : itemInstanceId;
   const char = session.char;
   const instance = zoneInstances[char.zoneId];
   if (!instance) return;
@@ -209,8 +290,7 @@ async function handleSell(session, msg) {
     return;
   }
 
-  // Find the item in player inventory — use string comparison to avoid type mismatches
-  const invRow = session.inventory.find(i => String(i.id) === String(itemId));
+  const invRow = resolveInvRowForTrade(session, itemId, slotHint);
   if (!invRow) {
     sendCombatLog(session, [{ event: 'MESSAGE', text: 'You don\'t have that item.' }]);
     return;
@@ -237,26 +317,37 @@ async function handleSell(session, msg) {
     }
   }
   const sellMod = await getChaSellMod(session, merchant.id);
-  const sellPrice = Math.max(1, Math.floor(baseSell * sellMod * bonusMult));
+  const unitSell = Math.max(1, Math.floor(baseSell * sellMod * bonusMult));
+  const stackQty = Math.max(1, Number(invRow.quantity) || 1);
+  const qtyRequested = (qtyRaw == null || qtyRaw === '')
+    ? stackQty
+    : Math.max(1, Math.min(MERCHANT_QTY_CAP, Number(qtyRaw) || stackQty));
+  const sellQty = Math.min(qtyRequested, stackQty);
+  const totalSell = unitSell * sellQty;
 
-  // Transaction
-  await DB.deleteItem(char.id, invRow.item_key, invRow.slot);
-  char.copper += sellPrice;
+  if (sellQty >= stackQty) {
+    await DB.deleteItem(char.id, invRow.item_key, invRow.slot);
+  } else {
+    const removed = await DB.reduceItemStackAtSlot(char.id, invRow.slot, invRow.item_key, sellQty);
+    if (removed !== sellQty) {
+      sendCombatLog(session, [{ event: 'MESSAGE', text: 'That sale could not be completed.' }]);
+      return;
+    }
+  }
+  char.copper += totalSell;
   await DB.updateCharacterState(char);
   
-  // Add to buyback
   const safeMerchantKey = isNaN(parseInt(merchant.key)) ? merchant.key : parseInt(merchant.key);
-  await DB.addBuybackItem(char.id, safeMerchantKey, invRow.item_key, invRow.quantity || 1, sellPrice);
+  await DB.addBuybackItem(char.id, safeMerchantKey, invRow.item_key, sellQty, totalSell);
 
   // Refresh inventory
   session.inventory = await DB.getInventory(char.id);
-  if (module.exports.calcEffectiveStatsFn) {
-    session.effectiveStats = module.exports.calcEffectiveStatsFn(char, session.inventory, session.buffs);
-  }
+  session.effectiveStats = calcEffectiveStats(char, session.inventory, session.buffs);
 
-  if (module.exports.sendInventoryFn) module.exports.sendInventoryFn(session);
-  sendCombatLog(session, [{ event: 'LOOT', text: `You sold ${itemName} to ${merchant.name} for ${formatCurrency(sellPrice)}.` }]);
-  if (module.exports.sendStatusFn) module.exports.sendStatusFn(session);
+  sendInventory(session);
+  const qtyNote = sellQty > 1 ? ` (${sellQty})` : '';
+  sendCombatLog(session, [{ event: 'LOOT', text: `You sold ${itemName}${qtyNote} to ${merchant.name} for ${formatCurrency(totalSell)}.` }]);
+  sendStatus(session);
 }
 
 async function handleNPCGiveItems(session, msg) {
@@ -817,8 +908,9 @@ async function handleAutoEquip(session, msg) {
 }
 
 async function handleGetOffer(session, msg) {
-  const { npcId, itemId, slotId } = msg;
-  console.log(`[TRADE] handleGetOffer: npcId=${npcId}, itemId=${itemId}`);
+  const { npcId, itemId, slotId, itemInstanceId } = msg;
+  const slotHint = slotId != null ? slotId : itemInstanceId;
+  console.log(`[TRADE] handleGetOffer: npcId=${npcId}, itemId=${itemId}, slotId=${slotHint}`);
   const char = session.char;
   const instance = zoneInstances[char.zoneId];
   if (!instance) {
@@ -832,9 +924,9 @@ async function handleGetOffer(session, msg) {
       return;
   }
 
-  const invRow = session.inventory.find(i => String(i.id) === String(itemId));
+  const invRow = resolveInvRowForTrade(session, itemId, slotHint);
   if (!invRow) {
-      console.log(`[TRADE] handleGetOffer: invRow not found for itemId=${itemId}. session.inventory IDs:`, session.inventory.map(i => i.id));
+      console.log(`[TRADE] handleGetOffer: invRow not found for itemId=${itemId} slotId=${slotHint}. inventory (slot->item_key):`, session.inventory.map(i => `${i.slot}:${i.item_key}`));
       return;
   }
 
@@ -851,13 +943,18 @@ async function handleGetOffer(session, msg) {
   }
 
   const sellMod = await getChaSellMod(session, merchant.id);
-  const sellPrice = Math.max(1, Math.floor(baseSell * sellMod * bonusMult));
+  const unitSell = Math.max(1, Math.floor(baseSell * sellMod * bonusMult));
+  const qty = Math.max(1, Number(invRow.quantity) || 1);
+  const totalSell = unitSell * qty;
 
   send(session.ws, {
     type: 'MERCHANT_OFFER',
-    itemId: itemId,
-    price: sellPrice,
-    priceText: formatCurrency(sellPrice),
+    itemId: invRow.item_key,
+    slotId: invRow.slot,
+    quantity: qty,
+    price: totalSell,
+    unitPrice: unitSell,
+    priceText: formatCurrency(totalSell),
     name: itemDef ? itemDef.name || 'Unknown Item' : 'Unknown Item',
     icon: itemDef ? itemDef.icon || 0 : 0
   });
@@ -994,9 +1091,9 @@ async function handleBuyRecover(session, msg) {
     const itemDef = ItemDB.getById(item.item_id) || ITEMS[item.item_id];
     const itemName = itemDef ? itemDef.name : String(item.item_id);
 
-    if (module.exports.sendInventoryFn) module.exports.sendInventoryFn(session);
+    sendInventory(session);
     sendCombatLog(session, [{ event: 'MESSAGE', text: `You recovered ${itemName} for ${formatCurrency(item.price)}.` }]);
-    if (module.exports.sendStatusFn) module.exports.sendStatusFn(session);
+    sendStatus(session);
 
     // Tell the client to refresh the recover list
     const updatedBuybackItems = await DB.getBuybackItems(char.id, safeMerchantKey);
@@ -1161,7 +1258,9 @@ async function handleRightClick(session, msg) {
           scrolllevel: itemDef.scrolllevel || 0,
           itemtype: itemDef.itemtype || 0,
           classes: itemDef.classes || 65535,
-          reclevel: itemDef.reclevel || 0
+          reclevel: itemDef.reclevel || 0,
+          stacksize: Number(itemDef.stacksize) || 0,
+          stackable: Number(itemDef.stackable) || 0
         };
       });
 

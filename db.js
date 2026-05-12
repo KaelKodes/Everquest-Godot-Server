@@ -112,6 +112,7 @@ module.exports = {
   getSkills: eqemuDB.getSkills,
   unequipSlot: eqemuDB.unequipSlot,
   deleteItem: eqemuDB.deleteItem,
+  reduceItemStackAtSlot: eqemuDB.reduceItemStackAtSlot,
   moveItem: eqemuDB.moveItem,
   splitStackToSlot: eqemuDB.splitStackToSlot,
   getCharacterFactionValues: eqemuDB.getCharacterFactionValues,

@@ -133,6 +133,8 @@ The Godot client’s default WebSocket URL is **`ws://localhost:3005`** (login).
 - **`../eqmud/DEVELOPER_REFERENCE.md`** — coordinate mapping (EQ ↔ Godot), boot order, DB host notes.  
 - **`../Reference/`** — upstream or legacy reference code; not required to run the Node cluster.
 
+- **Discord** [dxvAvKg7FZ](https://discord.gg/dxvAvKg7FZ)
+
 ---
 
 ## Legal

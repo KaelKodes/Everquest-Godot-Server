@@ -53,6 +53,52 @@ const QuestManager = require('./questManager');
 let ZONE_TRIGGERS = {};
 try { ZONE_TRIGGERS = require('./data/zone_triggers.json'); } catch (e) { console.warn('[ENGINE] No zone_triggers.json found, using DB defaults for all triggers'); }
 
+/** Live EQ: sounds/sfx_amb_*.wav. JSON: { "day": "stem|…", "night": "…" } or a string (same day+night). Stems have no .wav. */
+let ZONE_CLIENT_AMBIENCE = {};
+try {
+  ZONE_CLIENT_AMBIENCE = require('./data/zone_client_ambience.json');
+} catch (e) {
+  console.warn('[ENGINE] zone_client_ambience.json missing or invalid:', e.message);
+}
+
+function normalizeAmbiencePick(pick) {
+  if (pick == null) return '';
+  if (Array.isArray(pick)) {
+    return pick.map((s) => String(s).toLowerCase().trim()).filter(Boolean).join('|');
+  }
+  return String(pick).toLowerCase().trim();
+}
+
+/** @param {string|object|Array} ambienceDef zoneDef.ambience or ZONE_CLIENT_AMBIENCE[z] */
+function pickAmbienceFromDef(ambienceDef, timeOfDay) {
+  const tod = timeOfDay === 'night' ? 'night' : 'day';
+  if (ambienceDef == null) return '';
+  if (typeof ambienceDef === 'string' || Array.isArray(ambienceDef)) {
+    return normalizeAmbiencePick(ambienceDef);
+  }
+  if (typeof ambienceDef === 'object') {
+    const day = normalizeAmbiencePick(ambienceDef.day);
+    const night = normalizeAmbiencePick(ambienceDef.night);
+    if (tod === 'night') return night || day;
+    return day || night;
+  }
+  return '';
+}
+
+function resolveAmbienceTrack(zoneId, zoneDef, timeOfDay) {
+  if (zoneDef && zoneDef.ambience != null) {
+    const picked = pickAmbienceFromDef(zoneDef.ambience, timeOfDay);
+    if (picked) return picked;
+  }
+  const z = String(zoneId || '').toLowerCase();
+  const mapped = ZONE_CLIENT_AMBIENCE[z];
+  if (mapped != null) {
+    const picked = pickAmbienceFromDef(mapped, timeOfDay);
+    if (picked) return picked;
+  }
+  return `${z}am`;
+}
+
 /**
  * Map EQEmu npc_types.class to our NPC_TYPES.
  * EQEmu classes: 1=Warrior, 41=Merchant, 40=Banker, 61=LDoN Merchant, etc.
@@ -4621,7 +4667,7 @@ function handleLook(session, forceSync = false) {
 
   appendFayrtrtLanternLightingTesters(char, entities);
 
-  const ambienceTrack = (zoneDef && zoneDef.ambience) ? zoneDef.ambience : (char.zoneId + "am");
+  const ambienceTrack = resolveAmbienceTrack(char.zoneId, zoneDef, vision.timeOfDay);
 
   if (!session.lastZoneStateEntities) session.lastZoneStateEntities = new Map();
   const currentEntityIds = new Set();

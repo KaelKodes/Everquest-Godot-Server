@@ -1,0 +1,302 @@
+{
+  "gfaydark": {
+    "day": "sfx_amb_forest_day_02|sfx_amb_birds_02|sfx_amb_forest_day_03|amb_forest_lp",
+    "night": "sfx_amb_forest_ngt_02|sfx_amb_cricket_crows_03|sfx_amb_forest_ngt_01|amb_forest_lp"
+  },
+  "lfaydark": {
+    "day": "sfx_amb_forest_day_03|sfx_amb_birds_01|sfx_amb_forest_day_01|amb_forest_lp",
+    "night": "sfx_amb_forest_ngt_03|sfx_amb_cricket_crows_02|sfx_amb_forest_ngt_02|amb_forest_lp"
+  },
+  "lesserfaydark": {
+    "day": "sfx_amb_forest_day_01|sfx_amb_forest_02_01|sfx_amb_birds_03|amb_forest_lp",
+    "night": "sfx_amb_forest_ngt_01|sfx_amb_cricket_crows_01|sfx_amb_forest_ngt_02|amb_forest_lp"
+  },
+  "nektulos": {
+    "day": "sfx_amb_forest_day_01|sfx_amb_forest_02_02|sfx_amb_birds_02|amb_forest_lp",
+    "night": "sfx_amb_forest_ngt_02|sfx_amb_forest_ngt_03|sfx_amb_cricket_crows_03|amb_forest_lp"
+  },
+  "feerrott": {
+    "day": "sfx_amb_crickets_01|sfx_amb_forest_day_01|sfx_amb_outdoor_day_02|amb_forest_lp",
+    "night": "sfx_amb_crickets_02|sfx_amb_forest_ngt_01|sfx_amb_cricket_crows_02|amb_forest_lp"
+  },
+  "innothuleb": {
+    "day": "sfx_amb_crickets_01|sfx_amb_outdoor_day_03_01|amb_forest_lp",
+    "night": "sfx_amb_cricket_crows_02|sfx_amb_forest_ngt_02|sfx_amb_cricket_crows_03|amb_forest_lp"
+  },
+  "innothulea": {
+    "day": "sfx_amb_crickets_01|sfx_amb_outdoor_day_03_01|amb_forest_lp",
+    "night": "sfx_amb_cricket_crows_02|sfx_amb_forest_ngt_02|sfx_amb_cricket_crows_03|amb_forest_lp"
+  },
+  "guktop": {
+    "day": "sfx_amb_crickets_01|sfx_amb_cricket_crows_01|amb_forest_lp",
+    "night": "sfx_amb_cricket_crows_01|sfx_amb_forest_ngt_01|sfx_amb_crickets_03|amb_forest_lp"
+  },
+  "gukbottom": {
+    "day": "sfx_amb_forest_day_01|sfx_amb_crickets_02|amb_horror_lp_01",
+    "night": "sfx_amb_forest_ngt_01|sfx_amb_cricket_crows_03|sfx_amb_outdoor_night_02|amb_horror_lp_01"
+  },
+  "mistmoore": {
+    "day": "sfx_amb_forest_day_01|sfx_amb_outdoor_day_03_03|amb_horror_lp_01",
+    "night": "sfx_amb_forest_ngt_01|sfx_amb_cricket_crows_03|sfx_amb_outdoor_night_03|amb_horror_lp_01"
+  },
+  "unrest": {
+    "day": "sfx_amb_forest_day_02|sfx_amb_outdoor_day_02|amb_horror_lp_01",
+    "night": "sfx_amb_forest_ngt_02|sfx_amb_cricket_crows_03|sfx_amb_outdoor_night_02|amb_horror_lp_01"
+  },
+  "crushbone": {
+    "day": "sfx_amb_outdoor_day_02|sfx_amb_outdoor_day_01|amb_battle_dark_lp_01",
+    "night": "sfx_amb_outdoor_night_02|sfx_amb_outdoor_night_01|amb_battle_dark_lp_01"
+  },
+  "warrens": {
+    "day": "sfx_amb_outdoor_day_01|sfx_amb_outdoor_day_03_02|amb_battle_dark_lp_01",
+    "night": "sfx_amb_outdoor_night_03|sfx_amb_outdoor_night_02|amb_battle_dark_lp_01"
+  },
+  "soldunga": {
+    "day": "sfx_amb_outdoor_day_03_01|sfx_amb_outdoor_day_02|amb_battle_dark_lp_01",
+    "night": "sfx_amb_outdoor_night_02|sfx_amb_outdoor_night_01|amb_battle_dark_lp_01"
+  },
+  "soldungb": {
+    "day": "sfx_amb_outdoor_day_03_01|sfx_amb_outdoor_day_02|amb_battle_dark_lp_01",
+    "night": "sfx_amb_outdoor_night_02|sfx_amb_outdoor_night_01|amb_battle_dark_lp_01"
+  },
+  "lavastorm": {
+    "day": "sfx_amb_ruinedrelic_01|sfx_amb_outdoor_day_03_02|amb_battle_dark_lp_01",
+    "night": "sfx_amb_outdoor_night_02|sfx_amb_outdoor_night_03|sfx_amb_ruinedrelic_01|amb_battle_dark_lp_01"
+  },
+  "neriaka": {
+    "day": "sfx_amb_outdoor_day_02|sfx_amb_outdoor_day_03_03|amb_battle_dark_lp_01",
+    "night": "sfx_amb_outdoor_night_03|sfx_amb_outdoor_night_02|amb_battle_dark_lp_01"
+  },
+  "neriakb": {
+    "day": "sfx_amb_outdoor_day_02|sfx_amb_outdoor_day_03_03|amb_battle_dark_lp_01",
+    "night": "sfx_amb_outdoor_night_03|sfx_amb_outdoor_night_02|amb_battle_dark_lp_01"
+  },
+  "neriakc": {
+    "day": "sfx_amb_outdoor_day_02|sfx_amb_outdoor_day_03_03|amb_battle_dark_lp_01",
+    "night": "sfx_amb_outdoor_night_03|sfx_amb_outdoor_night_02|amb_battle_dark_lp_01"
+  },
+  "commons": {
+    "day": "sfx_amb_outdoor_day_02|sfx_amb_birds_03|sfx_amb_cricket_crows_01|amb_market001",
+    "night": "sfx_amb_outdoor_night_01|sfx_amb_cricket_crows_02|sfx_amb_outdoor_night_02|amb_market001"
+  },
+  "ecommons": {
+    "day": "sfx_amb_outdoor_day_02|sfx_amb_birds_02|sfx_amb_cricket_crows_01|amb_market001",
+    "night": "sfx_amb_outdoor_night_01|sfx_amb_cricket_crows_02|sfx_amb_crickets_03|amb_market001"
+  },
+  "wcommons": {
+    "day": "sfx_amb_outdoor_day_02|sfx_amb_birds_01|sfx_amb_cricket_crows_01|amb_market001",
+    "night": "sfx_amb_outdoor_night_02|sfx_amb_cricket_crows_03|sfx_amb_crickets_02|amb_market001"
+  },
+  "freportn": {
+    "day": "sfx_amb_outdoor_day_01|sfx_amb_birds_03|sfx_amb_cricket_crows_01|amb_market001",
+    "night": "sfx_amb_outdoor_night_01|sfx_amb_cricket_crows_02|sfx_amb_outdoor_night_02|amb_market001"
+  },
+  "freportw": {
+    "day": "sfx_amb_outdoor_day_01|sfx_amb_birds_02|sfx_amb_cricket_crows_01|amb_market001",
+    "night": "sfx_amb_outdoor_night_01|sfx_amb_cricket_crows_02|sfx_amb_outdoor_night_02|amb_market001"
+  },
+  "freporte": {
+    "day": "sfx_amb_outdoor_day_01|sfx_amb_birds_01|sfx_amb_cricket_crows_01|amb_market001",
+    "night": "sfx_amb_outdoor_night_01|sfx_amb_cricket_crows_02|sfx_amb_outdoor_night_02|amb_market001"
+  },
+  "freportm": {
+    "day": "sfx_amb_outdoor_day_01|sfx_amb_birds_03|sfx_amb_cricket_crows_01|amb_market001",
+    "night": "sfx_amb_outdoor_night_01|sfx_amb_cricket_crows_02|sfx_amb_outdoor_night_02|amb_market001"
+  },
+  "qeynos": {
+    "day": "sfx_amb_outdoor_day_02|sfx_amb_birds_03|sfx_amb_outdoor_day_03_01|amb_market001",
+    "night": "sfx_amb_outdoor_night_01|sfx_amb_cricket_crows_01|sfx_amb_outdoor_night_02|amb_market001"
+  },
+  "qeynos2": {
+    "day": "sfx_amb_outdoor_day_02|sfx_amb_birds_02|sfx_amb_outdoor_day_03_02|amb_market001",
+    "night": "sfx_amb_outdoor_night_01|sfx_amb_cricket_crows_02|sfx_amb_outdoor_night_02|amb_market001"
+  },
+  "qeytoqrg": {
+    "day": "sfx_amb_meadow_01_02|sfx_amb_outdoor_day_03_01|sfx_amb_birds_01|amb_meadow_lp",
+    "night": "sfx_amb_outdoor_night_01|sfx_amb_cricket_crows_01|sfx_amb_meadow_01_01|amb_meadow_lp"
+  },
+  "surefall": {
+    "day": "sfx_amb_meadow_01_01|sfx_amb_forest_day_01|sfx_amb_birds_02|amb_meadow_lp",
+    "night": "sfx_amb_forest_ngt_01|sfx_amb_cricket_crows_01|sfx_amb_outdoor_night_01|amb_meadow_lp"
+  },
+  "rivervale": {
+    "day": "sfx_amb_meadow_01_03|sfx_amb_outdoor_day_02|sfx_amb_birds_03|amb_meadow_lp",
+    "night": "sfx_amb_outdoor_night_02|sfx_amb_cricket_crows_02|sfx_amb_meadow_01_02|amb_meadow_lp"
+  },
+  "everfrost": {
+    "day": "sfx_amb_meadow_01_02|sfx_amb_outdoor_day_01|sfx_amb_outdoor_day_03_01|amb_meadow_lp",
+    "night": "sfx_amb_outdoor_night_01|sfx_amb_outdoor_night_02|sfx_amb_meadow_01_01|amb_meadow_lp"
+  },
+  "blackburrow": {
+    "day": "sfx_amb_outdoor_day_02|sfx_amb_crickets_01|amb_horror_lp_01",
+    "night": "sfx_amb_outdoor_night_02|sfx_amb_cricket_crows_03|sfx_amb_outdoor_night_03|amb_horror_lp_01"
+  },
+  "butcher": {
+    "day": "sfx_amb_meadow_01_03|sfx_amb_outdoor_day_01|sfx_amb_birds_01|amb_meadow_lp",
+    "night": "sfx_amb_outdoor_night_01|sfx_amb_cricket_crows_01|sfx_amb_meadow_01_02|amb_meadow_lp"
+  },
+  "oot": {
+    "day": "sfx_amb_outdoor_day_03_01|sfx_amb_outdoor_day_03_02|sfx_amb_birds_02|amb_sandcastle_shores_lp",
+    "night": "sfx_amb_outdoor_night_01|sfx_amb_crickets_03|sfx_amb_outdoor_night_02|amb_sandcastle_shores_lp"
+  },
+  "timorous": {
+    "day": "sfx_amb_outdoor_day_03_02|sfx_amb_outdoor_day_03_01|sfx_amb_crickets_01|amb_sandcastle_shores_lp",
+    "night": "sfx_amb_outdoor_night_02|sfx_amb_crickets_02|sfx_amb_outdoor_night_03|amb_sandcastle_shores_lp"
+  },
+  "overthere": {
+    "day": "sfx_amb_outdoor_day_03_02|sfx_amb_outdoor_day_03_03|sfx_amb_crickets_01|amb_sandcastle_shores_lp",
+    "night": "sfx_amb_outdoor_night_02|sfx_amb_crickets_03|sfx_amb_outdoor_night_01|amb_sandcastle_shores_lp"
+  },
+  "dreadlands": {
+    "day": "sfx_amb_outdoor_day_03_01|sfx_amb_meadow_01_02|sfx_amb_outdoor_day_02|amb_meadow_lp",
+    "night": "sfx_amb_outdoor_night_02|sfx_amb_outdoor_night_01|sfx_amb_meadow_01_01|amb_meadow_lp"
+  },
+  "greatdivide": {
+    "day": "sfx_amb_meadow_01_02|sfx_amb_outdoor_day_01|sfx_amb_outdoor_day_03_01|amb_meadow_lp",
+    "night": "sfx_amb_outdoor_night_01|sfx_amb_outdoor_night_02|sfx_amb_meadow_01_01|amb_meadow_lp"
+  },
+  "wakening": {
+    "day": "sfx_amb_forest_day_01|sfx_amb_forest_02_02|sfx_amb_birds_03|amb_forest_lp",
+    "night": "sfx_amb_forest_ngt_01|sfx_amb_forest_ngt_02|sfx_amb_cricket_crows_03|amb_forest_lp"
+  },
+  "cobaltscar": {
+    "day": "sfx_amb_outdoor_day_03_02|sfx_amb_outdoor_day_03_01|sfx_amb_birds_01|amb_sandcastle_shores_lp",
+    "night": "sfx_amb_outdoor_night_01|sfx_amb_crickets_03|sfx_amb_outdoor_night_02|amb_sandcastle_shores_lp"
+  },
+  "skyfire": {
+    "day": "sfx_amb_ruinedrelic_01|sfx_amb_outdoor_day_03_02|sfx_amb_outdoor_day_03_03|amb_battle_dark_lp_01",
+    "night": "sfx_amb_outdoor_night_02|sfx_amb_outdoor_night_03|sfx_amb_ruinedrelic_01|amb_battle_dark_lp_01"
+  },
+  "burningwood": {
+    "day": "sfx_amb_forest_day_02|sfx_amb_forest_day_03|sfx_amb_birds_02|amb_forest_lp",
+    "night": "sfx_amb_forest_ngt_01|sfx_amb_forest_ngt_02|sfx_amb_cricket_crows_02|amb_forest_lp"
+  },
+  "chardok": {
+    "day": "sfx_amb_ruinedrelic_01|sfx_amb_outdoor_day_02|sfx_amb_outdoor_day_03_01|amb_battle_dark_lp_01",
+    "night": "sfx_amb_outdoor_night_02|sfx_amb_ruinedrelic_01|sfx_amb_outdoor_night_03|amb_battle_dark_lp_01"
+  },
+  "chardokb": {
+    "day": "sfx_amb_ruinedrelic_01|sfx_amb_outdoor_day_02|sfx_amb_outdoor_day_03_02|amb_battle_dark_lp_01",
+    "night": "sfx_amb_outdoor_night_02|sfx_amb_ruinedrelic_01|sfx_amb_outdoor_night_03|amb_battle_dark_lp_01"
+  },
+  "kael": {
+    "day": "sfx_amb_outdoor_day_02|sfx_amb_outdoor_day_03_03|amb_battle_dark_lp_01",
+    "night": "sfx_amb_outdoor_night_02|sfx_amb_outdoor_night_03|amb_battle_dark_lp_01"
+  },
+  "thurgadina": {
+    "day": "sfx_amb_meadow_01_02|sfx_amb_outdoor_day_02|sfx_amb_outdoor_day_01|amb_meadow_lp",
+    "night": "sfx_amb_outdoor_night_01|sfx_amb_outdoor_night_02|sfx_amb_meadow_01_01|amb_meadow_lp"
+  },
+  "iceclad": {
+    "day": "sfx_amb_meadow_01_01|sfx_amb_outdoor_day_01|sfx_amb_outdoor_day_03_01|amb_meadow_lp",
+    "night": "sfx_amb_outdoor_night_01|sfx_amb_outdoor_night_02|sfx_amb_meadow_01_02|amb_meadow_lp"
+  },
+  "eastwastes": {
+    "day": "sfx_amb_meadow_01_02|sfx_amb_outdoor_day_01|sfx_amb_outdoor_day_02|amb_meadow_lp",
+    "night": "sfx_amb_outdoor_night_02|sfx_amb_outdoor_night_01|sfx_amb_meadow_01_01|amb_meadow_lp"
+  },
+  "westwastes": {
+    "day": "sfx_amb_meadow_01_02|sfx_amb_outdoor_day_01|sfx_amb_outdoor_day_02|amb_meadow_lp",
+    "night": "sfx_amb_outdoor_night_02|sfx_amb_outdoor_night_01|sfx_amb_meadow_01_01|amb_meadow_lp"
+  },
+  "crystal": {
+    "day": "sfx_amb_outdoor_day_03_03|sfx_amb_outdoor_day_02|sfx_amb_outdoor_day_03_01|amb_well_lp",
+    "night": "sfx_amb_outdoor_night_01|sfx_amb_outdoor_night_02|sfx_amb_outdoor_day_03_02|amb_well_lp"
+  },
+  "felwithea": {
+    "day": "sfx_amb_outdoor_day_01|sfx_amb_birds_01|sfx_amb_outdoor_day_02|amb_market001",
+    "night": "sfx_amb_outdoor_night_01|sfx_amb_cricket_crows_01|sfx_amb_outdoor_night_02|amb_market001"
+  },
+  "felwitheb": {
+    "day": "sfx_amb_outdoor_day_01|sfx_amb_birds_02|sfx_amb_outdoor_day_02|amb_market001",
+    "night": "sfx_amb_outdoor_night_01|sfx_amb_cricket_crows_02|sfx_amb_outdoor_night_02|amb_market001"
+  },
+  "akanon": {
+    "day": "sfx_amb_outdoor_day_02|sfx_amb_outdoor_day_01|sfx_amb_birds_03|amb_market001",
+    "night": "sfx_amb_outdoor_night_01|sfx_amb_cricket_crows_01|sfx_amb_outdoor_night_02|amb_market001"
+  },
+  "kaladima": {
+    "day": "sfx_amb_outdoor_day_02|sfx_amb_cricket_crows_01|sfx_amb_birds_02|amb_market001",
+    "night": "sfx_amb_outdoor_night_02|sfx_amb_cricket_crows_02|sfx_amb_outdoor_night_01|amb_market001"
+  },
+  "kaladimb": {
+    "day": "sfx_amb_outdoor_day_02|sfx_amb_cricket_crows_01|sfx_amb_birds_01|amb_market001",
+    "night": "sfx_amb_outdoor_night_02|sfx_amb_cricket_crows_02|sfx_amb_outdoor_night_01|amb_market001"
+  },
+  "steamfont": {
+    "day": "sfx_amb_meadow_01_02|sfx_amb_outdoor_day_03_01|sfx_amb_outdoor_day_02|amb_meadow_lp",
+    "night": "sfx_amb_outdoor_night_01|sfx_amb_cricket_crows_01|sfx_amb_meadow_01_01|amb_meadow_lp"
+  },
+  "cazicthule": {
+    "day": "sfx_amb_forest_day_01|sfx_amb_outdoor_day_03_01|amb_horror_lp_01",
+    "night": "sfx_amb_forest_ngt_01|sfx_amb_cricket_crows_03|sfx_amb_outdoor_night_03|amb_horror_lp_01"
+  },
+  "permafrost": {
+    "day": "sfx_amb_meadow_01_01|sfx_amb_outdoor_day_01|sfx_amb_outdoor_day_03_01|amb_meadow_lp",
+    "night": "sfx_amb_outdoor_night_01|sfx_amb_outdoor_night_02|sfx_amb_meadow_01_02|amb_meadow_lp"
+  },
+  "solrotower": {
+    "day": "sfx_amb_forest_day_01|sfx_amb_outdoor_day_02|amb_horror_lp_01",
+    "night": "sfx_amb_forest_ngt_02|sfx_amb_outdoor_night_03|sfx_amb_cricket_crows_03|amb_horror_lp_01"
+  },
+  "paineel": {
+    "day": "sfx_amb_outdoor_day_02|sfx_amb_outdoor_day_03_03|amb_horror_lp_01",
+    "night": "sfx_amb_outdoor_night_03|sfx_amb_forest_ngt_01|sfx_amb_outdoor_night_02|amb_horror_lp_01"
+  },
+  "hole": {
+    "day": "sfx_amb_outdoor_day_03_01|sfx_amb_forest_day_01|amb_horror_lp_01",
+    "night": "sfx_amb_forest_ngt_01|sfx_amb_outdoor_night_03|sfx_amb_cricket_crows_03|amb_horror_lp_01"
+  },
+  "poknowledge": {
+    "day": "sfx_amb_outdoor_day_03_03|sfx_amb_outdoor_day_02|sfx_amb_outdoor_day_03_01|amb_well_lp",
+    "night": "sfx_amb_outdoor_night_01|sfx_amb_outdoor_night_02|sfx_amb_outdoor_day_03_02|amb_well_lp"
+  },
+  "bazaar": {
+    "day": "sfx_amb_outdoor_day_02|sfx_amb_cricket_crows_02|sfx_amb_birds_03|amb_market001",
+    "night": "sfx_amb_outdoor_night_01|sfx_amb_cricket_crows_01|sfx_amb_outdoor_night_02|amb_market001"
+  },
+  "nexus": {
+    "day": "sfx_amb_outdoor_day_03_03|sfx_amb_outdoor_day_02|sfx_amb_outdoor_day_03_01|amb_well_lp",
+    "night": "sfx_amb_outdoor_night_01|sfx_amb_outdoor_night_02|sfx_amb_outdoor_day_03_02|amb_well_lp"
+  },
+  "oasis": {
+    "day": "sfx_amb_crickets_01|sfx_amb_outdoor_day_03_02|sfx_amb_outdoor_day_03_01|amb_sandcastle_shores_lp",
+    "night": "sfx_amb_crickets_02|sfx_amb_outdoor_night_01|sfx_amb_cricket_crows_02|amb_sandcastle_shores_lp"
+  },
+  "highkeep": {
+    "day": "sfx_amb_outdoor_day_02|sfx_amb_cricket_crows_01|sfx_amb_birds_02|amb_market001",
+    "night": "sfx_amb_outdoor_night_01|sfx_amb_cricket_crows_02|sfx_amb_outdoor_night_02|amb_market001"
+  },
+  "highpass": {
+    "day": "sfx_amb_outdoor_day_01|sfx_amb_meadow_01_03|sfx_amb_birds_01|amb_meadow_lp",
+    "night": "sfx_amb_outdoor_night_01|sfx_amb_cricket_crows_01|sfx_amb_meadow_01_02|amb_meadow_lp"
+  },
+  "kithicor": {
+    "day": "sfx_amb_forest_day_01|sfx_amb_forest_day_02|sfx_amb_birds_02|amb_forest_lp",
+    "night": "sfx_amb_forest_ngt_01|sfx_amb_cricket_crows_03|sfx_amb_forest_ngt_02|amb_forest_lp"
+  },
+  "beholder": {
+    "day": "sfx_amb_outdoor_day_02|sfx_amb_crickets_01|amb_horror_lp_01",
+    "night": "sfx_amb_outdoor_night_02|sfx_amb_cricket_crows_03|sfx_amb_outdoor_night_03|amb_horror_lp_01"
+  },
+  "runnyeye": {
+    "day": "sfx_amb_outdoor_day_01|sfx_amb_crickets_02|amb_horror_lp_01",
+    "night": "sfx_amb_outdoor_night_02|sfx_amb_cricket_crows_03|sfx_amb_outdoor_night_01|amb_horror_lp_01"
+  },
+  "southkarana": {
+    "day": "sfx_amb_meadow_01_03|sfx_amb_outdoor_day_01|sfx_amb_birds_03|amb_meadow_lp",
+    "night": "sfx_amb_outdoor_night_01|sfx_amb_cricket_crows_02|sfx_amb_meadow_01_02|amb_meadow_lp"
+  },
+  "northkarana": {
+    "day": "sfx_amb_meadow_01_03|sfx_amb_outdoor_day_01|sfx_amb_birds_02|amb_meadow_lp",
+    "night": "sfx_amb_outdoor_night_01|sfx_amb_cricket_crows_01|sfx_amb_meadow_01_01|amb_meadow_lp"
+  },
+  "eastkarana": {
+    "day": "sfx_amb_meadow_01_02|sfx_amb_outdoor_day_01|sfx_amb_birds_01|amb_meadow_lp",
+    "night": "sfx_amb_outdoor_night_02|sfx_amb_cricket_crows_01|sfx_amb_meadow_01_03|amb_meadow_lp"
+  },
+  "westkarana": {
+    "day": "sfx_amb_meadow_01_02|sfx_amb_outdoor_day_01|sfx_amb_birds_03|amb_meadow_lp",
+    "night": "sfx_amb_outdoor_night_02|sfx_amb_cricket_crows_02|sfx_amb_meadow_01_01|amb_meadow_lp"
+  }
+}

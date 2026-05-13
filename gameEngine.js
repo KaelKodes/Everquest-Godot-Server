@@ -344,6 +344,7 @@ function removeSession(ws) {
   const session = sessions.get(ws);
   if (session) {
     SpellSystem.cancelPendingScribe(session, 'disconnect', true);
+    SpellSystem.cancelPendingMemorize(session, 'disconnect', true);
     if (session.combatTarget) {
       session.combatTarget.target = null;
     }
@@ -509,6 +510,7 @@ async function handleMessage(ws, msg) {
     case 'AUTO_EQUIP': return InventorySystem.handleAutoEquip(session, msg);
     case 'BEGIN_SCRIBE_SCROLL': return SpellSystem.handleBeginScribeScroll(session, msg);
     case 'MEMORIZE_SPELL': return SpellSystem.handleMemorizeSpell(session, msg);
+    case 'BEGIN_MEMORIZE_SPELL': return SpellSystem.handleBeginMemorizeSpell(session, msg);
     case 'FORGET_SPELL': return SpellSystem.handleForgetSpell(session, msg);
     case 'SWAP_BOOK_SPELLS': return SpellSystem.handleSwapBookSpells(session, msg);
     case 'SAVE_SPELL_LOADOUT': return SpellSystem.handleSaveSpellLoadout(session, msg);
@@ -891,6 +893,7 @@ function handleStopRanged(session) {
 
 function handleStand(session) {
   SpellSystem.cancelPendingScribe(session, 'stand', false);
+  SpellSystem.cancelPendingMemorize(session, 'stand', false);
   session.char.state = 'standing';
   sendCombatLog(session, [{ event: 'MESSAGE', text: 'You stand up.' }]);
   sendStatus(session);
@@ -899,6 +902,7 @@ function handleStand(session) {
 function handleStartCombat(session) {
   if (session.char.state === 'medding') {
     SpellSystem.cancelPendingScribe(session, 'stand', false);
+    SpellSystem.cancelPendingMemorize(session, 'stand', false);
     session.char.state = 'standing';
   }
 
@@ -1153,6 +1157,7 @@ function handleAttackTarget(session, msg) {
 
   session.combatTarget = targetEntity;
   SpellSystem.cancelPendingScribe(session, 'combat', false);
+  SpellSystem.cancelPendingMemorize(session, 'combat', false);
 
   // NOTE: Do NOT set mob.target here - mob only becomes aggressive
   // when the player's first melee swing actually goes through in range.
@@ -1184,6 +1189,7 @@ function engageNextMob(session) {
   mob.target = session;
   session.attackTimer = 0;
   SpellSystem.cancelPendingScribe(session, 'combat', false);
+  SpellSystem.cancelPendingMemorize(session, 'combat', false);
 
   sendCombatLog(session, [{ event: 'MESSAGE', text: `You engage ${mob.name}!` }]);
   sendStatus(session);
@@ -1259,6 +1265,16 @@ async function handleCastSpell(session, msg) {
 
   const spellDef = SPELLS[spellRow.spell_key];
   if (!spellDef) return false;
+
+  // Refuse casting while the gem is still on its "just memorized" / post-cast cooldown.
+  const slotCooldownLeft = SpellSystem.getSpellCooldownRemainingSec
+    ? SpellSystem.getSpellCooldownRemainingSec(session, slotIndex)
+    : 0;
+  if (slotCooldownLeft > 0) {
+    if (isMelody) session.melody = null;
+    sendCombatLog(session, [{ event: 'MESSAGE', text: `Spell is not ready yet (${slotCooldownLeft.toFixed(1)}s).` }]);
+    return false;
+  }
 
   // Can't cast while already casting
   if (session.casting) {
@@ -1621,6 +1637,7 @@ async function playNextMelodySong(session) {
  */
 function tryInterruptCasting(session, source) {
   SpellSystem.cancelPendingScribe(session, 'damage', false);
+  SpellSystem.cancelPendingMemorize(session, 'damage', false);
   if (!session.casting) return;
 
   // Base 75% interrupt chance, reduced by level (higher level = harder to interrupt)
@@ -4252,6 +4269,7 @@ function startGameLoop() {
           Promise.resolve(session.bot.tick()).catch((e) => console.error(`[ENGINE] bot tick ${session.char?.name}:`, e.message));
         }
         SpellSystem.tickPendingScribe(session);
+        SpellSystem.tickPendingMemorize(session);
         
         // --- Bard Active Song / Pulse handling ---
         if (session.activeSong && !session.casting) {

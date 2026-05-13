@@ -1,3 +1,0 @@
-<INFO> 
-<INFO> PfsArchive: Started initialization of archive: tradeskill_objects.eqg
-<INFO> PfsArchive: Finished initialization of archive: tradeskill_objects.eqg

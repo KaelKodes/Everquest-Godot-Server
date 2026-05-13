@@ -565,8 +565,229 @@ async function finalizePendingScribe(session) {
   }
 }
 
+// ── Spell Slot Cooldowns ────────────────────────────────────────────
+// Tracked per session — a Map of slotIndex → cooldownUntilEpochMs. A freshly memorized
+// gem starts on a cast-time cooldown ("as if it had just been cast"); handleCastSpell
+// refuses to fire from a slot that's still on cooldown.
+
+function ensureSpellCooldownsMap(session) {
+  if (!session.spellCooldowns || typeof session.spellCooldowns.get !== 'function') {
+    session.spellCooldowns = new Map();
+  }
+  return session.spellCooldowns;
+}
+
+function getSpellCooldownRemainingSec(session, slot) {
+  if (!session || slot == null) return 0;
+  const map = ensureSpellCooldownsMap(session);
+  const until = map.get(slot);
+  if (!until) return 0;
+  const remainMs = until - Date.now();
+  if (remainMs <= 0) {
+    map.delete(slot);
+    return 0;
+  }
+  return remainMs / 1000;
+}
+
+function setSpellCooldownSec(session, slot, seconds) {
+  if (!session || slot == null) return;
+  const map = ensureSpellCooldownsMap(session);
+  if (!seconds || seconds <= 0) {
+    map.delete(slot);
+    return;
+  }
+  map.set(slot, Date.now() + Math.round(seconds * 1000));
+}
+
+function clearSpellCooldown(session, slot) {
+  if (!session || slot == null) return;
+  const map = ensureSpellCooldownsMap(session);
+  map.delete(slot);
+}
+
+function clearAllSpellCooldowns(session) {
+  if (!session) return;
+  if (session.spellCooldowns && typeof session.spellCooldowns.clear === 'function') {
+    session.spellCooldowns.clear();
+  } else {
+    session.spellCooldowns = new Map();
+  }
+}
+
+function getFreshMemorizeCooldownSec(spellDef) {
+  // "As if just cast" — mirror handleCastSpell's castTimeSec calculation (uses spellDef.timing.castTime in ms).
+  const castMs = spellDef && spellDef.timing && Number.isFinite(spellDef.timing.castTime)
+    ? spellDef.timing.castTime
+    : 1500;
+  return Math.max(0.1, castMs / 1000);
+}
+
+// ── Memorize-to-Spellbar (server-timed; mirrors scribe scaffolding) ─
+
+const MEMORIZE_HALF_FACTOR = 0.5; // memorize takes exactly half of the scribe duration
+
+function getMemorizeDurationMs(spellDef, session) {
+  // Halved scribe duration — same level curve, same meditate factor, same floor.
+  const fullScribeMs = getScribeDurationMs(spellDef, session);
+  return Math.max(750, Math.round(fullScribeMs * MEMORIZE_HALF_FACTOR));
+}
+
+function validateBeginMemorize(session, spellKey, slot) {
+  if (slot == null || !Number.isFinite(slot) || slot < 0 || slot >= 8) {
+    return { ok: false, error: 'Invalid spell gem.' };
+  }
+  if (!spellKey) return { ok: false, error: 'No spell specified.' };
+
+  const bookEntry = session.spellbook.find(s => s.spell_key === spellKey);
+  if (!bookEntry) return { ok: false, error: 'That spell is not in your spellbook.' };
+
+  const spellDef = SPELLS[spellKey];
+  if (!spellDef) return { ok: false, error: 'Unknown spell.' };
+
+  return { ok: true, bookEntry, spellDef };
+}
+
+function rejectMemorizeBegin(session, reason, messageText) {
+  if (!session.ws || session.ws.readyState !== 1) return;
+  send(session.ws, { type: 'MEMORIZE_REJECTED', reason: reason || 'unknown' });
+  if (messageText) send(session.ws, { type: 'MESSAGE', text: messageText });
+}
+
+function handleBeginMemorizeSpell(session, msg) {
+  if (!session.char || !session.ws) return;
+
+  if (session.pendingMemorize) {
+    rejectMemorizeBegin(session, 'busy', 'You are already memorizing a spell.');
+    return;
+  }
+  if (session.pendingScribe) {
+    rejectMemorizeBegin(session, 'busy', 'You cannot memorize while scribing.');
+    return;
+  }
+  if (session.char.state !== 'medding') {
+    rejectMemorizeBegin(session, 'not_sitting', 'You must be sitting to memorize spells.');
+    return;
+  }
+  if (session.inCombat) {
+    rejectMemorizeBegin(session, 'combat', 'You cannot memorize while fighting.');
+    return;
+  }
+
+  const slot = msg.slot != null ? Math.floor(Number(msg.slot)) : null;
+  const v = validateBeginMemorize(session, msg.spellKey, slot);
+  if (!v.ok) {
+    rejectMemorizeBegin(session, 'validation', v.error);
+    return;
+  }
+
+  const durationMs = getMemorizeDurationMs(v.spellDef, session);
+  const now = Date.now();
+  session.pendingMemorize = {
+    slot,
+    spellKey: msg.spellKey,
+    spellId: v.spellDef.id,
+    spellName: v.spellDef.name,
+    bookEntryId: v.bookEntry.id,
+    endsAt: now + durationMs,
+    startedAt: now,
+    durationMs,
+  };
+
+  send(session.ws, {
+    type: 'MEMORIZE_STARTED',
+    spellKey: msg.spellKey,
+    spellId: v.spellDef.id,
+    spellName: v.spellDef.name,
+    slot,
+    durationMs,
+    endsAt: session.pendingMemorize.endsAt,
+  });
+}
+
+function cancelPendingMemorize(session, reason, silent) {
+  if (!session || !session.pendingMemorize) return;
+  session.pendingMemorize = null;
+  if (!silent && session.ws && session.ws.readyState === 1) {
+    send(session.ws, { type: 'MEMORIZE_CANCELLED', reason: reason || 'interrupted' });
+  }
+}
+
+function tickPendingMemorize(session) {
+  const p = session.pendingMemorize;
+  if (!p) return;
+  if (session.inCombat || (session.char && session.char.state !== 'medding')) {
+    cancelPendingMemorize(session, session.inCombat ? 'combat' : 'stand', false);
+    return;
+  }
+  if (Date.now() < p.endsAt) return;
+  try {
+    finalizePendingMemorize(session);
+  } catch (err) {
+    console.error(`[MEMORIZE] finalize error for ${session?.char?.name || 'unknown'}:`, err);
+    cancelPendingMemorize(session, 'error', false);
+  }
+}
+
+function finalizePendingMemorize(session) {
+  const p = session.pendingMemorize;
+  if (!p || Date.now() < p.endsAt) return;
+
+  session.pendingMemorize = null;
+  const { slot, spellKey } = p;
+
+  if (!session.char) return;
+
+  const v = validateBeginMemorize(session, spellKey, slot);
+  if (!v.ok) {
+    if (session.ws && session.ws.readyState === 1) {
+      send(session.ws, { type: 'MEMORIZE_CANCELLED', reason: 'validation' });
+      send(session.ws, { type: 'MESSAGE', text: v.error });
+    }
+    return;
+  }
+
+  // Swap the new spell into the target slot — same rules as the legacy instant-memorize:
+  // remove the new spell from any other gem first, then clear whatever was in this gem.
+  const displacedFromOtherSlot = session.spells.find(s => s.spell_key === spellKey && s.slot !== slot);
+  const displacedFromTargetSlot = session.spells.find(s => s.slot === slot);
+  session.spells = session.spells.filter(s => s.spell_key !== spellKey);
+  session.spells = session.spells.filter(s => s.slot !== slot);
+  session.spells.push({
+    slot,
+    spell_key: spellKey,
+    id: v.bookEntry.id,
+  });
+
+  // Old occupants of either slot lose their cooldown — they're no longer slotted.
+  if (displacedFromOtherSlot) clearSpellCooldown(session, displacedFromOtherSlot.slot);
+  if (displacedFromTargetSlot) clearSpellCooldown(session, displacedFromTargetSlot.slot);
+
+  // Fresh gem starts on a cast-time cooldown — "as if it had just been cast".
+  setSpellCooldownSec(session, slot, getFreshMemorizeCooldownSec(v.spellDef));
+
+  saveSpellbookToFile(session).then(() => {});
+  DB.memorizeSpell(session.char.id, spellKey, slot).then(() => {});
+  sendSpellbook(session);
+
+  if (session.ws && session.ws.readyState === 1) {
+    send(session.ws, {
+      type: 'MEMORIZE_COMPLETE',
+      spellKey,
+      slot,
+      spellName: v.spellDef.name || spellKey,
+    });
+  }
+  if (sendCombatLog) {
+    sendCombatLog(session, [{ event: 'MESSAGE', text: `You have memorized ${v.spellDef.name || spellKey}.` }]);
+  }
+}
+
 // ── Spellbook Message Handlers ──────────────────────────────────────
 
+// Legacy instant memorize path — kept for loadout loads and internal callers.
+// New external clients should use BEGIN_MEMORIZE_SPELL (timed). This helper does the
+// raw slot swap with no timer and gives the gem its standard "just-slotted" cooldown.
 function handleMemorizeSpell(session, msg) {
   const { spellKey, slot } = msg;
   if (slot == null || slot < 0 || slot >= 8) return;
@@ -585,22 +806,28 @@ function handleMemorizeSpell(session, msg) {
     return;
   }
   
+  const displacedFromOtherSlot = session.spells.find(s => s.spell_key === spellKey && s.slot !== slot);
+  const displacedFromTargetSlot = session.spells.find(s => s.slot === slot);
   // Remove from current gem slot if already memorized elsewhere
   session.spells = session.spells.filter(s => s.spell_key !== spellKey);
   // Remove whatever was in the target slot
   session.spells = session.spells.filter(s => s.slot !== slot);
-  
+
   session.spells.push({
     slot,
     spell_key: spellKey,
     id: bookEntry.id,
   });
-  
+
+  if (displacedFromOtherSlot) clearSpellCooldown(session, displacedFromOtherSlot.slot);
+  if (displacedFromTargetSlot) clearSpellCooldown(session, displacedFromTargetSlot.slot);
+  const def = SPELLS[spellKey] || {};
+  setSpellCooldownSec(session, slot, getFreshMemorizeCooldownSec(def));
+
   saveSpellbookToFile(session).then(() => {});
   DB.memorizeSpell(session.char.id, spellKey, slot).then(() => {});
   sendSpellbook(session);
-  
-  const def = SPELLS[spellKey] || {};
+
   send(session.ws, { type: 'MESSAGE', text: `You have memorized ${def.name || spellKey}.` });
 }
 
@@ -610,6 +837,7 @@ function handleForgetSpell(session, msg) {
   
   const existing = session.spells.find(s => s.slot === slot);
   session.spells = session.spells.filter(s => s.slot !== slot);
+  clearSpellCooldown(session, slot);
   
   saveSpellbookToFile(session).then(() => {});
   DB.forgetSpell(session.char.id, slot).then(() => {});
@@ -667,6 +895,12 @@ function handleLoadSpellLoadout(session, msg) {
   }
   
   session.spells = JSON.parse(JSON.stringify(session.spellLoadouts[name]));
+  // Every freshly-slotted gem starts on a cast-time cooldown ("as if just cast").
+  clearAllSpellCooldowns(session);
+  for (const row of session.spells) {
+    const def = SPELLS[row.spell_key] || {};
+    setSpellCooldownSec(session, row.slot, getFreshMemorizeCooldownSec(def));
+  }
   saveSpellbookToFile(session).then(() => {});
   
   send(session.ws, { type: 'MESSAGE', text: `Loaded spell loadout: ${name}` });
@@ -686,6 +920,7 @@ function handleDeleteSpellLoadout(session, msg) {
 
 function handleClearSpells(session) {
   session.spells = [];
+  clearAllSpellCooldowns(session);
   saveSpellbookToFile(session).then(() => {});
   
   send(session.ws, { type: 'MESSAGE', text: 'Cleared all memorized spells.' });
@@ -716,6 +951,7 @@ function sendSpellbook(session) {
       duration: def.duration || 0,
       reflectable: def.properties ? (def.properties.reflectable > 0) : false,
       spellLine: def.visual ? (def.visual.spellAffectName || '') : '',
+      cooldownRemaining: getSpellCooldownRemainingSec(session, row.slot),
     };
   });
   send(session.ws, { type: 'SPELLBOOK_UPDATE', spells });
@@ -1691,6 +1927,12 @@ module.exports = {
   cancelPendingScribe,
   tickPendingScribe,
   handleMemorizeSpell,
+  handleBeginMemorizeSpell,
+  cancelPendingMemorize,
+  tickPendingMemorize,
+  getSpellCooldownRemainingSec,
+  clearSpellCooldown,
+  clearAllSpellCooldowns,
   handleForgetSpell,
   handleSwapBookSpells,
   handleSaveSpellLoadout,

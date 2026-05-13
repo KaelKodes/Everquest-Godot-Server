@@ -14,7 +14,7 @@ const fs = require('fs');
 
   const [dbIds] = await pool.query("SELECT DISTINCT LOWER(idfile) as idf FROM items WHERE damage > 0 AND idfile IS NOT NULL AND idfile != ''");
 
-  const meshDir = 'd:/Kael Kodes/EQMUD/server/tools/LanternExtractor/Exports/gequip/Meshes';
+  const meshDir = 'd:/Kael Kodes/EQMUD/LanternExtractor/Exports/gequip/Meshes';
   const meshFiles = new Set(
     fs.readdirSync(meshDir)
       .filter(f => f.endsWith('.txt') && !f.includes('collision'))

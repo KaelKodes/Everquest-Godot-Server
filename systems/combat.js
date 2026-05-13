@@ -428,6 +428,7 @@ async function processCombatTick(session, dt) {
                       const rdsDmg = Math.abs(rdsEff.base);
                       session.char.hp -= rdsDmg;
                       if (spellSystem && spellSystem.cancelPendingScribe) spellSystem.cancelPendingScribe(session, 'damage', false);
+                      if (spellSystem && spellSystem.cancelPendingMemorize) spellSystem.cancelPendingMemorize(session, 'damage', false);
                       events.push({ event: 'SPELL_DAMAGE', source: mbuff.name, target: 'You', spell: 'Reverse DS', damage: rdsDmg });
                     }
                   }

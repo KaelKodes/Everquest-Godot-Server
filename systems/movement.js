@@ -76,6 +76,7 @@ async function handleZone(session, msg) {
   try {
     const SpellSystem = require('./spells');
     SpellSystem.cancelPendingScribe(session, 'zone', false);
+    SpellSystem.cancelPendingMemorize(session, 'zone', false);
   } catch (_) { /* ignore */ }
 
   handleStopCombat(session);
@@ -442,6 +443,7 @@ async function adminGotoZoneSuccor(session, zoneArg) {
   try {
     const SpellSystem = require('./spells');
     SpellSystem.cancelPendingScribe(session, 'zone', false);
+    SpellSystem.cancelPendingMemorize(session, 'zone', false);
   } catch (_) { /* ignore */ }
 
   handleStopCombat(session);

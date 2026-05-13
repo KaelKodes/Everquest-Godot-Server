@@ -4,6 +4,11 @@ const ZONES = require('./data/zones');
 const SpellDB = require('./data/spellDatabase');
 const SPELLS = SpellDB.createLegacyProxy(); // Legacy proxy for backwards compatibility
 const { Skills, RACIAL_STARTING_SKILLS } = require('./data/skills');
+
+// Pre-filter skills to avoid iterating over 700+ entries every sendStatus tick
+const ABILITY_SKILL_KEYS = Object.keys(Skills).filter(k => Skills[k].type === 'ability');
+const UTILITY_SKILL_KEYS = Object.keys(Skills).filter(k => Skills[k].type === 'skill');
+const OTHER_SKILL_KEYS = Object.keys(Skills).filter(k => Skills[k].type !== 'ability' && Skills[k].type !== 'skill');
 const { STARTER_GEAR, SUMMON_ITEM_MAP } = require('./data/items');
 const ItemDB = require('./data/itemDatabase');
 const ForageLoot = require('./data/forageLoot');
@@ -109,10 +114,11 @@ function resolveAmbienceTrack(zoneId, zoneDef, timeOfDay) {
 
 const TICK_RATE = 200; // 200ms game ticks (5hz)
 const VIEW_DISTANCE = 800; // Enable proximity culling (800 units) to reduce CPU load
-const SYNC_RATE = 100; // Sync world every 100 ticks (20s) to refresh state
+const SYNC_RATE = 50; // Sync world every 50 ticks (10s) to refresh state
 
 const State = require('./state');
 const sessions = State.sessions;
+const sessionsByZone = State.sessionsByZone;
 const authSessions = State.authSessions;
 const zoneInstances = State.zoneInstances;
 let worldCalendar = State.worldCalendar;
@@ -215,6 +221,14 @@ async function createSession(ws, char, auth = null) {
     activeVisionMode: null,  // null = auto (racial/spell), or explicit mode key
     corpseConsentTo: new Set(), // lowercase names /consent allows to loot this player's corpses
   };
+
+  // Track session in zone map
+  if (char.zoneId) {
+    if (!sessionsByZone.has(char.zoneId)) {
+      sessionsByZone.set(char.zoneId, new Set());
+    }
+    sessionsByZone.get(char.zoneId).add(session);
+  }
 
   // Load spellbook from DB
   if (!char.id.toString().startsWith('bot_')) {
@@ -343,6 +357,16 @@ async function attachCharacterDataToSession(session, char) {
 function removeSession(ws) {
   const session = sessions.get(ws);
   if (session) {
+    if (session.char && session.char.zoneId) {
+      const zoneId = session.char.zoneId;
+      if (sessionsByZone.has(zoneId)) {
+        sessionsByZone.get(zoneId).delete(session);
+        if (sessionsByZone.get(zoneId).size === 0) {
+          sessionsByZone.delete(zoneId);
+        }
+      }
+    }
+
     SpellSystem.cancelPendingScribe(session, 'disconnect', true);
     SpellSystem.cancelPendingMemorize(session, 'disconnect', true);
     if (session.combatTarget) {
@@ -393,8 +417,7 @@ async function handleMessage(ws, msg) {
     case 'PONG':
     {
       session.lastPong = Date.now();
-      // Light Save on every PONG to ensure minimal data loss
-      DB.saveLight(session);
+      // DB.saveLight(session) removed from here - saves already happen via flushWriteBehindCache every 30s
       return;
     }
     case 'REQUEST_SYNC': 
@@ -1415,7 +1438,9 @@ async function handleCastSpell(session, msg) {
   // Instant-cast spells (0 cast time) fire immediately
   if (castTimeSec <= 0) {
     await applySpellEffect(session, spellDef);
-    send(session.ws, { type: 'CAST_COMPLETE', spellName: spellDef.name });
+    const completeMsg = { type: 'CAST_COMPLETE', casterId: `player_${session.char.id}`, spellName: spellDef.name };
+    send(session.ws, completeMsg);
+    broadcastToZone(session.char.zoneId, completeMsg);
     sendStatus(session);
     return true;
   }
@@ -1436,13 +1461,18 @@ async function handleCastSpell(session, msg) {
   const animNum = typeof rawAnim === 'number' && !Number.isNaN(rawAnim)
     ? rawAnim
     : parseInt(String(rawAnim ?? ''), 10);
-  send(session.ws, {
+    
+  const castStartMsg = {
     type: 'CAST_START',
+    casterId: `player_${session.char.id}`,
     spellName: spellDef.name,
     castTime: castTimeSec,
     slot: slotIndex,
     animType: Number.isFinite(animNum) ? animNum : 44
-  });
+  };
+
+  send(session.ws, castStartMsg);
+  broadcastToZone(session.char.zoneId, castStartMsg);
 
   sendCombatLog(session, [{ event: 'MESSAGE', text: `You begin casting ${spellDef.name}.` }]);
   sendStatus(session);
@@ -1481,10 +1511,13 @@ async function processCasting(session, dt) {
   // Check if cast is complete
   if (session.casting.elapsed >= session.casting.castTime) {
     const { spellDef, spellKey, slotIndex, melodyDelay } = session.casting;
+    const casterId = `player_${session.char.id}`;
     session.casting = null;
 
     await applySpellEffect(session, spellDef);
-    send(session.ws, { type: 'CAST_COMPLETE', spellName: spellDef.name });
+    const completeMsg = { type: 'CAST_COMPLETE', casterId, spellName: spellDef.name };
+    send(session.ws, completeMsg);
+    broadcastToZone(session.char.zoneId, completeMsg);
     sendStatus(session);
 
     // Bard active song logic
@@ -1658,9 +1691,12 @@ function tryInterruptCasting(session, source) {
 function interruptCasting(session, message) {
   if (!session.casting) return;
   const spellName = session.casting.spellDef.name;
+  const casterId = `player_${session.char.id}`;
   session.casting = null;
 
-  send(session.ws, { type: 'CAST_INTERRUPTED', spellName });
+  const interruptMsg = { type: 'CAST_INTERRUPTED', casterId, spellName };
+  send(session.ws, interruptMsg);
+  broadcastToZone(session.char.zoneId, interruptMsg);
   sendCombatLog(session, [{ event: 'MESSAGE', text: message || 'Your spell is interrupted!' }]);
   sendStatus(session);
 }
@@ -2337,40 +2373,82 @@ async function processQuestActions(session, npc, actions) {
 
 /** Broadcast an entity state change (sneak/hide) to other players in the zone */
 function broadcastEntityState(session, msgType, extraFields) {
-  const payload = JSON.stringify({
+  const payloadObj = {
     type: msgType,
     id: `player_${session.char.id}`,
-    ...extraFields
-  });
-  for (const [ws, other] of sessions) {
-    if (other !== session && other.char && other.char.zoneId === session.char.zoneId) {
-      try { ws.send(payload); } catch(e) {}
+    ...extraFields,
+    time: Date.now()
+  };
+  
+  let cachedPayload = null;
+  const zoneId = session.char.zoneId;
+  const zoneSessions = sessionsByZone.get(zoneId);
+  if (!zoneSessions) return;
+
+  for (const other of zoneSessions) {
+    if (other !== session && other.ws.readyState === 1) {
+      // BACKPRESSURE HANDLING: If the client's outbound buffer is too full, drop movement updates
+      // to keep them from falling behind reality (the "12-second delay" phenomenon).
+      // bufferedAmount is available in 'ws' and represents bytes queued.
+      if (msgType === 'MOB_MOVE' && other.ws.bufferedAmount > 4096) {
+        if (!other._droppedPackets) other._droppedPackets = 0;
+        other._droppedPackets++;
+        if (other._droppedPackets % 20 === 0) {
+           console.log(`[NET] Dropped 20 MOB_MOVE packets for ${other.char.name} due to backpressure (${other.ws.bufferedAmount} bytes queued)`);
+        }
+        continue;
+      }
+      other._droppedPackets = 0;
+
+      // Proximity culling for movement: only send if close enough to see
+      if (msgType === 'MOB_MOVE') {
+        const distSq = getDistanceSq(session.char.x, session.char.y, other.char.x, other.char.y);
+        if (distSq > VIEW_DISTANCE * VIEW_DISTANCE) continue;
+      }
+
+      if (!cachedPayload) {
+        cachedPayload = JSON.stringify(payloadObj);
+      }
+
+      try { other.ws.send(cachedPayload); } catch(e) {}
     }
   }
 }
 
 function broadcastToZone(zoneId, msg) {
+  const zoneSessions = sessionsByZone.get(zoneId);
+  if (!zoneSessions) return;
   const payload = JSON.stringify(msg);
-  for (const [ws, session] of sessions) {
-    if (session.char && session.char.zoneId === zoneId) {
-      try { ws.send(payload); } catch(e) {}
+  for (const session of zoneSessions) {
+    if (session.ws.readyState === 1) {
+      try { session.ws.send(payload); } catch(e) {}
     }
   }
 }
 
-/** Broadcast mob movement to all players in the zone */
+/** Broadcast mob movement to all players in the zone with proximity culling */
 function broadcastMobMove(mob, zoneId) {
-  const payload = JSON.stringify({
-    type: 'MOB_MOVE',
-    id: mob.id,
-    x: mob.x,
-    y: mob.y,
-    z: mob.z || 0,
-    heading: mob.heading || 0
-  });
-  for (const [ws, other] of sessions) {
-    if (other.char && other.char.zoneId === zoneId) {
-      try { ws.send(payload); } catch(e) {}
+  const zoneSessions = sessionsByZone.get(zoneId);
+  if (!zoneSessions) return;
+  
+  let cachedPayload = null;
+  for (const session of zoneSessions) {
+    if (session.ws.readyState === 1) {
+      // Proximity culling for NPC movement: only send if player is close enough
+      const distSq = getDistanceSq(mob.x, mob.y, session.char.x, session.char.y);
+      if (distSq > VIEW_DISTANCE * VIEW_DISTANCE) continue;
+
+      if (!cachedPayload) {
+        cachedPayload = JSON.stringify({
+          type: 'MOB_MOVE',
+          id: mob.id,
+          x: mob.x,
+          y: mob.y,
+          z: mob.z || 0,
+          heading: mob.heading || 0
+        });
+      }
+      try { session.ws.send(cachedPayload); } catch(e) {}
     }
   }
 }
@@ -2384,6 +2462,8 @@ function flushSkillUps(session) {
   }));
   sendCombatLog(session, logs);
   session.skillUpMessages = [];
+  // Clear skill cache so sendStatus picks up the new values next tick
+  session._cachedSkillData = null;
   if (session.ws && session.ws.readyState === 1) {
     try {
       session.ws.send(JSON.stringify({ type: 'SKILLS_UPDATE', skills: session.char.skills }));
@@ -3810,6 +3890,7 @@ function sendLoginOk(session) {
       ...ExpFatigue.statusPayload(char),
       zone: zone ? zone.name : 'Unknown',
       zoneId: char.zoneId,
+      zoneNumericId: eqemuDB.getZoneIdByShortName(char.zoneId),
       ...(() => {
         const arch = eqemuDB.getLanternArchiveBase(char.zoneId);
         const zid = String(char.zoneId).trim().toLowerCase();
@@ -3832,13 +3913,53 @@ function sendLoginOk(session) {
       },
       skills: char.skills,
       equipVisuals: getEquipVisuals(session),
+      relayUrl: process.env.RELAY_URL,
     },
   });
 }
 
-function sendStatus(session) {
+function sendStatus(session, forceSync = false) {
   const char = session.char;
   const effective = session.effectiveStats;
+
+  // Track important state to see if we even need to send a packet this tick
+  // Most of the time, stats don't change 5 times per second.
+  if (!session._lastStatusState) session._lastStatusState = {};
+  const currentState = {
+    hp: char.hp,
+    maxHp: effective.hp,
+    mana: char.mana,
+    maxMana: effective.mana,
+    fatigue: char.fatigue,
+    combat: session.inCombat,
+    target: session.combatTarget ? session.combatTarget.id || session.combatTarget.char?.id : null,
+    level: char.level,
+    roomId: char.roomId,
+    practices: char.practices,
+    copper: char.copper,
+    casting: !!session.casting,
+    pet: !!session.pet
+  };
+
+  // Skip sending if nothing major changed, unless a forceSync (e.g. login/zone/20s refresh) is requested
+  if (!forceSync && session._lastStatusState.hp !== undefined) {
+    let changed = false;
+    for (const k in currentState) {
+      if (currentState[k] !== session._lastStatusState[k]) {
+        changed = true;
+        break;
+      }
+    }
+    // Also check for buff/effect changes that impact visuals or stats
+    if (!changed && session._lastStatusEffectCount !== (session.buffs?.length || 0)) {
+        changed = true;
+    }
+
+    if (!changed) return; // Silent return — save CPU and bandwidth
+  }
+  session._lastStatusState = currentState;
+  session._lastStatusEffectCount = session.buffs?.length || 0;
+
   const zone = ZoneSystem.getZoneDef(char.zoneId);
 
   // Pick out basic room data if it exists
@@ -3862,21 +3983,46 @@ function sendStatus(session) {
   }
 
   // Determine which abilities & skills the character has unlocked to send to the UI
+  // Use pre-filtered keys to avoid iterating over hundreds of languages/tradeskills
   const availableAbilities = [];  // Combat actions → Abilities tab
   const availableSkills = [];     // Utility actions → Skills tab
   const skillData = {};           // Detailed skill data including caps
-  for (const skillKey of Object.keys(Skills)) {
-      const skVal = combat.getCharSkill(char, skillKey);
-      if (skVal > 0) {
+
+  // Cache skill data to avoid recalculating every tick if it hasn't changed
+  if (!session._cachedSkillData || forceSync) {
+    const processSkillGroup = (keys) => {
+      for (const skillKey of keys) {
+        const skVal = combat.getCharSkill(char, skillKey);
+        if (skVal > 0) {
           const max = combat.getMaxSkill(session, skillKey);
           skillData[skillKey] = { value: skVal, max: max };
           if (Skills[skillKey].type === 'ability') {
-              availableAbilities.push(Skills[skillKey].name.toLowerCase());
+            availableAbilities.push(Skills[skillKey].name.toLowerCase());
           } else if (Skills[skillKey].type === 'skill') {
-              availableSkills.push(Skills[skillKey].name.toLowerCase());
+            availableSkills.push(Skills[skillKey].name.toLowerCase());
           }
+        }
       }
+    };
+
+    processSkillGroup(ABILITY_SKILL_KEYS);
+    processSkillGroup(UTILITY_SKILL_KEYS);
+
+    // Optimization: Only process "Other" skills (languages/tradeskills) every 10 seconds
+    // unless a full sync is requested. This saves hundreds of iterations per tick.
+    if (forceSync || !session._lastOtherSkillTick || (Date.now() - session._lastOtherSkillTick > 10000)) {
+      processSkillGroup(OTHER_SKILL_KEYS);
+      session._lastOtherSkillTick = Date.now();
+    }
+    
+    session._cachedSkillData = {
+        skillData,
+        availableAbilities,
+        availableSkills
+    };
   }
+  
+  const { skillData: cachedSkillData, availableAbilities: cachedAbilities, availableSkills: cachedSkills } = session._cachedSkillData;
 
   // Build Extended Targets list (only mobs actively in combat with this player)
   // Uses a cached ID set so we only log on add/remove, not every tick.
@@ -3984,6 +4130,7 @@ function sendStatus(session) {
       nextLevelXp: combat.xpForLevel(char.level + 1),
       zone: zone ? zone.name : 'Unknown',
       zoneId: char.zoneId,
+      zoneNumericId: eqemuDB.getZoneIdByShortName(char.zoneId),
       ...(() => {
         const arch = eqemuDB.getLanternArchiveBase(char.zoneId);
         const zid = String(char.zoneId).trim().toLowerCase();
@@ -4019,9 +4166,9 @@ function sendStatus(session) {
         };
       })(),
       abilityCooldowns: session.abilityCooldowns || {},
-      availableAbilities: availableAbilities,
-      availableSkills: availableSkills,
-      skillData: skillData,
+      availableAbilities: cachedAbilities,
+      availableSkills: cachedSkills,
+      skillData: cachedSkillData,
       skills: char.skills || {},
       practices: char.practices || 0,
       copper: char.copper || 0,
@@ -4237,6 +4384,7 @@ let saveCounter = 0;
 function startGameLoop() {
   let tickCount = 0;
   setInterval(() => {
+    const startTime = Date.now();
     const dt = TICK_RATE / 1000;
     tickCount++;
     // Learning fatigue: one tick counts toward "present for this Norrath hour" (see expFatigue.relieveInGameHour).
@@ -4299,12 +4447,16 @@ function startGameLoop() {
         StatsSystem.processBuffs(session, dt);
         SurvivalSystem.processSurvival(session, dt, sendCombatLog, sendStatus, sendInventory);
         processSkillCooldowns(session, dt);
+        
+        // --- Status Update (5Hz) ---
+        // Throttled to only send on changes in sendStatus(session)
         sendStatus(session);
 
-        // --- Proximity Sync ---
+        // --- Proximity Sync (20s) ---
         // Periodically refresh the world state to handle LoadRadius pop-ins/outs
         if (tickCount % SYNC_RATE === 0) {
             handleLook(session, true); // forceSync = true
+            sendStatus(session, true); // forceSync = true
         }
 
         // --- Tracking Updates ---
@@ -4440,6 +4592,10 @@ function startGameLoop() {
         DB.saveCharacterSkills(session.char.id, session.char.skills);
         SpellSystem.saveBuffsToFile(session);
       }
+    }
+    const loopTime = Date.now() - startTime;
+    if (loopTime > TICK_RATE) {
+        console.warn(`[ENGINE] Game loop overloaded: ${loopTime}ms (TICK_RATE: ${TICK_RATE}ms). Connected sessions: ${sessions.size}`);
     }
   }, TICK_RATE);
 
@@ -4648,8 +4804,9 @@ function handleLook(session, forceSync = false) {
   const hasBuffSpa = (s, spaId) => s.buffs && s.buffs.some(b => b.effects && b.effects.some(e => e.spa === spaId));
   const hasSeeInvis = hasBuffSpa(session, 13);
 
-  for (const [ws, other] of sessions) {
-      if (other.char.zoneId === char.zoneId && other.char.id !== char.id) {
+  for (const session of (sessionsByZone.get(char.zoneId) || [])) {
+      if (session.char.id !== char.id) {
+          const other = session;
           // Distance check for other players (Robust)
           const pDistSq = getDistanceSq(other.char.x, other.char.y, char.x, char.y);
           if (pDistSq > VIEW_DISTANCE * VIEW_DISTANCE) continue;
@@ -5616,6 +5773,18 @@ async function bootstrapServer() {
   console.log('[ENGINE] Bootstrap sequence complete.');
 }
 
+// Count real (non-bot) sessions currently parked in a given zone. Used by
+// zone_server.js so the per-login log line can say "joining N other players".
+function getPopulation(zoneKey) {
+  if (!zoneKey) return 0;
+  const want = String(zoneKey).toLowerCase();
+  let count = 0;
+  for (const [, s] of sessions) {
+    if (s && s.char && !s.isBot && String(s.char.zoneId || '').toLowerCase() === want) count++;
+  }
+  return count;
+}
+
 module.exports = {
   bootstrapServer,
   initZones: ZoneSystem.initZones,
@@ -5626,6 +5795,7 @@ module.exports = {
   removeSession,
   sessions,
   botTryCastSpellByName,
+  getPopulation,
 };
 
 

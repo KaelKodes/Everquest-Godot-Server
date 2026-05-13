@@ -1021,18 +1021,32 @@ function getAoeTargets(session, spellDef, primaryTarget = null) {
     const aoeRange = spellDef.range?.aoeRange || 50;
     const rangeSq = aoeRange * aoeRange;
 
-    // Target Types (Classic EQ IDs):
-    // 1: Self
-    // 3: Group v1 (Targeted or PB)
-    // 4: PB AE (Point Blank Area Effect - centered on caster)
-    // 5: Targeted AE (Centered on primary target)
-    // 20: Target AE v2
-    // 41: Group v2
-    
+    // Target Types (EQEmu SpellTargetType enum — see server/tools/spell_enums.js):
+    //  1: targetOptional (Single, may default to self if no target)
+    //  3: groupTeleport (Group)
+    //  4: aeCaster (PB AE - centered on caster)
+    //  5: target (SINGLE target — NOT an AE)
+    //  6: self
+    //  8: aeTarget (Targeted AE - centered on primary target)
+    // 20: targetAETap (Lifetap AE centered on target)
+    // 25: aeSummonedV1 (PB AE on summoned)
+    // 33: selfBuff (Single-target friendly buff, falls back to self)
+    // 40: aePlayerV2 (AE on players around target)
+    // 41: groupPet (Group v2 — includes pets)
+    // 43: groupSingleTarget (Single target that also hits caster's group)
+    // 47: targetAENoPlayersOrPets
+    //
+    // IMPORTANT: target type 5 was previously (and incorrectly) listed under
+    // isTargetAe. That meant single-target beneficial spells (e.g. most heals
+    // and buffs cast on another player) fell into the AE branch below and
+    // were pushed onto `targets` as `session` (the caster), so a Cleric
+    // healing a grouped/ungrouped friend healed themselves instead. The
+    // proper "Targeted AE" id is 8 (see spell_enums.js / EQEmu spdat.h).
+
     const tid = spellDef.targetType?.id;
     const isGroup = [3, 41].includes(tid) || spellDef.targetType?.name === 'groupPet' || (spellDef.derived?.isBardSong && !isDetrimental);
     const isPbAe = tid === 4 || (spellDef.derived?.isBardSong && isDetrimental && !spellDef.range?.range); // Detrimental songs with 0 range are PB AE
-    const isTargetAe = [5, 20].includes(tid);
+    const isTargetAe = [8, 20].includes(tid);
 
     const zone = module.exports.zoneInstances ? module.exports.zoneInstances[session.char.zoneId] : null;
 

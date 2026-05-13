@@ -49,9 +49,15 @@ async function main() {
             return ws.send(JSON.stringify({ type: 'ERROR', message: 'Character data not found' }));
         }
 
-        const zoneId = character.zoneId || 'gfaydark';
+        // Always route off the canonical PEQ short_name. Different characters can
+        // carry the same logical zone under different string forms ('gfaydark',
+        // 'greater_faydark', a numeric 'zone_54' fallback, etc.) — without this
+        // normalization the routing table matches one form and misses the other,
+        // sending the two players to different zone nodes and giving each their
+        // own private zoneInstances.
+        const rawZoneId = character.zoneId || 'gfaydark';
+        const zoneId = DB.getArchiveShortName(rawZoneId) || rawZoneId;
 
-        // Route to the correct zone node based on continent ownership
         let zoneUrl = process.env.ZONE_URL || process.env.ZONE_URL_DEFAULT || 'ws://localhost:3010';
         const routed = await zoneRouter.getUrlForZone(zoneId, DB);
         if (routed && routed.url) zoneUrl = routed.url;
@@ -64,8 +70,9 @@ async function main() {
             token: zoneToken,
             url: zoneUrl
         }));
-        
-        console.log(`[WORLD] Handoff to Zone (${zoneId}) generated for ${data.characterName}`);
+
+        const routedNode = (routed && routed.node) || 'default';
+        console.log(`[WORLD] Handoff for ${data.characterName} → zone='${zoneId}' (raw='${rawZoneId}') node='${routedNode}' url=${zoneUrl}`);
     }
   }
 

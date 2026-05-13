@@ -134,19 +134,28 @@ function handleUpdatePos(session, msg) {
     // msg.z from client is the EQ Z coordinate (height)
     const clientZ = msg.z != null ? msg.z : (session.char.z || 0);
 
-    // Broadcast player movement to others in the zone
-    broadcastEntityState(session, 'MOB_MOVE', {
-      x: msg.x,
-      y: msg.y,
-      z: clientZ,
-      heading: msg.heading != null ? msg.heading : (session.char.heading || 0)
-    });
-
     // Movement Validation (Anti-Cheat / Speed Hack Prevention)
     if (session.char.x != null && session.char.y != null) {
       dx = (msg.x != null ? msg.x : session.char.x) - session.char.x;
       dy = (msg.y != null ? msg.y : session.char.y) - session.char.y;
       dz = clientZ - (session.char.z || 0);
+
+      // Update session state (SOURCE OF TRUTH)
+      session.char.x = msg.x != null ? msg.x : session.char.x;
+      session.char.y = msg.y != null ? msg.y : session.char.y;
+      session.char.z = clientZ;
+      session.char.heading = msg.heading != null ? msg.heading : (session.char.heading || 0);
+      session.char.hasLightSource = msg.hasLightSource != null ? msg.hasLightSource : session.char.hasLightSource;
+
+      // Broadcast player movement to others in the zone AFTER updating session.char
+      // so spatial culling distance checks use the new coordinates.
+      broadcastEntityState(session, 'MOB_MOVE', {
+        x: session.char.x,
+        y: session.char.y,
+        z: session.char.z,
+        heading: session.char.heading,
+        hasLightSource: session.char.hasLightSource
+      });
       
       const distSq = dx * dx + dy * dy; // Horizontal distance only
       
@@ -154,10 +163,9 @@ function handleUpdatePos(session, msg) {
       // Max expected speed (e.g. Bard/Mount) is roughly 60 units/sec
       const dt = session.lastMoveTime ? (now - session.lastMoveTime) / 1000.0 : 0;
       
-      // Bypass GM accounts from rubberbanding (e.g., GMKael)
+      // Bypass GM accounts from rubberbanding (EQEmu convention: status >= 200 == GM)
       const auth = State.authSessions.get(session.ws);
-      const isGM = (auth && auth.accountName && auth.accountName.toLowerCase().startsWith('gm')) ||
-                   (session.char && session.char.name.toLowerCase().startsWith('gm'));
+      const isGM = !!(auth && (auth.status || 0) >= 200);
 
       // Slightly higher dt floor reduces false positives from bursty client frames / WebSocket batching.
       if (dt > 0.07 && !isGM) {
@@ -195,11 +203,6 @@ function handleUpdatePos(session, msg) {
     session.lastMoveTime = now;
     session.tickDistance += Math.sqrt(dx*dx + dy*dy);
 
-    if (msg.x != null) session.char.x = msg.x;
-    if (msg.y != null) session.char.y = msg.y;
-    if (msg.z != null) session.char.z = clientZ;
-    if (msg.heading != null) session.char.heading = msg.heading;
-
     // Movement breaks sitting/medding
     if (dx !== 0 || dy !== 0 || dz !== 0) {
       if (session.char.state === 'sitting' || session.char.state === 'medding') {
@@ -217,14 +220,6 @@ function handleUpdatePos(session, msg) {
         interruptCasting(session, 'Your spell is interrupted!');
       }
     }
-
-    // Broadcast player movement to others in the zone
-    broadcastEntityState(session, 'MOB_MOVE', {
-      x: msg.x,
-      y: msg.y,
-      z: msg.z || 0,
-      heading: session.char.heading || 0
-    });
   }
 }
 

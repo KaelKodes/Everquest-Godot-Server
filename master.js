@@ -17,6 +17,7 @@ const PORT_LOGIN    = parseInt(process.env.PORT_LOGIN    || '3005', 10);
 const PORT_WORLD    = parseInt(process.env.PORT_WORLD    || '3006', 10);
 const PORT_TUNARE   = parseInt(process.env.PORT_TUNARE   || '3010', 10);
 const PORT_INNORUUK = parseInt(process.env.PORT_INNORUUK || '3011', 10);
+const PORT_RELAY    = parseInt(process.env.PORT_RELAY    || '3012', 10);
 
 const servers = [
   { name: 'LOGIN', script: 'login_server.js', port: PORT_LOGIN },
@@ -25,6 +26,9 @@ const servers = [
   // Two "god" nodes. They dynamically load zones on-demand, but ownership is fixed by continent.
   { name: 'TUNARE',   script: 'zone_server.js', port: PORT_TUNARE,   env: { NODE: 'tunare' } },
   { name: 'INNORUUK', script: 'zone_server.js', port: PORT_INNORUUK, env: { NODE: 'innoruuk' } },
+
+  // Movement Relay - dedicated process for low-latency position updates
+  { name: 'RELAY',    script: 'movement_relay.js', port: PORT_RELAY, env: { PORT_MOVEMENT: PORT_RELAY } },
 ];
 
 const children = new Set();
@@ -68,6 +72,7 @@ function startServer(config) {
     CONTINENT_NODE_MAP: JSON.stringify(continentNodeMap),
     ZONE_URL_DEFAULT: defaultZoneUrl,
     WORLD_URL: worldUrl,
+    RELAY_URL: `ws://${PUBLIC_HOST}:${PORT_RELAY}`,
     PUBLIC_HOST,
     ...config.env
   };

@@ -46,7 +46,11 @@ function encumbranceDamageFactor(stats) {
 }
 
 const MIN_FALL_HEIGHT = 11;
-const MIN_IMPACT_IF_LOW_HEIGHT = 20;
+// Must sit above the natural impact velocity of a flat-ground jump
+// (jump_velocity=30 in WorldManager.cs, gravity=50 → impact ≈30 m/s).
+// At 20 the previous threshold was below that, so every jump trip-wired the
+// server even when the client correctly reported a fall distance of ~0.
+const MIN_IMPACT_IF_LOW_HEIGHT = 32;
 const MAX_CLIENT_FALL = 380;
 const MAX_CLIENT_SPEED = 155;
 const COOLDOWN_MS = 850;

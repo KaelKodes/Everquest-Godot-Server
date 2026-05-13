@@ -66,12 +66,16 @@ async function main() {
           return ws.send(JSON.stringify({ type: 'ERROR', message: 'Invalid or expired token' }));
       }
 
-      // Determine which zone this character should be in
+      // Determine which zone this character should be in.
+      // Always normalize to canonical PEQ short_name first (matches world_server
+      // and gameEngine.createSession) so routing decisions are stable across
+      // every zone string variant a character row might carry.
       const character = await DB.getCharacter(data.characterName);
       if (!character) {
         return ws.send(JSON.stringify({ type: 'ERROR', message: 'Character data not found' }));
       }
-      const zoneId = character.zoneId || 'gfaydark';
+      const rawZoneId = character.zoneId || 'gfaydark';
+      const zoneId = DB.getArchiveShortName(rawZoneId) || rawZoneId;
       const routed = await zoneRouter.getUrlForZone(zoneId, DB);
       const targetNode = routed.node;
 
@@ -84,15 +88,17 @@ async function main() {
         return;
       }
 
-      console.log(`[ZONE:${NODE}] ${data.characterName} entering zone '${zoneId}' via token.`);
-      
+      const pop = (engine && engine.getPopulation) ? engine.getPopulation(zoneId) : null;
+      const popStr = pop != null ? ` (zone pop before login: ${pop})` : '';
+      console.log(`[ZONE:${NODE} pid=${process.pid}] ${data.characterName} entering zone '${zoneId}' (raw='${rawZoneId}', route='${targetNode || 'default'}')${popStr}`);
+
       // Inject session into game engine
       // We need to simulate the login logic but using the token data
       await engine.handleManualLogin(ws, data);
   }
 
   server.listen(PORT, () => {
-    console.log(`[ZONE:${NODE}] Zone Node listening on port ${PORT} (routing via DB).`);
+    console.log(`[ZONE:${NODE} pid=${process.pid}] Zone Node listening on port ${PORT} (routing via DB).`);
   });
 }
 

@@ -63,9 +63,18 @@ async function initZones(requestedZones = null) {
 async function ensureZoneLoaded(zoneKey, spawnMobFn, spawnMiningNodesFn, spawnMiningNPCsFn) {
   if (!zoneKey) return;
   zoneKey = zoneKey.toLowerCase();
-  if (zoneInstances[zoneKey]) return;
+  if (zoneInstances[zoneKey]) {
+    // Loud reuse log so multiplayer testing makes it obvious when a second
+    // player is correctly piggy-backing on a live zone instance instead of
+    // spinning up a private one. If you ever see "Dynamically loading zone"
+    // fire a second time for the same zone in the same process, somebody
+    // deleted the instance (don't) — and if you see it fire once on tunare
+    // and once on innoruuk for the same zone, that's the split-brain bug.
+    console.log(`[ENGINE pid=${process.pid}] Zone '${zoneKey}' already loaded — reusing existing instance.`);
+    return;
+  }
 
-  console.log(`[ENGINE] Dynamically loading zone '${zoneKey}'...`);
+  console.log(`[ENGINE pid=${process.pid}] Dynamically loading zone '${zoneKey}'...`);
   const zoneMeta = eqemuDB.getZoneMetadata(zoneKey);
   if (!zoneMeta) {
     console.warn(`[ENGINE] No metadata found in DB for zone '${zoneKey}'. This usually means the zone doesn't exist in the 'zone' table.`);

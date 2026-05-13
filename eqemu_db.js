@@ -90,6 +90,8 @@ async function init() {
         queueLimit: 0
     });
 
+    invalidateContentFlagsCache();
+
     console.log('[DB] Connected to EQEmu MySQL Database.');
 
     try {
@@ -928,11 +930,104 @@ async function updateCharacterBind(char) {
     }
 }
 
+/** PEQ / EQEmu: -1 means no expansion limit. */
+const SPAWN_EXPANSION_ALL = -1;
+
+let _contentFlagSetsCache = null;
+let _contentFlagSetsCacheAt = 0;
+const CONTENT_FLAG_CACHE_MS = 60000;
+
+function invalidateContentFlagsCache() {
+    _contentFlagSetsCache = null;
+    _contentFlagSetsCacheAt = 0;
+}
+
+function parseSpawnExpansionEnv() {
+    const raw = process.env.EQEMU_CURRENT_EXPANSION;
+    if (raw === undefined || raw === '') return SPAWN_EXPANSION_ALL;
+    const n = parseInt(String(raw), 10);
+    return Number.isNaN(n) ? SPAWN_EXPANSION_ALL : n;
+}
+
+function splitContentFlagCsv(value) {
+    if (value == null) return [];
+    const s = String(value).trim();
+    if (s === '') return [];
+    return s.split(',').map((t) => t.trim()).filter(Boolean);
+}
+
+/**
+ * Mirrors EQEmu WorldContentService::DoesPassContentFiltering for spawn rows:
+ * - Every token in content_flags must be a flag_name with enabled=1 in content_flags.
+ * - Every token in content_flags_disabled must be a flag_name with enabled=0.
+ * - min/max_expansion on spawn2 and spawnentry must contain current expansion (or expansion is "all").
+ */
+function passesSpawnContentFilters(row, flagSets, currentExpansion) {
+    const cur = currentExpansion;
+
+    const sMin = row.s_min_expansion != null ? Number(row.s_min_expansion) : SPAWN_EXPANSION_ALL;
+    const sMax = row.s_max_expansion != null ? Number(row.s_max_expansion) : SPAWN_EXPANSION_ALL;
+    if (cur !== SPAWN_EXPANSION_ALL) {
+        if (sMin > SPAWN_EXPANSION_ALL && cur < sMin) return false;
+        if (sMax > SPAWN_EXPANSION_ALL && cur > sMax) return false;
+    }
+
+    const seMin = row.se_min_expansion != null ? Number(row.se_min_expansion) : SPAWN_EXPANSION_ALL;
+    const seMax = row.se_max_expansion != null ? Number(row.se_max_expansion) : SPAWN_EXPANSION_ALL;
+    if (cur !== SPAWN_EXPANSION_ALL) {
+        if (seMin > SPAWN_EXPANSION_ALL && cur < seMin) return false;
+        if (seMax > SPAWN_EXPANSION_ALL && cur > seMax) return false;
+    }
+
+    for (const token of splitContentFlagCsv(row.s_content_flags)) {
+        if (!flagSets.enabled.has(token)) return false;
+    }
+    for (const token of splitContentFlagCsv(row.s_content_flags_disabled)) {
+        if (!flagSets.disabled.has(token)) return false;
+    }
+    for (const token of splitContentFlagCsv(row.se_content_flags)) {
+        if (!flagSets.enabled.has(token)) return false;
+    }
+    for (const token of splitContentFlagCsv(row.se_content_flags_disabled)) {
+        if (!flagSets.disabled.has(token)) return false;
+    }
+    return true;
+}
+
+async function getContentFlagSets() {
+    const now = Date.now();
+    if (_contentFlagSetsCache && now - _contentFlagSetsCacheAt < CONTENT_FLAG_CACHE_MS) {
+        return _contentFlagSetsCache;
+    }
+    const enabled = new Set();
+    const disabled = new Set();
+    try {
+        const [rows] = await pool.query('SELECT flag_name, enabled FROM content_flags');
+        for (const r of rows) {
+            const name = String(r.flag_name || '').trim();
+            if (!name) continue;
+            if (Number(r.enabled) === 1) enabled.add(name);
+            else disabled.add(name);
+        }
+    } catch (e) {
+        if (e.code !== 'ER_NO_SUCH_TABLE') {
+            console.warn('[DB] getContentFlagSets:', e.message);
+        }
+    }
+    _contentFlagSetsCache = { enabled, disabled };
+    _contentFlagSetsCacheAt = now;
+    return _contentFlagSetsCache;
+}
+
 async function getZoneSpawns(shortName) {
     await init();
 
     const query = `
         SELECT s.id as spawn2_id, s.x, s.y, s.z, s.heading, s.respawntime, s.pathgrid,
+               s.min_expansion as s_min_expansion, s.max_expansion as s_max_expansion,
+               s.content_flags as s_content_flags, s.content_flags_disabled as s_content_flags_disabled,
+               se.min_expansion as se_min_expansion, se.max_expansion as se_max_expansion,
+               se.content_flags as se_content_flags, se.content_flags_disabled as se_content_flags_disabled,
                se.chance, 
                n.id as npc_id, n.name, n.level, n.hp, n.mindmg, n.maxdmg, n.race, n.gender, n.class, n.npc_faction_id, n.prim_melee_type,
                n.size, n.texture, n.helmtexture, n.d_melee_texture1, n.d_melee_texture2, n.armtexture, n.bracertexture, n.handtexture, n.legtexture, n.feettexture,
@@ -946,7 +1041,15 @@ async function getZoneSpawns(shortName) {
     `;
 
     const [rows] = await pool.query(query, [shortName]);
-    return rows;
+
+    if (process.env.EQEMU_SPAWN_IGNORE_CONTENT_FLAGS === '1' || process.env.EQEMU_SPAWN_IGNORE_CONTENT_FLAGS === 'true') {
+        return rows;
+    }
+
+    const flagSets = await getContentFlagSets();
+    const currentExpansion = parseSpawnExpansionEnv();
+    const filtered = rows.filter((r) => passesSpawnContentFilters(r, flagSets, currentExpansion));
+    return filtered;
 }
 
 async function getZoneDoors(shortName) {
@@ -962,6 +1065,73 @@ async function getZoneDoors(shortName) {
 
     const [rows] = await pool.query(query, [shortName]);
     return rows;
+}
+
+/** RoF2 / PEQ mesh basenames → target UI label (Forge, Kiln, …). Keys lowercase, no extension. */
+const TRADESKILL_STATION_DISPLAY = Object.freeze({
+  it66: 'Forge',
+  it10801: 'Forge',
+  it69: 'Oven',
+  it10803: 'Oven',
+  it70: 'Brew Barrel',
+  it11340: 'Brew Barrel',
+  it73: 'Kiln',
+  it10804: 'Kiln',
+  it74: 'Pottery Wheel',
+  it10800: 'Pottery Wheel',
+  it128: 'Loom',
+  it10802: 'Loom',
+});
+
+function displayNameForTradeskillWorldObject(modelName) {
+  const k = String(modelName || '')
+    .trim()
+    .replace(/_actordef$/i, '')
+    .replace(/\.(glb|eqg|s3d)$/i, '')
+    .toLowerCase();
+  if (TRADESKILL_STATION_DISPLAY[k]) return TRADESKILL_STATION_DISPLAY[k];
+  const raw = String(modelName || '')
+    .trim()
+    .replace(/_ACTORDEF$/i, '')
+    .replace(/_/g, ' ')
+    .trim();
+  return raw || 'World object';
+}
+
+/**
+ * World-placed props from EQEmu `object` (crafting stations, forge/loom meshes, etc.).
+ * Many databases store the mesh id in `objectname` (e.g. IT128) with itemid=0; when itemid
+ * is set, `items.idfile` is preferred.
+ */
+async function getZoneWorldObjects(shortName) {
+    await init();
+    const sn = String(shortName || '').toLowerCase();
+    const query = `
+        SELECT o.id,
+               o.xpos AS pos_x, o.ypos AS pos_y, o.zpos AS pos_z, o.heading,
+               TRIM(REPLACE(REPLACE(REPLACE(
+                   COALESCE(NULLIF(TRIM(IFNULL(i.idfile, '')), ''), NULLIF(TRIM(IFNULL(o.objectname, '')), '')),
+                   '.eqg', ''), '.s3d', ''), '.glb', '')) AS model_name
+        FROM object o
+        INNER JOIN zone z ON z.zoneidnumber = o.zoneid
+        LEFT JOIN items i ON i.id = o.itemid AND o.itemid > 0
+        WHERE LOWER(z.short_name) = ?
+          AND TRIM(COALESCE(NULLIF(TRIM(IFNULL(i.idfile, '')), ''), NULLIF(TRIM(IFNULL(o.objectname, '')), ''))) <> ''
+          AND LOWER(TRIM(COALESCE(NULLIF(TRIM(IFNULL(i.idfile, '')), ''), NULLIF(TRIM(IFNULL(o.objectname, '')), '')))) LIKE 'it%'
+    `;
+    const [rows] = await pool.query(query, [sn]);
+    return rows
+        .map((r) => ({
+            id: r.id,
+            name: r.model_name,
+            displayName: displayNameForTradeskillWorldObject(r.model_name),
+            pos_x: r.pos_x,
+            pos_y: r.pos_y,
+            pos_z: r.pos_z,
+            heading: r.heading ?? 0,
+            size: 100,
+        }))
+        .filter((r) => r.name && String(r.name).trim().length > 0);
 }
 
 async function getZoneGrids(zoneIdNumber) {
@@ -2277,6 +2447,7 @@ async function rollForageItemId(zoneShortName, skillLevel) {
 
 module.exports = {
   init,
+  invalidateContentFlagsCache,
   getArchiveShortName,
   getLanternArchiveBase,
   LANTERN_ARCHIVE_ALIASES,
@@ -2333,6 +2504,7 @@ module.exports = {
     saveCharacterLocation,
     getZoneGrids,
     getZoneDoors,
+    getZoneWorldObjects,
     getCharacterFactionValues,
     updateCharacterFactionValue,
     getFactionCaches,

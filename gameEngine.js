@@ -906,7 +906,7 @@ function handleSetTarget(session, msg) {
 
   const mobId = targetId.startsWith('mob_') ? targetId.substring(4) : targetId;
   const zone = zoneInstances[session.char.zoneId];
-  if (!zone || !zone.liveMobs) return;
+  if (!zone) return;
 
   // Check if targeting a mining node
   if (targetId.startsWith('node_') && zone.liveNodes) {
@@ -931,6 +931,36 @@ function handleSetTarget(session, msg) {
   }
 
   session.miningTarget = null; // Clear mining target when targeting a mob
+
+  // PEQ static zone objects (crafting stations, etc.) — client uses Name `worldobj_<object.id>`
+  if (targetId.startsWith('worldobj_') && zone.worldObjects && zone.worldObjects.length) {
+    const oidStr = targetId.substring('worldobj_'.length);
+    const oidNum = parseInt(oidStr, 10);
+    const wo = zone.worldObjects.find(
+      (o) => o.id === oidNum || String(o.id) === oidStr,
+    );
+    if (wo) {
+      session.combatTarget = null;
+      const label =
+        (wo.displayName && String(wo.displayName).trim()) ||
+        (wo.name && String(wo.name).trim()) ||
+        'World object';
+      send(session.ws, {
+        type: 'TARGET_UPDATE',
+        target: {
+          id: targetId,
+          name: label,
+          hp: 1,
+          maxHp: 1,
+          level: 0,
+          type: 'world_object',
+          buffs: [],
+        },
+      });
+      sendStatus(session);
+      return;
+    }
+  }
 
   // Check if targeting a player or bot
   if (targetId.startsWith('player_')) {
@@ -966,7 +996,7 @@ function handleSetTarget(session, msg) {
     }
   }
 
-  let mob = zone.liveMobs.find(m => m.id === mobId || m.id === targetId);
+  let mob = (zone.liveMobs || []).find((m) => m.id === mobId || m.id === targetId);
   if (mob) {
     // Always update target, even during combat, so auto-attack switches
     session.combatTarget = mob;
@@ -4644,7 +4674,8 @@ function handleLook(session, forceSync = false) {
     isDelta: !forceSync,
     entities: forceSync ? entities : deltaEntities, 
     removed: forceSync ? [] : removedEntityIds,
-    doors: instance ? (instance.doors || []) : [], 
+    doors: instance ? (instance.doors || []) : [],
+    worldObjects: instance ? (instance.worldObjects || []) : [],
     ambience: ambienceTrack, 
     vision: {
     renderStyle: vision.renderStyle,

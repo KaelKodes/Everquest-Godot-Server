@@ -44,7 +44,7 @@ async function initZones(requestedZones = null) {
 
     zoneInstances[zoneKey] = {
       def: zoneDef, liveMobs: [], spawnPointState: [], liveNodes: [], nodeSpawnState: [],
-      weather: Calendar.createZoneWeather(zoneDef.climate || 'temperate'), grids: {}, doors: [], doorStates: {}
+      weather: Calendar.createZoneWeather(zoneDef.climate || 'temperate'), grids: {}, doors: [], doorStates: {}, worldObjects: []
     };
     // Load persistent corpses (player corpses) for this zone
     try {
@@ -91,7 +91,7 @@ async function ensureZoneLoaded(zoneKey, spawnMobFn, spawnMiningNodesFn, spawnMi
 
   zoneInstances[zoneKey] = {
     def: zoneDef, liveMobs: [], spawnPointState: [], liveNodes: [], nodeSpawnState: [],
-    weather: Calendar.createZoneWeather(zoneClimate), grids: {}, doors: [], doorStates: {}
+    weather: Calendar.createZoneWeather(zoneClimate), grids: {}, doors: [], doorStates: {}, worldObjects: []
   };
 
   // Load persistent corpses for this zone
@@ -170,6 +170,16 @@ async function ensureZoneLoaded(zoneKey, spawnMobFn, spawnMiningNodesFn, spawnMi
   try {
     zoneInstances[zoneKey].doors = await eqemuDB.getZoneDoors(zoneDef.shortName || zoneKey);
   } catch (e) {}
+
+  try {
+    zoneInstances[zoneKey].worldObjects = await eqemuDB.getZoneWorldObjects(zoneDef.shortName || zoneKey);
+    if (zoneInstances[zoneKey].worldObjects.length > 0) {
+      console.log(`[ZONE] ${zoneKey}: loaded ${zoneInstances[zoneKey].worldObjects.length} PEQ world object(s) (stations / placeables).`);
+    }
+  } catch (e) {
+    console.error(`[ZONE] worldObjects load for '${zoneKey}':`, e.message);
+    zoneInstances[zoneKey].worldObjects = [];
+  }
 
   spawnMiningNodesFn(zoneKey);
   spawnMiningNPCsFn(zoneKey, spawnMobFn);

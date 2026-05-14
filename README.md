@@ -139,4 +139,4 @@ The Godot client’s default WebSocket URL is **`ws://localhost:3005`** (login).
 
 ## Legal
 
-EverQuest is a trademark of Daybreak Game Company LLC. EQMUD is a non-commercial fan project; bring your own legally obtained game assets on the client.
+EverQuest is a trademark of Daybreak Game Company LLC. EQ.gd is a non-commercial fan project; bring your own legally obtained game assets on the client.

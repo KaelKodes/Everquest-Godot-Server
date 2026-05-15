@@ -208,6 +208,22 @@ async function createSession(ws, char, auth = null) {
     char.learningFatigue = 0;
   }
 
+  // Characters without a PEQ character_bind row used to respawn at (0,0,0) in-zone ("bind trap" death loop).
+  if (char.id && !char.id.toString().startsWith('bot_') && char.hasBindPoint !== true) {
+    char.bindZoneId = char.zoneId;
+    char.bindX = char.x;
+    char.bindY = char.y;
+    char.bindZ = char.z;
+    char.bindHeading = char.heading || 0;
+    char.hasBindPoint = true;
+    try {
+      await DB.updateCharacterBind(char);
+      console.log(`[ENGINE] Seeded initial soul bind for ${char.name} in ${char.zoneId}`);
+    } catch (e) {
+      console.warn(`[ENGINE] Could not seed bind for ${char.name}:`, e.message);
+    }
+  }
+
   const session = {
     ws,
     char,
@@ -4595,7 +4611,8 @@ function startGameLoop() {
       breakMez: SpellSystem.breakMez,
       broadcastTargetUpdate: broadcastTargetUpdate,
       handleTrainSkill: (session, skill) => StatsSystem.handleTrainSkill(session, skill),
-      handlePlayerDeath: (session, events) => CombatSystem.handlePlayerDeath(session, events || [])
+      handlePlayerDeath: (session, events) => CombatSystem.handlePlayerDeath(session, events || []),
+      isRespawnProtected: (session) => CombatSystem.isRespawnProtected(session)
     };
 
     for (const zoneId of Object.keys(zoneInstances)) {
@@ -5760,7 +5777,17 @@ async function handleWho(session, msg) {
 
 function handleTime(session) {
   const cal = State.worldCalendar;
-  sendCombatLog(session, [{ event: 'MESSAGE', text: `It is ${cal.hour}:${cal.minute.toString().padStart(2, '0')}, Day ${cal.day} of ${cal.month}, Year ${cal.year}.` }]);
+  if (!cal) {
+    sendCombatLog(session, [{ event: 'MESSAGE', text: 'World time is not available.' }]);
+    return;
+  }
+  const daylight = Calendar.getDaylightHours(cal.month);
+  const monthName = Calendar.getMonth(cal.month).name;
+  const timeStr = Calendar.formatTime(cal.hour ?? 0);
+  sendCombatLog(session, [{
+    event: 'MESSAGE',
+    text: `It is ${timeStr} (hour ${cal.hour}), ${Calendar.getDayOfWeek(cal.totalDays)}, Day ${cal.day} of ${monthName}, Year ${cal.year}. Dawn ${daylight.dawn}:00, dusk ${daylight.dusk}:00.`
+  }]);
 }
 
 function clampDieSides(raw, fallback) {

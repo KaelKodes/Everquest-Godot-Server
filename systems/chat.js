@@ -293,11 +293,17 @@ async function handleSay(session, msg) {
     // Bind keyword check
     if (target.npcType === NPC_TYPES.BIND && text.toLowerCase() === 'bind') {
       sendCombatLog(session, [{ event: 'MESSAGE', text: `${target.name} begins to cast a spell.` }]);
-      sendCombatLog(session, [{ event: 'MESSAGE', text: `You feel your soul bound to this location.` }]);
+      session.char.bindZoneId = session.char.zoneId;
+      session.char.bindX = session.char.x;
+      session.char.bindY = session.char.y;
+      session.char.bindZ = session.char.z;
+      session.char.bindHeading = session.char.heading || 0;
+      session.char.hasBindPoint = true;
       const DB = require('../db');
-      DB.updateCharacterBind(session.char.id, session.char.zoneId, session.char.x, session.char.y, session.char.z).catch(err => {
+      DB.updateCharacterBind(session.char).catch(err => {
         console.error(`[CHAT] Failed to update bind point for ${char.name}:`, err);
       });
+      sendCombatLog(session, [{ event: 'MESSAGE', text: `You feel your soul bound to this location.` }]);
       return;
     }
   }

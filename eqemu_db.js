@@ -585,6 +585,7 @@ async function mapCharacterDataRow(char) {
             : null
     };
 
+    result.hasBindPoint = false;
     try {
         const [bindRows] = await pool.query('SELECT zone_id, x, y, z, heading FROM character_bind WHERE id = ? AND slot = 0', [result.id]);
         if (bindRows.length > 0) {
@@ -594,6 +595,7 @@ async function mapCharacterDataRow(char) {
             result.bindY = b.y;
             result.bindZ = b.z;
             result.bindHeading = b.heading;
+            result.hasBindPoint = true;
         }
     } catch (bindErr) {
         console.warn(`[DB] Could not load bind point for ${result.name}:`, bindErr.message);

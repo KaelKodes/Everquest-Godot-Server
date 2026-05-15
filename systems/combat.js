@@ -30,6 +30,66 @@ function setDependencies(deps) {
   init(deps);
 }
 
+/** True while death respawn is pending or grace period after respawn (prevents bind-death loops). */
+function isRespawnProtected(session) {
+  if (!session) return false;
+  if (session._respawnTimer) return true;
+  if (session.respawnInvulnUntil && Date.now() < session.respawnInvulnUntil) return true;
+  return false;
+}
+
+/**
+ * Resolve where a dead player should respawn. Without a PEQ character_bind row, old code used
+ * (0,0,0) in the death zone — players called this the "bind trap" death loop.
+ */
+async function resolveRespawnLocation(char) {
+  const eqemuDB = require('../eqemu_db');
+  const hasDbBind = char.hasBindPoint === true;
+  const bindZoneRaw = char.bindZoneId;
+  const bindCoordsValid = hasDbBind &&
+    bindZoneRaw != null && bindZoneRaw !== '' &&
+    Number.isFinite(Number(char.bindX)) &&
+    Number.isFinite(Number(char.bindY)) &&
+    Number.isFinite(Number(char.bindZ));
+
+  if (bindCoordsValid) {
+    return {
+      zoneId: eqemuDB.getArchiveShortName(bindZoneRaw),
+      x: char.bindX,
+      y: char.bindY,
+      z: char.bindZ,
+      heading: char.bindHeading || 0,
+      viaSuccor: false
+    };
+  }
+
+  const fallbackZone = eqemuDB.getArchiveShortName(bindZoneRaw || char.zoneId);
+  const succor = await eqemuDB.getZoneSuccorCoords(fallbackZone);
+  if (succor) {
+    console.log(
+      `[COMBAT] ${char.name} has no soul bind — respawn at ${fallbackZone} succor (${succor.safe_x}, ${succor.safe_y}, ${succor.safe_z})`
+    );
+    return {
+      zoneId: fallbackZone,
+      x: succor.safe_x,
+      y: succor.safe_y,
+      z: succor.safe_z,
+      heading: char.bindHeading || 0,
+      viaSuccor: true
+    };
+  }
+
+  console.warn(`[COMBAT] ${char.name} has no bind and no succor for '${fallbackZone}' — using last position`);
+  return {
+    zoneId: fallbackZone,
+    x: char.x || 0,
+    y: char.y || 0,
+    z: char.z != null ? char.z : 5,
+    heading: char.heading || 0,
+    viaSuccor: true
+  };
+}
+
 async function handleMobDeath(session, mob, events) {
   events.push({ event: 'DEATH', who: mob.name });
 
@@ -552,6 +612,7 @@ module.exports = {
   processCombatTick,
   handleMobDeath,
   handlePlayerDeath,
+  isRespawnProtected,
   canInteract,
   awardExp
 };
@@ -719,11 +780,12 @@ async function handlePlayerDeath(session, events) {
   session._respawnTimer = setTimeout(async () => {
     session._respawnTimer = null;
 
-    const bindZoneId = db.getArchiveShortName(session.char.bindZoneId || session.char.zoneId);
-    const bindX = session.char.bindX || 0;
-    const bindY = session.char.bindY || 0;
-    const bindZ = session.char.bindZ || 0;
-    const bindHeading = session.char.bindHeading || 0;
+    const respawn = await resolveRespawnLocation(session.char);
+    const bindZoneId = respawn.zoneId;
+    const bindX = respawn.x;
+    const bindY = respawn.y;
+    const bindZ = respawn.z;
+    const bindHeading = respawn.heading;
 
     // Inventory was cleared at death — recompute max HP/mana for naked respawn before persisting
     session.effectiveStats = calcEffectiveStats(session.char, session.inventory, session.buffs || []);
@@ -792,7 +854,29 @@ async function handlePlayerDeath(session, events) {
 
     // Client only reloads geometry + teleports when STATUS includes spawnPos (see sendStatus → pendingTeleport).
     session.pendingTeleport = { x: bindX, y: bindY, z: bindZ };
+    // Grace period: no fall damage / melee deaths at bad coords while client snaps to succor
+    const RESPAWN_GRACE_MS = 10000;
+    session.respawnInvulnUntil = Date.now() + RESPAWN_GRACE_MS;
+    session.loginFreeze = Date.now() + RESPAWN_GRACE_MS;
+
     sendFullState(session, { forceZoneSync: true });
-    sendCombatLog(session, [{ event: 'MESSAGE', text: 'You have respawned at your bind point.' }]);
+    if (respawn.viaSuccor) {
+      sendCombatLog(session, [{
+        event: 'MESSAGE',
+        text: 'You had no soul bind. The spirits deliver you to a safer place in the zone.'
+      }]);
+      // Establish a bind at succor so the loop cannot repeat
+      session.char.bindZoneId = bindZoneId;
+      session.char.bindX = bindX;
+      session.char.bindY = bindY;
+      session.char.bindZ = bindZ;
+      session.char.bindHeading = bindHeading;
+      session.char.hasBindPoint = true;
+      if (db && db.updateCharacterBind) {
+        try { await db.updateCharacterBind(session.char); } catch (_) {}
+      }
+    } else {
+      sendCombatLog(session, [{ event: 'MESSAGE', text: 'You have respawned at your bind point.' }]);
+    }
   }, DEATH_ANIM_MS);
 }

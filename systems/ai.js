@@ -550,8 +550,10 @@ function processMobAI(zone, zoneId, dt, api) {
                 }
               }
 
-              if (dmgRoll > 0) {
+              if (dmgRoll > 0 && !(api.isRespawnProtected && api.isRespawnProtected(session))) {
                 session.char.hp -= dmgRoll;
+              } else if (dmgRoll > 0) {
+                dmgRoll = 0;
               }
               const attackText = combat.getMobAttackText(mob);
               events.push({ event: 'MELEE_HIT', sourceId: `mob_${mob.id}`, targetId: `player_${session.char.id}`, source: mob.name, target: 'You', damage: dmgRoll, text: attackText, type: 'slash' });

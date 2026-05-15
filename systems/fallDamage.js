@@ -58,6 +58,7 @@ const COOLDOWN_MS = 850;
 async function handleFallImpact(session, msg) {
   if (!session || !session.char) return;
   if (session.char.state === 'dead') return;
+  if (CombatSystem.isRespawnProtected(session)) return;
   if (session.loginFreeze && Date.now() < session.loginFreeze) return;
 
   const now = Date.now();

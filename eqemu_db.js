@@ -2445,6 +2445,101 @@ async function rollForageItemId(zoneShortName, skillLevel) {
   }
 }
 
+// ── Tradeskill Queries ──────────────────────────────────────────────
+
+async function getRecipesByTradeskill(tradeskillId) {
+  await init();
+  try {
+    const [rows] = await pool.query(
+      `SELECT r.*, re.item_id, re.successcount, re.failcount, re.componentcount, re.iscontainer
+             FROM tradeskill_recipe r
+             JOIN tradeskill_recipe_entries re ON r.id = re.recipe_id
+             WHERE r.tradeskill = ? AND r.enabled = 1`,
+      [tradeskillId]
+    );
+
+    const recipes = new Map();
+    for (const row of rows) {
+      if (!recipes.has(row.id)) {
+        recipes.set(row.id, {
+          id: row.id,
+          name: row.name,
+          tradeskill: row.tradeskill,
+          skillneeded: row.skillneeded,
+          trivial: row.trivial,
+          nofail: row.nofail,
+          must_learn: row.must_learn,
+          enabled: row.enabled,
+          components: [],
+          successResults: [],
+          failResults: []
+        });
+      }
+      const recipe = recipes.get(row.id);
+      const entry = {
+        itemId: row.item_id,
+        successCount: row.successcount,
+        failCount: row.failcount,
+        componentCount: row.componentcount,
+        isContainer: row.iscontainer
+      };
+
+      if (row.iscontainer === 1) {
+        recipe.containerId = row.item_id;
+      } else if (row.componentcount > 0) {
+        recipe.components.push(entry);
+      }
+
+      if (row.successcount > 0) {
+        recipe.successResults.push(entry);
+      }
+      if (row.failcount > 0) {
+        recipe.failResults.push(entry);
+      }
+    }
+    return Array.from(recipes.values());
+  } catch (e) {
+    console.error('[DB] getRecipesByTradeskill Error:', e.message);
+    return [];
+  }
+}
+
+async function getRecipeEntries(recipeId) {
+  await init();
+  try {
+    const [rows] = await pool.query('SELECT * FROM tradeskill_recipe_entries WHERE recipe_id = ?', [recipeId]);
+    return rows;
+  } catch (e) {
+    console.error('[DB] getRecipeEntries Error:', e.message);
+    return [];
+  }
+}
+
+async function getLearnedRecipes(characterId) {
+    await init();
+    try {
+        const [rows] = await pool.query('SELECT recipe_id, madecount FROM char_recipe_list WHERE char_id = ?', [characterId]);
+        return rows;
+    } catch (e) {
+        console.error('[DB] getLearnedRecipes Error:', e.message);
+        return [];
+    }
+}
+
+async function addLearnedRecipe(characterId, recipeId) {
+    await init();
+    try {
+        await pool.query(
+            `INSERT INTO char_recipe_list (char_id, recipe_id, madecount)
+             VALUES (?, ?, 1)
+             ON DUPLICATE KEY UPDATE madecount = madecount + 1`,
+            [characterId, recipeId]
+        );
+    } catch (e) {
+        console.error('[DB] addLearnedRecipe Error:', e.message);
+    }
+}
+
 module.exports = {
   init,
   invalidateContentFlagsCache,
@@ -2522,7 +2617,11 @@ module.exports = {
     getCharacterBuffs,
     saveCharacterBuffs,
     rollLootFromTable,
-    rollForageItemId
+    rollForageItemId,
+    getRecipesByTradeskill,
+    getRecipeEntries,
+    getLearnedRecipes,
+    addLearnedRecipe
   };
 
 

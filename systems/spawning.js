@@ -92,7 +92,13 @@ function processRespawns(zoneId, TICK_RATE) {
   for (const spawn of zone.spawnPointState) {
     const alive = zone.liveMobs.some(m => m.id === spawn.currentMobId);
     if (!alive) {
-      if (spawn.respawnTimer === 0) spawn.respawnTimer = Math.max(spawn.respawnTime || 420, 60);
+      if (spawn.respawnTimer === 0) {
+        // Apply ±20% fuzzy jitter so respawns feel organic, not clockwork.
+        // This variance means no two server boots produce the exact same NPC layout timing.
+        const base = Math.max(spawn.respawnTime || 420, 60);
+        const jitter = base * (0.8 + Math.random() * 0.4); // 80% to 120% of base
+        spawn.respawnTimer = jitter;
+      }
       spawn.respawnTimer -= TICK_RATE / 1000;
       if (spawn.respawnTimer <= 0) {
         let mobDef = spawn.mobDef;

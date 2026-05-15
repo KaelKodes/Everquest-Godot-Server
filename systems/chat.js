@@ -411,8 +411,8 @@ function handleYell(session, msg) {
   }
 }
 
-// ── /whisper — global private message ───────────────────────────────
-function handleWhisper(session, msg) {
+// ── /whisper — global private message (cross-node via broker) ───────
+async function handleWhisper(session, msg) {
   const char = session.char;
   const targetName = (msg.target || '').trim();
   const text = (msg.text || '').trim();
@@ -421,28 +421,44 @@ function handleWhisper(session, msg) {
     return;
   }
 
-  // Find target player across all zones
+  // 1. Check local sessions first (same node — zero latency)
   let targetSession = null;
   for (const [ws, other] of sessions) {
-    if (other.char.name.toLowerCase() === targetName.toLowerCase()) {
+    if (other.char && other.char.name.toLowerCase() === targetName.toLowerCase()) {
       targetSession = other;
       break;
     }
   }
 
-  if (!targetSession) {
+  if (targetSession) {
+    // Local delivery
+    send(targetSession.ws, { type: 'CHAT', channel: 'whisper', sender: char.name, text: text, direction: 'from' });
+    send(session.ws, { type: 'CHAT', channel: 'whisper', sender: targetName, text: text, direction: 'to' });
+
+    if (targetSession.isBot && targetSession.char && targetSession.char.ownerId === char.id) {
+      tryOrderStudentsAssist(session, text);
+    }
+    return;
+  }
+
+  // 2. Cross-node: check the global player registry
+  const broker = require('../network/broker');
+  const remotePlayer = await broker.findPlayer(targetName);
+
+  if (!remotePlayer) {
     send(session.ws, { type: 'CHAT', channel: 'system', sender: '', text: `${targetName} is not online.` });
     return;
   }
 
-  // Send to recipient
-  send(targetSession.ws, { type: 'CHAT', channel: 'whisper', sender: char.name, text: text, direction: 'from' });
-  // Echo to sender
-  send(session.ws, { type: 'CHAT', channel: 'whisper', sender: targetName, text: text, direction: 'to' });
+  // Publish the whisper to the broker for the target node to pick up
+  await broker.publish('cross_node_whisper', {
+    targetName: remotePlayer.name,
+    senderName: char.name,
+    text: text,
+  });
 
-  if (targetSession.isBot && targetSession.char && targetSession.char.ownerId === char.id) {
-    tryOrderStudentsAssist(session, text);
-  }
+  // Echo to sender immediately
+  send(session.ws, { type: 'CHAT', channel: 'whisper', sender: remotePlayer.name, text: text, direction: 'to' });
 }
 
 // ── /group — broadcast to party ────────────────────────────────────
@@ -497,7 +513,7 @@ function handleRaid(session, msg) {
 }
 
 // ── /announcement — admin-only global broadcast (no spam guard; use for bulk GM text) ──
-function handleAnnouncement(session, msg) {
+async function handleAnnouncement(session, msg) {
   const text = (msg.text || '').trim();
   if (!text) return;
 
@@ -508,10 +524,17 @@ function handleAnnouncement(session, msg) {
     return;
   }
 
-  // Broadcast to ALL connected players
+  // Broadcast to ALL connected players on THIS node
   for (const [ws, other] of sessions) {
     send(other.ws, { type: 'CHAT', channel: 'announcement', sender: session.char.name, text: text });
   }
+
+  // Also publish to broker so other nodes receive it
+  const broker = require('../network/broker');
+  await broker.publish('cross_node_announcement', {
+    senderName: session.char.name,
+    text: text,
+  });
 }
 
 

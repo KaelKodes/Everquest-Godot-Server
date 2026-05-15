@@ -100,7 +100,8 @@ async function ensureZoneLoaded(zoneKey, spawnMobFn, spawnMiningNodesFn, spawnMi
 
   zoneInstances[zoneKey] = {
     def: zoneDef, liveMobs: [], spawnPointState: [], liveNodes: [], nodeSpawnState: [],
-    weather: Calendar.createZoneWeather(zoneClimate), grids: {}, doors: [], doorStates: {}, worldObjects: []
+    weather: Calendar.createZoneWeather(zoneClimate), grids: {}, doors: [], doorStates: {}, worldObjects: [],
+    _lastPlayerPresence: Date.now(), // Mark load time so idle sweep doesn't immediately unload
   };
 
   // Load persistent corpses for this zone
@@ -242,9 +243,45 @@ async function ensureZoneLoaded(zoneKey, spawnMobFn, spawnMiningNodesFn, spawnMi
   }
 }
 
+/**
+ * Unload a zone from memory — called when a zone has been empty for
+ * a configurable idle period. Frees all NPC state, grids, doors, and
+ * world objects. The zone will be re-loaded via ensureZoneLoaded()
+ * the next time a player enters it.
+ */
+function unloadZone(zoneKey) {
+  if (!zoneKey) return false;
+  zoneKey = zoneKey.toLowerCase();
+
+  const instance = zoneInstances[zoneKey];
+  if (!instance) return false;
+
+  // Count how many mobs/spawns we're freeing for the log line
+  const mobCount = instance.liveMobs ? instance.liveMobs.length : 0;
+  const spawnCount = instance.spawnPointState ? instance.spawnPointState.length : 0;
+
+  // Clear all dynamic state
+  if (instance.liveMobs) instance.liveMobs.length = 0;
+  if (instance.spawnPointState) instance.spawnPointState.length = 0;
+  if (instance.liveNodes) instance.liveNodes.length = 0;
+  if (instance.nodeSpawnState) instance.nodeSpawnState.length = 0;
+  if (instance.corpses) instance.corpses.length = 0;
+  if (instance.doors) instance.doors.length = 0;
+  if (instance.worldObjects) instance.worldObjects.length = 0;
+  instance.grids = {};
+  instance.doorStates = {};
+
+  // Remove the instance entirely so ensureZoneLoaded triggers a fresh load
+  delete zoneInstances[zoneKey];
+
+  console.log(`[ZONE] Unloaded '${zoneKey}' (freed ${mobCount} mobs, ${spawnCount} spawn points).`);
+  return true;
+}
+
 module.exports = {
   resolveZoneKey,
   getZoneDef,
   initZones,
   ensureZoneLoaded,
+  unloadZone,
 };

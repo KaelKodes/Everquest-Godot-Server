@@ -17,6 +17,35 @@ async function main() {
   await engine.bootstrapServer();
   await broker.init();
 
+  // ── Cross-node message handlers ──────────────────────────────────
+  // When another node publishes a whisper, deliver it to the local target.
+  broker.subscribe('cross_node_whisper', (data) => {
+    if (!data || !data.targetName) return;
+    const targetLower = data.targetName.toLowerCase();
+    for (const [, s] of State.sessions) {
+      if (s.char && s.char.name.toLowerCase() === targetLower) {
+        s.ws.send(JSON.stringify({
+          type: 'CHAT', channel: 'whisper',
+          sender: data.senderName, text: data.text, direction: 'from'
+        }));
+        return;
+      }
+    }
+  });
+
+  // Cross-node announcements (GM broadcast to all nodes)
+  broker.subscribe('cross_node_announcement', (data) => {
+    if (!data || !data.text) return;
+    for (const [, s] of State.sessions) {
+      if (s.char && s.ws.readyState === 1) {
+        s.ws.send(JSON.stringify({
+          type: 'CHAT', channel: 'announcement',
+          sender: data.senderName || 'System', text: data.text
+        }));
+      }
+    }
+  });
+
   // Don't pre-initialize zones in cluster mode; load on-demand.
   await engine.initZones([]);
   engine.startGameLoop();

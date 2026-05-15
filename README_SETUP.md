@@ -46,6 +46,10 @@ Bring up MariaDB (PEQ-style data) and Redis. Confirm credentials with a MySQL cl
 
 ### 2. Install and run
 
+> **Tip:** You can now use the **[EQ.gd Launcher](https://github.com/KaelKodes/Everquest-Godot-Launcher/releases/latest)** to automatically download and unpack the latest server release! Just toggle the launcher into "Server" mode (password-protected).
+> If you are installing from source or prefer the manual route, follow the steps below:
+
+
 ```bash
 cp .env.example .env
 # Edit .env: set EQEMU_PASSWORD and any host/port overrides

@@ -9,6 +9,7 @@ const NPC_TYPES = {
   TRAINER:   'trainer',    // Trainer — class skill training
   BIND:      'bind',       // Bind Point — soul binding (placeholder)
   BANK:      'bank',       // Banker — item/coin storage
+  STATION:   'station',    // Crafting Station — oven, forge, etc.
 };
 
 // Interaction range for non-combat NPCs (world X/Y units, same plane as getDistanceSq).

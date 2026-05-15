@@ -39,6 +39,8 @@ const InventorySystem = require('./systems/inventory');
 const GroupManager = require('./systems/groups');
 
 const MovementSystem = require('./systems/movement');
+const FollowSystem = require('./systems/follow');
+const TradeskillSystem = require('./systems/tradeskill');
 const FallDamageSystem = require('./systems/fallDamage');
 const StatsSystem = require('./systems/stats');
 const OocRegen = require('./systems/oocRegen');
@@ -53,6 +55,10 @@ const { mapEqemuClassToNpcType, GUILD_MASTER_CLASS } = require('./utils/npcUtils
 const { INV_CLASSES, INV_RACES } = require('./data/constants');
 
 const QuestManager = require('./questManager');
+const broker = require('./network/broker');
+
+// Identify which cluster node this engine instance belongs to (set by master.js)
+const NODE = process.env.NODE || 'unknown';
 
 // Precise zone line trigger data extracted from EQ S3D client files (BSP regions)
 let ZONE_TRIGGERS = {};
@@ -249,6 +255,19 @@ async function createSession(ws, char, auth = null) {
     session.pendingTeleport = { x: char.x, y: char.y, z: char.z || 0 };
   }
 
+  // Register in global player directory (Redis or local fallback)
+  if (!session.isBot) {
+    broker.registerPlayer(char.name, {
+      name: char.name,
+      level: char.level,
+      class: char.class,
+      race: char.race,
+      zoneId: char.zoneId,
+      node: NODE,
+      charId: char.id,
+    }).catch(e => console.error('[ENGINE] registerPlayer error:', e.message));
+  }
+
   return session;
 }
 
@@ -390,6 +409,12 @@ function removeSession(ws) {
       }
     }
     
+    // Unregister from global player directory
+    if (!session.isBot && session.char && session.char.name) {
+      broker.unregisterPlayer(session.char.name)
+        .catch(e => console.error('[ENGINE] unregisterPlayer error:', e.message));
+    }
+
     sessions.delete(ws);
   }
   authSessions.delete(ws);
@@ -554,10 +579,12 @@ async function handleMessage(ws, msg) {
     case 'SET_VISION_MODE': return handleSetVisionMode(session, msg);
     case 'SUCCOR': return await MovementSystem.handleSuccor(session);
     case 'DOOR_CLICK': return handleDoorClick(session, msg);
-    case 'WHO': return handleWho(session);
+    case 'WHO': return handleWho(session, msg);
     case 'TIME': return handleTime(session);
     case 'ROLL': return handleRoll(session, msg);
     case 'RANDOM': return handleRandom(session, msg);
+    case 'TRADESKILL_OPEN_STATION': return TradeskillSystem.handleOpenStation(session, msg);
+    case 'TRADESKILL_COMBINE': return TradeskillSystem.handleCombine(session, msg);
     // ── Chat Channels ──
     case 'SHOUT': return ChatSystem.handleShout(session, msg);
     case 'OOC': return ChatSystem.handleOOC(session, msg);
@@ -4397,6 +4424,10 @@ function startGameLoop() {
 
     for (const [ws, session] of sessions) {
       try {
+        if (session.char && !session.isBot) {
+          FollowSystem.updateBreadcrumbs(session);
+          FollowSystem.processFollowTick(session, dt);
+        }
         // --- Heartbeat PING (15s) ---
         if (tickCount % 75 === 0) { // 75 ticks * 200ms = 15s
           send(ws, { type: 'PING' });
@@ -4568,9 +4599,35 @@ function startGameLoop() {
     };
 
     for (const zoneId of Object.keys(zoneInstances)) {
-      AISystem.processMobAI(zoneInstances[zoneId], zoneId, dt, aiApi);
+      const zoneHasPlayers = getPopulation(zoneId) > 0;
+
+      if (zoneHasPlayers) {
+        // Zone is active — run full AI, respawns, mining
+        AISystem.processMobAI(zoneInstances[zoneId], zoneId, dt, aiApi);
+        MiningSystem.processMiningRespawns(zoneId, dt);
+        // Mark zone as recently active
+        zoneInstances[zoneId]._lastPlayerPresence = Date.now();
+      }
+
+      // Respawns always run (even idle) so mobs are ready when players return
       SpawningSystem.processRespawns(zoneId, TICK_RATE);
-      MiningSystem.processMiningRespawns(zoneId, dt);
+    }
+
+    // ── Zone Unloading Sweep (every ~60s) ──────────────────────────
+    // Unload zones that have been empty for ZONE_IDLE_UNLOAD_MS.
+    // This frees RAM and CPU for zones nobody is using.
+    const ZONE_IDLE_UNLOAD_MS = 5 * 60 * 1000; // 5 minutes
+    if (tickCount % 300 === 0) { // Every 300 ticks = ~60s
+      const now = Date.now();
+      for (const zoneId of Object.keys(zoneInstances)) {
+        const inst = zoneInstances[zoneId];
+        if (!inst) continue;
+        const lastPresence = inst._lastPlayerPresence || 0;
+        const pop = getPopulation(zoneId);
+        if (pop === 0 && lastPresence > 0 && (now - lastPresence) > ZONE_IDLE_UNLOAD_MS) {
+          ZoneSystem.unloadZone(zoneId);
+        }
+      }
     }
 
     // Process mining cooldowns
@@ -5464,6 +5521,16 @@ async function handleServerCommand(session, msg) {
     sendCombatLog(session, [{ event: 'MESSAGE', text: '[color=red]Not logged in.[/color]' }]);
     return;
   }
+
+  const cmd = (msg.command || '').toLowerCase();
+  const args = (msg.args || '').trim().split(' ');
+
+  // Standard player commands that should not require GM status
+  if (cmd === '/follow') {
+    FollowSystem.handleFollow(session, msg);
+    return;
+  }
+
   const st = auth.status ?? 0;
   if (!isAccountGm(st)) {
     const need = gmAccountStatusMin();
@@ -5473,9 +5540,6 @@ async function handleServerCommand(session, msg) {
     }]);
     return;
   }
-
-  const cmd = (msg.command || '').toLowerCase();
-  const args = (msg.args || '').trim().split(' ');
 
   switch (cmd) {
     case '/summon': {
@@ -5651,19 +5715,47 @@ async function handleManualLogin(ws, data) {
   sendFullState(session);
 }
 
-function handleWho(session) {
-  const zoneId = session.char.zoneId;
-  const players = [];
-  for (const [, s] of sessions) {
-    if (s.char && s.char.zoneId === zoneId && !s.isBot) {
-      players.push(`[${s.char.level} ${s.char.class}] ${s.char.name} (${s.char.race})`);
+async function handleWho(session, msg) {
+  const isAll = msg && msg.all;
+
+  if (isAll) {
+    // /who all — query the global player registry across all nodes
+    try {
+      const allPlayers = await broker.getAllPlayers();
+      sendCombatLog(session, [{ event: 'MESSAGE', text: `Players in EverQuest:` }]);
+      for (const p of allPlayers) {
+        sendCombatLog(session, [{ event: 'MESSAGE', text: `[${p.level} ${p.class}] ${p.name} (${p.race}) — ${p.zoneId}` }]);
+      }
+      sendCombatLog(session, [{ event: 'MESSAGE', text: `There are ${allPlayers.length} players in EverQuest.` }]);
+    } catch (e) {
+      // Fallback to local sessions if Redis is down
+      const players = [];
+      for (const [, s] of sessions) {
+        if (s.char && !s.isBot) {
+          players.push(`[${s.char.level} ${s.char.class}] ${s.char.name} (${s.char.race}) — ${s.char.zoneId}`);
+        }
+      }
+      sendCombatLog(session, [{ event: 'MESSAGE', text: `Players in EverQuest:` }]);
+      for (const p of players) {
+        sendCombatLog(session, [{ event: 'MESSAGE', text: p }]);
+      }
+      sendCombatLog(session, [{ event: 'MESSAGE', text: `There are ${players.length} players in EverQuest.` }]);
     }
+  } else {
+    // /who — zone-local (same behavior as classic EQ)
+    const zoneId = session.char.zoneId;
+    const players = [];
+    for (const [, s] of sessions) {
+      if (s.char && s.char.zoneId === zoneId && !s.isBot) {
+        players.push(`[${s.char.level} ${s.char.class}] ${s.char.name} (${s.char.race})`);
+      }
+    }
+    sendCombatLog(session, [{ event: 'MESSAGE', text: `Players in ${zoneId}:` }]);
+    for (const p of players) {
+      sendCombatLog(session, [{ event: 'MESSAGE', text: p }]);
+    }
+    sendCombatLog(session, [{ event: 'MESSAGE', text: `There are ${players.length} players in ${zoneId}.` }]);
   }
-  sendCombatLog(session, [{ event: 'MESSAGE', text: `Players in ${zoneId}:` }]);
-  for (const p of players) {
-    sendCombatLog(session, [{ event: 'MESSAGE', text: p }]);
-  }
-  sendCombatLog(session, [{ event: 'MESSAGE', text: `There are ${players.length} players in ${zoneId}.` }]);
 }
 
 function handleTime(session) {
@@ -5748,7 +5840,10 @@ async function bootstrapServer() {
     broadcastTargetUpdate: broadcastTargetUpdate,
     handleStand: handleStand,
     broadcastToZone: broadcastToZone,
-    getEquipVisuals: getEquipVisuals
+    getEquipVisuals: getEquipVisuals,
+    broadcastEntityState: broadcastEntityState,
+    FollowSystem: FollowSystem,
+    TradeskillSystem: TradeskillSystem
   };
 
   // 2. Initialize Core Systems
@@ -5756,11 +5851,14 @@ async function bootstrapServer() {
   SpellSystem.init(deps);
   StatsSystem.init(deps);
   InventorySystem.init(deps);
+  InventorySystem.handleTradeskillFn = TradeskillSystem.handleOpenStation;
   MiningSystem.init(deps);
   
   // 3. Initialize Utility Systems
   ChatSystem.init(deps);
   MovementSystem.init(deps);
+  FollowSystem.init(deps);
+  TradeskillSystem.init(deps);
   FallDamageSystem.init({
     sendCombatLog,
     sendStatus,

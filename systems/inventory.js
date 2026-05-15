@@ -1316,10 +1316,21 @@ async function handleRightClick(session, msg) {
       send(session.ws, { type: 'OPEN_BANK', npcId: target.id });
       break;
     }
+
+    case NPC_TYPES.STATION: {
+      if (module.exports.handleTradeskillFn) {
+        module.exports.handleTradeskillFn(session, {
+          stationType: target.stationType || target.name,
+          npcId: target.id
+        });
+      }
+      break;
+    }
   }
 }
 
 module.exports = {
+  handleTradeskillFn: null,
   handleBuy,
   handleRightClick,
   handleSell,

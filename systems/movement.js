@@ -47,6 +47,7 @@ function init(deps) {
   module.exports.interruptCastingFn = deps.interruptCasting;
   module.exports.handleStandFn = deps.handleStand;
   module.exports.sendFullStateFn = deps.sendFullState;
+  module.exports.FollowSystem = deps.FollowSystem;
 }
 
 function handleSwimTick(session, msg) {
@@ -114,6 +115,13 @@ async function handleZone(session, msg) {
   
   // Force a full flush on zoning to prevent "ghost zoning" rollbacks
   DB.forceFlushCharacter(session.char.id);
+
+  // Update global player registry with new zone
+  if (!session.isBot) {
+    const broker = require('../network/broker');
+    broker.updatePlayerField(session.char.name, 'zoneId', targetZone)
+      .catch(e => console.error('[MOVEMENT] updatePlayerField error:', e.message));
+  }
 
   const zoneName = (newZoneDef && newZoneDef.name) || targetZone;
   sendCombatLog(session, [{ event: 'MESSAGE', text: `You have entered ${zoneName}.` }]);
@@ -207,6 +215,16 @@ function handleUpdatePos(session, msg) {
     if (dx !== 0 || dy !== 0 || dz !== 0) {
       if (session.char.state === 'sitting' || session.char.state === 'medding') {
         handleStand(session);
+      }
+      
+      // Manual movement breaks /follow
+      if (module.exports.FollowSystem && session.followingTarget) {
+        // If the movement is significantly different from what the server set, break follow.
+        // We allow some slack for latency, but if they are moving 'manually' (not follow teleport), break it.
+        const followTeleportSlack = 1.0; 
+        if (Math.abs(dx) > followTeleportSlack || Math.abs(dy) > followTeleportSlack) {
+           module.exports.FollowSystem.breakFollow(session, "manual movement");
+        }
       }
     }
 
@@ -565,6 +583,10 @@ function handleJump(session) {
   
   session.char.fatigue += cost;
   if (session.char.fatigue > 100) session.char.fatigue = 100;
+
+  if (module.exports.FollowSystem && session.followingTarget) {
+    module.exports.FollowSystem.breakFollow(session, "jump");
+  }
 }
 
 module.exports = {

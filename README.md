@@ -111,9 +111,11 @@ Windows: `Start_Cluster.bat`.
 The Godot client’s default WebSocket URL is **`ws://localhost:3005`** (login). After login, the client is redirected toward **world** / **zone** URLs supplied by the server.
 
 ---
-## Connecting as a Client
-- [EverQuest.gd Launcher](https://github.com/KaelKodes/Everquest-Godot-Launcher/releases/download/Dev-v0.0.1/EQ.gd.Launcher.zip) - will install the client
-- It will detect your local host, and/or the Dev Branches if they are online
+## Installation via Launcher (Client & Server)
+- [EverQuest.gd Launcher](https://github.com/KaelKodes/Everquest-Godot-Launcher/releases/download/Dev-v0.0.1/EQ.gd.Launcher.zip)
+- The Launcher can install and update both the game client and the server components automatically.
+- **For players**: Use the default Client mode to download the game. The lobby detects local servers and Dev Branches automatically.
+- **For developers**: Toggle the Launcher to **Server** mode (password-protected) to easily install and update the local server instance from GitHub releases.
 
 ---
 ## Project layout

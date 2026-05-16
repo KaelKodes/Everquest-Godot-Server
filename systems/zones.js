@@ -7,6 +7,7 @@ const WorldAtlas = require('../data/worldAtlas');
 const Calendar = require('../data/calendar');
 const eqemuDB = require('../eqemu_db');
 const { ZONE_TRIGGERS } = require('../data/zone_triggers.json');
+const { shouldSkipCombatSpawn, purgeTriggerMobs, mapEqemuClassToNpcType } = require('../utils/npcUtils');
 
 let SPELLS, ITEMS;
 
@@ -70,6 +71,10 @@ async function ensureZoneLoaded(zoneKey, spawnMobFn, spawnMiningNodesFn, spawnMi
     // fire a second time for the same zone in the same process, somebody
     // deleted the instance (don't) — and if you see it fire once on tunare
     // and once on innoruuk for the same zone, that's the split-brain bug.
+    const removed = purgeTriggerMobs(zoneInstances[zoneKey]);
+    if (removed > 0) {
+      console.log(`[ZONE] ${zoneKey}: purged ${removed} trigger placeholder mob(s) from live spawns.`);
+    }
     console.log(`[ENGINE pid=${process.pid}] Zone '${zoneKey}' already loaded — reusing existing instance.`);
     return;
   }
@@ -131,10 +136,13 @@ async function ensureZoneLoaded(zoneKey, spawnMobFn, spawnMiningNodesFn, spawnMi
         });
         allCoords.push({ x: row.x, y: row.y });
       }
+      if (shouldSkipCombatSpawn(row)) continue;
+
       spawnPoints.get(row.spawn2_id).pool.push({
         npc_id: row.npc_id, name: row.name ? row.name.replace(/_/g, ' ').replace(/[0-9]/g, '').trim() : "Unknown",
         level: row.level, hp: row.hp, mindmg: row.mindmg, maxdmg: row.maxdmg,
         race: row.race || 1, gender: row.gender || 0, npcClass: row.class || 1, chance: row.chance || 0,
+        npc_faction_id: row.npc_faction_id || 0,
         prim_melee_type: row.prim_melee_type, size: row.size || 6,
         runspeed: row.runspeed, walkspeed: row.walkspeed, attack_delay: row.attack_delay,
         see_invis: row.see_invis, see_invis_undead: row.see_invis_undead, loottable_id: row.loottable_id,
@@ -146,11 +154,12 @@ async function ensureZoneLoaded(zoneKey, spawnMobFn, spawnMiningNodesFn, spawnMi
     }
 
     const { pickFromPool } = require('./spawning');
-    const { mapEqemuClassToNpcType } = require('../utils/npcUtils'); // Assuming we move this
 
     for (const [spawnId, point] of spawnPoints) {
+      if (!point.pool || point.pool.length === 0) continue;
       const picked = pickFromPool(point.pool);
       if (!picked) continue;
+      if (shouldSkipCombatSpawn({ race: picked.race, name: picked.name })) continue;
 
       const mobDef = {
         key: picked.npc_id.toString(), name: picked.name, level: picked.level,
@@ -165,7 +174,8 @@ async function ensureZoneLoaded(zoneKey, spawnMobFn, spawnMiningNodesFn, spawnMi
         attackType: picked.prim_melee_type || 0,
         size: picked.size || 6, runspeed: picked.runspeed || 1.25, walkspeed: picked.walkspeed || 0.4,
         see_invis: picked.see_invis || 0, see_invis_undead: picked.see_invis_undead || 0,
-        textures: picked.textures
+        textures: picked.textures,
+        npc_faction_id: picked.npc_faction_id || 0,
       };
 
       const newMob = spawnMobFn(zoneKey, mobDef, point.x, point.y, point.z, point.heading);
@@ -176,6 +186,11 @@ async function ensureZoneLoaded(zoneKey, spawnMobFn, spawnMiningNodesFn, spawnMi
       });
     }
   } catch (e) { console.log(`[ENGINE] Spawn load error for '${zoneKey}':`, e.message); }
+
+  const purged = purgeTriggerMobs(zoneInstances[zoneKey]);
+  if (purged > 0) {
+    console.log(`[ZONE] ${zoneKey}: purged ${purged} trigger placeholder mob(s) after spawn load.`);
+  }
 
   try {
     zoneInstances[zoneKey].doors = await eqemuDB.getZoneDoors(zoneDef.shortName || zoneKey);

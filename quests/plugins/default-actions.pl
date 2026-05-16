@@ -139,7 +139,9 @@ sub defaultSlay
   }
 }
 
-sub defaultCombat()
+# No empty prototype () — EQMUD perl_wrapper stubs defaultCombat without (); matching avoids
+# "Prototype mismatch" when plugins load after the stub.
+sub defaultCombat
 {
   my $combat_state = plugin::val('$combat_state');
   my $zonesn = plugin::val('$zonesn');

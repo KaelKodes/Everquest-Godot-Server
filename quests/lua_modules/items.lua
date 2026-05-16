@@ -19,7 +19,7 @@ function items.check_turn_in(trade, trade_check)
     local item_data = {};
     for x = 1, 4 do
         local inst = trade["item" .. x];
-        if (inst.valid) then
+        if (inst ~= nil and inst.valid) then
             item_data[x] = inst
         end
     end
@@ -72,7 +72,7 @@ function items.return_bot_items(bot, client, trade, text)
 	local returned = false;
 	for i = 1, 8 do
 		local inst = trade["item" .. i];
-		if (inst.valid) then
+		if (inst ~= nil and inst.valid) then
 			client:PushItemOnCursor(inst);
 			returned = true;
 		end

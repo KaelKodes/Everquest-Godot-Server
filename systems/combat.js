@@ -91,7 +91,8 @@ async function resolveRespawnLocation(char) {
 }
 
 async function handleMobDeath(session, mob, events) {
-  events.push({ event: 'DEATH', who: mob.name });
+  // whoId matches ZONE_STATE entity ids so the client can play death on the correct instance (duplicate names).
+  events.push({ event: 'DEATH', who: mob.name, whoId: mob.id != null ? String(mob.id) : '' });
 
   // XP
   const zone = zoneInstances[session.char.zoneId];
@@ -255,6 +256,10 @@ async function processCombatTick(session, dt) {
   const isTargetPlayer = !!mob.char;
   const tName = isTargetPlayer ? mob.char.name : mob.name;
   const events = [];
+  const srcMeleeId = session.char && session.char.id != null ? `player_${session.char.id}` : '';
+  let tgtMeleeId = '';
+  if (mob.char && mob.char.id != null) tgtMeleeId = `player_${mob.char.id}`;
+  else if (mob.id != null && mob.id !== '') tgtMeleeId = String(mob.id);
 
   // Player auto-attack & AI Behaviors
   session.attackTimer -= dt;
@@ -272,9 +277,9 @@ async function processCombatTick(session, dt) {
           mob.hp -= bsDmg;
           if (mob.hateList) mob.hateList.addEntToHateList(session.char.name, bsDmg, bsDmg);
         }
-        events.push({ event: 'MELEE_HIT', source: 'You', target: tName, damage: bsDmg, text: 'Backstab!', type: 'piercing' });
+        events.push({ event: 'MELEE_HIT', source: 'You', target: tName, damage: bsDmg, text: 'Backstab!', type: 'piercing', sourceId: srcMeleeId, targetId: tgtMeleeId });
       } else {
-        events.push({ event: 'MELEE_MISS', source: 'You', target: tName, text: 'Backstab missed', type: 'piercing' });
+        events.push({ event: 'MELEE_MISS', source: 'You', target: tName, text: 'Backstab missed', type: 'piercing', sourceId: srcMeleeId, targetId: tgtMeleeId });
       }
       session.abilityCooldowns['backstab'] = 10; // 10s cooldown
     }
@@ -329,11 +334,19 @@ async function processCombatTick(session, dt) {
         if (isTargetPlayer) {
            mob.char.hp -= dmg;
            if (mob.ws) mob.ws.send(JSON.stringify({ type: 'CHAT', channel: 'system', text: `${session.char.name} hits YOU for ${dmg} points of non-melee damage.` }));
-        } else {
+        }         else {
            mob.hp -= dmg;
         }
         
-        events.push({ event: 'SPELL_DAMAGE', source: 'You', target: tName, spell: 'Shock of Lightning', damage: dmg });
+        events.push({
+          event: 'SPELL_DAMAGE',
+          source: 'You',
+          target: tName,
+          spell: 'Shock of Lightning',
+          damage: dmg,
+          sourceId: `player_${session.char.id}`,
+          targetId: isTargetPlayer ? `player_${mob.char.id}` : String(mob.id)
+        });
       }
       session.abilityCooldowns['cast'] = 6;
       skipMelee = true;
@@ -465,14 +478,14 @@ async function processCombatTick(session, dt) {
                           const dmg = Math.abs(procDmg.base);
                           mob.hp -= dmg;
                           if (mob.hateList) mob.hateList.addEntToHateList(session.char.name, dmg, dmg);
-                          events.push({ event: 'SPELL_DAMAGE', source: 'You', target: tName, spell: buff.name, damage: dmg });
+                          events.push({ event: 'SPELL_DAMAGE', source: 'You', target: tName, spell: buff.name, damage: dmg, sourceId: `player_${session.char.id}`, targetId: String(mob.id) });
                         }
                       } else {
                         // Fallback: small flat damage proc
                         const flatProc = Math.floor(session.char.level / 2) + 5;
                         mob.hp -= flatProc;
                         if (mob.hateList) mob.hateList.addEntToHateList(session.char.name, flatProc, flatProc);
-                        events.push({ event: 'SPELL_DAMAGE', source: 'You', target: tName, spell: buff.name, damage: flatProc });
+                        events.push({ event: 'SPELL_DAMAGE', source: 'You', target: tName, spell: buff.name, damage: flatProc, sourceId: `player_${session.char.id}`, targetId: String(mob.id) });
                       }
                     }
                   }
@@ -489,7 +502,7 @@ async function processCombatTick(session, dt) {
                       session.char.hp -= rdsDmg;
                       if (spellSystem && spellSystem.cancelPendingScribe) spellSystem.cancelPendingScribe(session, 'damage', false);
                       if (spellSystem && spellSystem.cancelPendingMemorize) spellSystem.cancelPendingMemorize(session, 'damage', false);
-                      events.push({ event: 'SPELL_DAMAGE', source: mbuff.name, target: 'You', spell: 'Reverse DS', damage: rdsDmg });
+                      events.push({ event: 'SPELL_DAMAGE', source: mbuff.name, target: 'You', spell: 'Reverse DS', damage: rdsDmg, sourceId: String(mob.id), targetId: `player_${session.char.id}` });
                     }
                   }
                 }
@@ -502,9 +515,9 @@ async function processCombatTick(session, dt) {
           else if (isOffhand) txt = 'Offhand hit';
 
           if (txt) {
-            events.push({ event: 'MELEE_HIT', source: 'You', target: tName, damage: dmgRoll, text: txt, type: wpnSkill });
+            events.push({ event: 'MELEE_HIT', source: 'You', target: tName, damage: dmgRoll, text: txt, type: wpnSkill, sourceId: srcMeleeId, targetId: tgtMeleeId });
           } else {
-            events.push({ event: 'MELEE_HIT', source: 'You', target: tName, damage: dmgRoll, type: wpnSkill });
+            events.push({ event: 'MELEE_HIT', source: 'You', target: tName, damage: dmgRoll, type: wpnSkill, sourceId: srcMeleeId, targetId: tgtMeleeId });
           }
         } else {
           // If we are within range, even a miss makes the mob aggressive
@@ -512,7 +525,7 @@ async function processCombatTick(session, dt) {
              mob.hateList.addEntToHateList(session.char.name, 1, 0);
              if (!mob.target) mob.target = session;
           }
-          events.push({ event: 'MELEE_MISS', source: 'You', target: tName, text: isOffhand ? 'Offhand miss' : null, type: wpnSkill });
+          events.push({ event: 'MELEE_MISS', source: 'You', target: tName, text: isOffhand ? 'Offhand miss' : null, type: wpnSkill, sourceId: srcMeleeId, targetId: tgtMeleeId });
         }
       };
 

@@ -1,11 +1,14 @@
 const State = require('../state');
 const { zoneInstances } = State;
 const { NPC_TYPES } = require('../data/npcTypes');
-const { mapEqemuClassToNpcType } = require('../utils/npcUtils');
+const { mapEqemuClassToNpcType, shouldSkipCombatSpawn } = require('../utils/npcUtils');
 const HateList = require('./hate');
 
 function pickFromPool(pool) {
   if (!pool || pool.length === 0) return null;
+  const combatPool = pool.filter((p) => !shouldSkipCombatSpawn({ race: p.race, name: p.name }));
+  if (combatPool.length === 0) return null;
+  pool = combatPool;
   if (pool.length === 1) return pool[0];
   const totalChance = pool.reduce((sum, p) => sum + p.chance, 0);
   if (totalChance <= 0) return pool[Math.floor(Math.random() * pool.length)];
@@ -21,6 +24,9 @@ function pickFromPool(pool) {
 function spawnMob(zoneId, mobDef, forcedX = null, forcedY = null, forcedZ = null, forcedHeading = null) {
   const zone = zoneInstances[zoneId];
   if (!zone) return;
+  if (shouldSkipCombatSpawn({ race: mobDef?.race, name: mobDef?.name })) {
+    return null;
+  }
 
   let roomId = null;
   if (zone.def && zone.def.rooms) {
@@ -63,6 +69,7 @@ function spawnMob(zoneId, mobDef, forcedX = null, forcedY = null, forcedZ = null
     size: mobDef.size || 6, runspeed: mobDef.runspeed || 1.25, walkspeed: mobDef.walkspeed || 0.4,
     seeInvis: mobDef.see_invis || 0, seeInvisUndead: mobDef.see_invis_undead || 0,
     textures: mobDef.textures || {},
+    npc_faction_id: mobDef.npc_faction_id || 0,
     xpBase: mobDef.xpBase, loot: mobDef.loot || [],
     target: null,
     hateList: new HateList(),
@@ -89,6 +96,13 @@ function processRespawns(zoneId, TICK_RATE) {
   const zone = zoneInstances[zoneId];
   if (!zone || !zone.spawnPointState) return;
 
+  const now = Date.now();
+  if (!zone._lastTriggerPurgeMs || now - zone._lastTriggerPurgeMs > 60000) {
+    zone._lastTriggerPurgeMs = now;
+    const { purgeTriggerMobs } = require('../utils/npcUtils');
+    purgeTriggerMobs(zone);
+  }
+
   for (const spawn of zone.spawnPointState) {
     const alive = zone.liveMobs.some(m => m.id === spawn.currentMobId);
     if (!alive) {
@@ -104,9 +118,10 @@ function processRespawns(zoneId, TICK_RATE) {
         let mobDef = spawn.mobDef;
         if (spawn.pool && spawn.pool.length > 0) {
           const picked = pickFromPool(spawn.pool);
-          if (picked) {
+          if (picked && !shouldSkipCombatSpawn({ race: picked.race, name: picked.name })) {
             mobDef = {
               key: picked.npc_id.toString(), name: picked.name, level: picked.level,
+              race: picked.race || 1,
               type: mapEqemuClassToNpcType(picked.npcClass || 1), pathgrid: spawn.pathgrid || 0,
               maxHp: picked.hp > 0 ? picked.hp : picked.level * 20,
               minDmg: picked.mindmg || Math.max(1, Math.floor(picked.level / 2)),
@@ -116,7 +131,8 @@ function processRespawns(zoneId, TICK_RATE) {
               respawnTime: spawn.respawnTime,
               attackType: picked.prim_melee_type || 0,
               size: picked.size || 6, runspeed: picked.runspeed || 1.25, walkspeed: picked.walkspeed || 0.4,
-              textures: picked.textures || {}
+              textures: picked.textures || {},
+              npc_faction_id: picked.npc_faction_id || 0,
             };
             spawn.mobDef = mobDef;
             spawn.mobKey = mobDef.key;

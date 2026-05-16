@@ -1,6 +1,30 @@
 const combat = require('../combat');
 const FactionSystem = require('./faction');
 const SpatialSystem = require('./spatial');
+const { NPC_TYPES } = require('../data/npcTypes');
+const { isTriggerPlaceholder } = require('../utils/npcUtils');
+
+function iterZoneSessions(api, zoneId) {
+  if (!api.sessions) return [];
+  const raw = api.sessions.values ? Array.from(api.sessions.values()) : Object.values(api.sessions);
+  return raw.filter((s) => s && s.char && s.char.zoneId === zoneId);
+}
+
+/** Combat log for DoT ticks on mobs cast by NPCs: engaged players + hate list. */
+function wantsMobDotCombatLog(session, mob) {
+  if (!session.char || !mob) return false;
+  if (session.combatTarget === mob) return true;
+  if (mob.hateList && Array.isArray(mob.hateList.entries)) {
+    return mob.hateList.entries.some((e) => e.entityId === session.char.name);
+  }
+  return false;
+}
+
+function isPlayerDotCasterSession(session, debuff) {
+  if (debuff.casterCharId != null) return session.char.id === debuff.casterCharId;
+  if (debuff.casterMobId != null) return false;
+  return session.char.name === debuff.casterSession;
+}
 
 function processMobRoaming(mob, dt, zoneId, api) {
   if (mob.gridPauseTimer > 0) {
@@ -116,15 +140,40 @@ function processMobAI(zone, zoneId, dt, api) {
             debuff.tickTimer = 6; // 6-second EQ tick
             mob.hp -= debuff.tickDamage;
             if (mob.hp < 0) mob.hp = 0;
-            if (mob.hateList) mob.hateList.addEntToHateList(debuff.casterSession, debuff.tickDamage, debuff.tickDamage);
+            if (mob.hateList) {
+              if (debuff.casterMobId != null && debuff.casterCharId == null) {
+                const top = mob.hateList.getMobWithMostHateOnList();
+                if (top) mob.hateList.addEntToHateList(top, debuff.tickDamage, debuff.tickDamage);
+              } else if (debuff.casterSession) {
+                mob.hateList.addEntToHateList(debuff.casterSession, debuff.tickDamage, debuff.tickDamage);
+              }
+            }
             if (api.breakMez) api.breakMez(mob);
-            // Notify the caster if they're still in this zone
-            if (api.sessions) {
-              for (const s of (api.sessions.values ? Array.from(api.sessions.values()) : Object.values(api.sessions))) {
-                if (s.char && s.char.name === debuff.casterSession && s.char.zoneId === zoneId) {
-                  const text = `${mob.name} has been hit by your ${debuff.name} for ${debuff.tickDamage} damage.`;
-                  api.sendCombatLog(s, [{ event: 'SPELL_DAMAGE', source: debuff.name, target: mob.name, spell: debuff.name, damage: debuff.tickDamage, text }]);
-                }
+            const sessions = iterZoneSessions(api, zoneId);
+            const textOwn = `${mob.name} has been hit by your ${debuff.name} for ${debuff.tickDamage} damage.`;
+            const textNpc = `${mob.name} takes ${debuff.tickDamage} damage from ${debuff.name}.`;
+            let sourceId = '';
+            if (debuff.casterCharId != null) sourceId = `player_${debuff.casterCharId}`;
+            else if (debuff.casterMobId != null) sourceId = String(debuff.casterMobId);
+            const tickEvt = {
+              event: 'DOT_TICK',
+              source: debuff.name,
+              target: mob.name,
+              spell: debuff.name,
+              damage: debuff.tickDamage,
+              targetId: String(mob.id),
+              sourceId
+            };
+            const told = new Set();
+            for (const s of sessions) {
+              if (!isPlayerDotCasterSession(s, debuff)) continue;
+              told.add(s);
+              api.sendCombatLog(s, [{ ...tickEvt, text: textOwn }]);
+            }
+            if (debuff.casterMobId != null) {
+              for (const s of sessions) {
+                if (told.has(s)) continue;
+                if (wantsMobDotCombatLog(s, mob)) api.sendCombatLog(s, [{ ...tickEvt, text: textNpc }]);
               }
             }
             if (api.broadcastTargetUpdate) api.broadcastTargetUpdate(mob);
@@ -132,12 +181,18 @@ function processMobAI(zone, zoneId, dt, api) {
         }
 
         if (debuff.duration <= 0) {
-          // Notify the caster that the debuff wore off
-          if (api.sessions) {
-            for (const s of (api.sessions.values ? Array.from(api.sessions.values()) : Object.values(api.sessions))) {
-              if (s.char && s.char.name === debuff.casterSession && s.char.zoneId === zoneId) {
-                api.sendCombatLog(s, [{ event: 'MESSAGE', text: `Your ${debuff.name} spell has worn off ${mob.name}.` }]);
-              }
+          const sessions = iterZoneSessions(api, zoneId);
+          const told = new Set();
+          for (const s of sessions) {
+            if (!isPlayerDotCasterSession(s, debuff)) continue;
+            told.add(s);
+            api.sendCombatLog(s, [{ event: 'MESSAGE', text: `Your ${debuff.name} spell has worn off ${mob.name}.` }]);
+          }
+          if (debuff.casterMobId != null) {
+            const fadeMsg = `${debuff.name} fades from ${mob.name}.`;
+            for (const s of sessions) {
+              if (told.has(s)) continue;
+              if (wantsMobDotCombatLog(s, mob)) api.sendCombatLog(s, [{ event: 'MESSAGE', text: fadeMsg }]);
             }
           }
           mob.buffs.splice(i, 1);
@@ -201,8 +256,9 @@ function processMobAI(zone, zoneId, dt, api) {
       }
     }
 
-    // Faction-based Proximity Aggro
-    if (mob.hp > 0 && !mob.target && !mob.isPet) {
+    // Faction-based proximity aggro — hostile zone mobs only (not merchants, trainers, PEQ triggers).
+    if (mob.hp > 0 && !mob.target && !mob.isPet && mob.npcType === NPC_TYPES.MOB
+        && !isTriggerPlaceholder({ race: mob.race, name: mob.name })) {
       let closestAggroTarget = null;
       let closestDistSq = Infinity;
       const BASE_AGGRO_DIST = 45; 
@@ -225,8 +281,8 @@ function processMobAI(zone, zoneId, dt, api) {
           const standing = FactionSystem.getStanding(session.char, mob);
           
           let shouldAggro = false;
-          // Undead races (Skeleton=60, Zombie=63, Spectre=85, Ghoul=154, Mummy=27 etc)
-          const UNDEAD_RACES = [27, 60, 63, 85, 126, 154, 161, 237, 240, 247]; 
+          // Undead races auto-aggro (exclude race 240 — PEQ placeholder for bind_trap / flavor triggers).
+          const UNDEAD_RACES = [27, 60, 63, 85, 126, 154, 161, 237, 247]; 
           if (UNDEAD_RACES.includes(mob.race)) {
             shouldAggro = true;
           } else if (standing.value <= -701) { // Threateningly and Scowls
@@ -485,7 +541,7 @@ function processMobAI(zone, zoneId, dt, api) {
 
               // Add hate for the pet's owner
               if (pet.ownerSession) {
-                api.sendCombatLog(pet.ownerSession, [{ event: 'MELEE_HIT', sourceId: `mob_${mob.id}`, targetId: `pet_${pet.id}`, source: mob.name, target: pet.name, damage: dmgRoll, type: 'slash' }]);
+                api.sendCombatLog(pet.ownerSession, [{ event: 'MELEE_HIT', sourceId: `mob_${mob.id}`, targetId: pet.id != null && pet.id !== '' ? String(pet.id) : '', source: mob.name, target: pet.name, damage: dmgRoll, type: 'slash' }]);
               }
             }
           }
@@ -566,7 +622,7 @@ function processMobAI(zone, zoneId, dt, api) {
                     if (dsEffect && dsEffect.base !== 0) {
                       const dsDmg = Math.abs(dsEffect.base);
                       mob.hp -= dsDmg;
-                      events.push({ event: 'SPELL_DAMAGE', source: buff.name, target: mob.name, spell: 'Damage Shield', damage: dsDmg });
+                      events.push({ event: 'SPELL_DAMAGE', source: buff.name, target: mob.name, spell: 'Damage Shield', damage: dsDmg, sourceId: `player_${session.char.id}`, targetId: String(mob.id) });
                     }
                   }
                 }

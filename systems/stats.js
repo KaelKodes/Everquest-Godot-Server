@@ -6,12 +6,16 @@ const ItemDB = require('../data/itemDatabase');
 const SpellDB = require('../data/spellDatabase');
 let ITEMS;
 let spellSystem, sendCombatLog, sendBuffs, broadcastTargetUpdate;
+let handlePlayerDeathFn;
+let isRespawnProtectedFn;
 
 function init(deps) {
   spellSystem = deps.spellSystem;
   sendCombatLog = deps.sendCombatLog;
   sendBuffs = deps.sendBuffs;
   broadcastTargetUpdate = deps.broadcastTargetUpdate;
+  handlePlayerDeathFn = deps.handlePlayerDeath;
+  isRespawnProtectedFn = deps.isRespawnProtected;
   ITEMS = ItemDB.createLegacyProxy();
 }
 
@@ -288,11 +292,22 @@ function getWeaponSkillName(inventory) {
   return 'hand_to_hand';
 }
 
-/** Mana per 6s tick after survival penalty; avoids floor(base*penalty)=0 when base is positive (e.g. 1 * 0.1). */
+/** Per 6s tick after survival penalty; avoids floor(base*penalty)=0 when base is positive (e.g. 1 * 0.1). */
 function tickManaAfterPenalty(base, penalty) {
   if (base <= 0) return 0;
   const floored = Math.floor(base * penalty);
   return floored < 1 ? 1 : floored;
+}
+
+function tickHpAfterPenalty(base, penalty) {
+  if (base <= 0) return 0;
+  const floored = Math.floor(base * penalty);
+  return floored < 1 ? 1 : floored;
+}
+
+function applyHpRegenTick(char, effective, baseTick, penalty) {
+  if (baseTick <= 0 || char.hp >= effective.hp) return;
+  char.hp = combat.clamp(char.hp + tickHpAfterPenalty(baseTick, penalty), 0, effective.hp);
 }
 
 function processRegen(session, dt) {
@@ -364,25 +379,22 @@ function processRegen(session, dt) {
     const SurvivalSystem = require('./survival');
     const penalty = SurvivalSystem.getRegenPenalty(char);
 
-    // OOC regen tuning (6s tick): standing HP/MP are stingy; rested medding uses sit rates + meditate.
-    // After combat, OocRegen.fastMeddingRegen is false for 15s — sitting uses standing MP/HP (no meditate skill-ups).
+    // OOC regen (6s tick): standing HP/MP are stingy; sitting uses ~half of class sit HP table.
+    // Post-combat 15s gate: seated HP still uses sit table; mana/meditate skill-ups wait for fastMedding.
     const standHpFactor = 0.22;
-    const meddingHpFromSitTable = 0.52;
-    /** Sitting/medding HP tick multiplier (1 = prior tuning; below 1 weakens sit regen only). */
-    const sitHpRegenMul = 0.8;
+    /** Seated HP multiplier vs PEQ sit table (0.5 ≈ 50% slower than full table). */
+    const sitHpRegenMul = 0.5;
     /** Class standing-tier MP5 (processRegen) only; buff/item tick mana (e.g. SPA 15 in processBuffs) is unchanged. */
     const standManaRegenMul = 0.85;
     const fastMedding = OocRegen.fastMeddingRegen(session);
     const isResting = char.state === 'medding' || char.state === 'sitting';
+    const sitHpTick = Math.max(0, Math.floor(rates.hpSitting * sitHpRegenMul));
 
     if (isResting) {
+      applyHpRegenTick(char, effective, sitHpTick, penalty);
       if (fastMedding) {
-        const hpMedTick = Math.max(
-          Math.floor(rates.hpStanding * penalty * standHpFactor),
-          Math.floor(rates.hpSitting * penalty * meddingHpFromSitTable)
-        );
-        char.hp = combat.clamp(char.hp + Math.max(0, Math.floor(hpMedTick * sitHpRegenMul)), 0, effective.hp);
         if (effective.mana > 0) {
+          const manaBefore = char.mana;
           let manaSit = rates.manaSitting;
           const maxMed = combat.getMaxSkill(char.class, 'meditate', char.level, char.race);
           if (manaSit > 0 && maxMed > 0) {
@@ -390,19 +402,19 @@ function processRegen(session, dt) {
             manaSit *= combat.getMeditateManaRegenFactor(medSkill);
           }
           char.mana = combat.clamp(char.mana + tickManaAfterPenalty(manaSit, penalty), 0, effective.mana);
-          session._meditateSkillTick = (session._meditateSkillTick || 0) + 1;
-          if (session._meditateSkillTick % 2 === 0) {
-            combat.trySkillUp(session, 'meditate');
+          // Live: meditate skill-ups only when seated regen actually adds mana (not at full mana).
+          if (maxMed > 0 && manaBefore < effective.mana && char.mana > manaBefore) {
+            session._meditateSkillTick = (session._meditateSkillTick || 0) + 1;
+            if (session._meditateSkillTick % 2 === 0) {
+              combat.trySkillUp(session, 'meditate');
+            }
           }
         }
-      } else if (!session.inCombat) {
-        char.hp = combat.clamp(char.hp + Math.max(0, Math.floor(rates.hpStanding * penalty * standHpFactor * sitHpRegenMul)), 0, effective.hp);
-        if (effective.mana > 0) {
-          char.mana = combat.clamp(char.mana + tickManaAfterPenalty(rates.manaStanding * standManaRegenMul, penalty), 0, effective.mana);
-        }
+      } else if (!session.inCombat && effective.mana > 0) {
+        char.mana = combat.clamp(char.mana + tickManaAfterPenalty(rates.manaStanding * standManaRegenMul, penalty), 0, effective.mana);
       }
     } else if (!session.inCombat) {
-      char.hp = combat.clamp(char.hp + Math.max(0, Math.floor(rates.hpStanding * penalty * standHpFactor)), 0, effective.hp);
+      applyHpRegenTick(char, effective, Math.floor(rates.hpStanding * standHpFactor), penalty);
       if (effective.mana > 0) {
         char.mana = combat.clamp(char.mana + tickManaAfterPenalty(rates.manaStanding * standManaRegenMul, penalty), 0, effective.mana);
       }
@@ -421,6 +433,7 @@ function processRegen(session, dt) {
 }
 
 function processBuffs(session, dt) {
+  if (!Array.isArray(session.buffs) || session.buffs.length === 0) return;
   let changed = false;
   for (let i = session.buffs.length - 1; i >= 0; i--) {
     const buff = session.buffs[i];
@@ -481,6 +494,45 @@ function processBuffs(session, dt) {
           buff.hpRegenTickTimer = 6;
           const hpAmt = hpRegenEffect.base;
           session.char.hp = Math.min(session.char.hp + hpAmt, session.effectiveStats.hp);
+        }
+      }
+    }
+
+    // Detrimental DoT ticks on the player (from PvE/NPC spells, etc.)
+    if (buff.beneficial === false && buff.tickDamage > 0 && buff.duration > 0) {
+      if (!buff.dotTickTimer) buff.dotTickTimer = 6;
+      buff.dotTickTimer -= dt;
+      if (buff.dotTickTimer <= 0) {
+        buff.dotTickTimer = 6;
+        const raw = buff.tickDamage;
+        const dmg = typeof raw === 'number' && Number.isFinite(raw) ? Math.floor(raw) : 0;
+        const prot = typeof isRespawnProtectedFn === 'function' && isRespawnProtectedFn(session);
+        if (dmg > 0 && session.char.state !== 'dead' && !prot) {
+          session.char.hp -= dmg;
+          if (session.char.hp < 0) session.char.hp = 0;
+          changed = true;
+          if (spellSystem && typeof spellSystem.breakMez === 'function') {
+            const ev = [];
+            spellSystem.breakMez(session, ev);
+            if (ev.length && sendCombatLog) sendCombatLog(session, ev);
+          }
+          let sourceId = '';
+          if (buff.casterCharId != null) sourceId = `player_${buff.casterCharId}`;
+          else if (buff.casterMobId != null) sourceId = String(buff.casterMobId);
+          if (sendCombatLog) {
+            sendCombatLog(session, [{
+              event: 'DOT_TICK',
+              source: buff.name,
+              target: 'You',
+              spell: buff.name,
+              damage: dmg,
+              targetId: `player_${session.char.id}`,
+              sourceId
+            }]);
+          }
+          if (session.char.hp <= 0 && typeof handlePlayerDeathFn === 'function') {
+            handlePlayerDeathFn(session, []);
+          }
         }
       }
     }

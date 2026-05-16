@@ -256,26 +256,9 @@ const SUMMON_ITEM_MAP = {
   6351: 'summoned_light',
 };
 
-// Starting gear per class - uses authentic EQEmu item IDs
-// EQEmu slots: 0=charm, 1=ear1, 2=head, 3=face, 4=ear2, 5=neck, 6=shoulders, 7=arms,
-//              8=back, 9=wrist1, 10=wrist2, 11=range, 12=hands, 13=primary, 14=secondary,
-//              17=chest, 18=legs, 19=feet, 20=waist, 21=ammo, 22-29=general inventory
-const STARTER_GEAR = {
-  warrior:       [{ itemId: 5013, slot: 13 }, { itemId: 1004, slot: 17 }, { itemId: 1001, slot: 2 }, { itemId: 16, slot: 22 }],  // Rusty Short Sword, Cloth Shirt, Cloth Cap, Torch
-  cleric:        [{ itemId: 6012, slot: 13 }, { itemId: 1004, slot: 17 }, { itemId: 1001, slot: 2 }, { itemId: 16, slot: 22 }],  // Worn Great Staff, Cloth Shirt, Cloth Cap, Torch
-  wizard:        [{ itemId: 6012, slot: 13 }, { itemId: 1004, slot: 17 }, { itemId: 1001, slot: 2 }, { itemId: 16, slot: 22 }],
-  rogue:         [{ itemId: 5013, slot: 13 }, { itemId: 2010, slot: 12 }, { itemId: 1004, slot: 17 }, { itemId: 16, slot: 22 }], // Rusty Short Sword, Leather Gloves, Cloth Shirt, Torch
-  paladin:       [{ itemId: 5013, slot: 13 }, { itemId: 1004, slot: 17 }, { itemId: 1001, slot: 2 }, { itemId: 16, slot: 22 }],
-  shadow_knight: [{ itemId: 5013, slot: 13 }, { itemId: 1004, slot: 17 }, { itemId: 1001, slot: 2 }, { itemId: 16, slot: 22 }],
-  ranger:        [{ itemId: 5013, slot: 13 }, { itemId: 1004, slot: 17 }, { itemId: 2010, slot: 12 }, { itemId: 16, slot: 22 }],
-  bard:          [{ itemId: 5013, slot: 13 }, { itemId: 1004, slot: 17 }, { itemId: 2010, slot: 12 }, { itemId: 16, slot: 22 }],
-  monk:          [{ itemId: 1004, slot: 17 }, { itemId: 1001, slot: 2 }, { itemId: 16, slot: 22 }],
-  // Druid: all gear including primary weapon comes from PEQ `starting_items` (no duplicate staff from STARTER_GEAR).
-  druid:         [],
-  shaman:        [{ itemId: 6012, slot: 13 }, { itemId: 1004, slot: 17 }, { itemId: 1001, slot: 2 }, { itemId: 16, slot: 22 }],
-  necromancer:   [{ itemId: 6012, slot: 13 }, { itemId: 1004, slot: 17 }, { itemId: 1001, slot: 2 }, { itemId: 16, slot: 22 }],
-  magician:      [{ itemId: 6012, slot: 13 }, { itemId: 1004, slot: 17 }, { itemId: 1001, slot: 2 }, { itemId: 16, slot: 22 }],
-  enchanter:     [{ itemId: 6012, slot: 13 }, { itemId: 1004, slot: 17 }, { itemId: 1001, slot: 2 }, { itemId: 16, slot: 22 }],
-};
+// Starting gear is now fully managed by the PEQ database `starting_items` table.
+// Custom item granting scripts have been removed to ensure compliance with DB records.
+// (Historical note: EQEmu slots are 0=charm, 1=ear1, 2=head, 3=face, 4=ear2, 5=neck,
+// 6=shoulders, 7=arms, 8=back, 9=wrist1, 10=wrist2, 11=range, 12=hands, 13=primary, 14=secondary.)
 
-module.exports = { ITEMS, STARTER_GEAR, SUMMON_ITEM_MAP };
+module.exports = { ITEMS, SUMMON_ITEM_MAP };

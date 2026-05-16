@@ -23,6 +23,7 @@ const MERCHANT_INVENTORIES = require('./data/npcs/merchants');
 const QuestDialogs = require('./data/npcs/quests');
 const MiningData = require('./data/miningNodes');
 const { PET_SPELLS, PET_SKILL_TIERS, PET_NAMES } = require('./data/petData');
+const { getBeastlordWarderAppearance } = require('./data/beastlordWarderAppearance');
 const { VISION_MODES, RACE_VISION, SPELL_VISION_MODES, AMBIENT_LIGHT } = require('./data/visionModes');
 const Calendar = require('./data/calendar');
 const WorldAtlas = require('./data/worldAtlas');
@@ -709,18 +710,11 @@ async function handleSelectCharacter(ws, msg) {
 
   await populateMentorStudentSlots(session);
   
-  // Safety: If inventory is empty, grant starter gear
-  if (session.inventory.length === 0) {
-    const starterItems = STARTER_GEAR[char.class] || STARTER_GEAR.warrior;
-    for (const gear of starterItems) {
-      await DB.addItem(char.id, gear.itemId, 1, gear.slot);
-    }
-    session.inventory = await DB.getInventory(char.id);
-    console.log(`[ENGINE] Granted missing starter gear to ${char.name}.`);
-  }
+  // Safety check removed; rely purely on DB.
 
   console.log(`[ENGINE] ${char.name} entered world (level ${char.level} ${char.class}).`);
   sendFullState(session);
+  ensureBeastlordWarder(session);
 }
 
 async function handleDeleteCharacter(ws, msg) {
@@ -809,16 +803,7 @@ async function handleLogin(ws, msg) {
 
   const session = await createSession(ws, char);
 
-  // Safety: If inventory is empty, grant starter gear (fixes migration issues)
-  if (session.inventory.length === 0) {
-    const STARTER_GEAR = require('./data/items').STARTER_GEAR;
-    const starterItems = STARTER_GEAR[char.class] || STARTER_GEAR.warrior;
-    for (const gear of starterItems) {
-      await DB.addItem(char.id, gear.itemId, 1, gear.slot);
-    }
-    session.inventory = await DB.getInventory(char.id);
-    console.log(`[ENGINE] Granted missing starter gear to ${char.name}.`);
-  }
+  // Safety check removed; rely purely on DB.
 
   // Migration: Grant missing racial vision skills to existing characters
   let visionChanged = false;
@@ -843,6 +828,7 @@ async function handleLogin(ws, msg) {
 
   console.log(`[ENGINE] ${char.name} logged in (level ${char.level} ${char.class}).`);
   sendFullState(session);
+  ensureBeastlordWarder(session);
 }
 
 async function handleCreateCharacter(ws, msg) {
@@ -1212,6 +1198,11 @@ function handleAttackTarget(session, msg) {
     // Prevent attacking non-mob NPCs (merchants, quest givers, etc.)
     if (targetEntity.npcType && targetEntity.npcType !== NPC_TYPES.MOB) {
       sendCombatLog(session, [{ event: 'MESSAGE', text: `You cannot attack ${targetEntity.name}. Try hailing them instead.` }]);
+      return;
+    }
+    const { isTriggerPlaceholder } = require('./utils/npcUtils');
+    if (isTriggerPlaceholder({ race: targetEntity.race, name: targetEntity.name })) {
+      sendCombatLog(session, [{ event: 'MESSAGE', text: 'You cannot attack that.' }]);
       return;
     }
 
@@ -1840,6 +1831,17 @@ async function applySpellEffect(session, spellDef) {
   return result;
 }
 
+/** sourceId/targetId for MELEE_* combat log lines (abilities, etc.). */
+function meleeCombatLogIds(session, target) {
+  const sourceId = session.char && session.char.id != null ? `player_${session.char.id}` : '';
+  let targetId = '';
+  if (target) {
+    if (target.char && target.char.id != null) targetId = `player_${target.char.id}`;
+    else if (target.id != null && target.id !== '') targetId = String(target.id);
+  }
+  return { sourceId, targetId };
+}
+
 async function handleAbility(session, msg) {
   const ability = (msg.ability || '').toLowerCase().trim();
   const char = session.char;
@@ -2061,22 +2063,26 @@ async function handleAbility(session, msg) {
   if (mob.char && !CombatSystem.canInteract(session, mob, false)) {
     return sendCombatLog(session, [{ event: 'MESSAGE', text: `You cannot use offensive abilities on this target.` }]);
   }
+  const { sourceId: meleeSrc, targetId: meleeTgt } = meleeCombatLogIds(session, mob);
+  const tgtName = mob.char ? mob.char.name : mob.name;
   if (msg.ability === 'kick') {
     const dmg = combat.calcKickDamage(session);
     if (dmg > 0) {
-       mob.hp -= dmg;
-       sendCombatLog(session, [{ event: 'MELEE_HIT', source: 'You', target: mob.name, damage: dmg, text: 'Kick!' }]);
+       if (mob.char) mob.char.hp -= dmg;
+       else mob.hp -= dmg;
+       sendCombatLog(session, [{ event: 'MELEE_HIT', source: 'You', target: tgtName, damage: dmg, text: 'Kick!', type: 'kick', sourceId: meleeSrc, targetId: meleeTgt }]);
     } else {
-       sendCombatLog(session, [{ event: 'MELEE_MISS', source: 'You', target: mob.name, text: 'Kick missed' }]);
+       sendCombatLog(session, [{ event: 'MELEE_MISS', source: 'You', target: tgtName, text: 'Kick missed', type: 'kick', sourceId: meleeSrc, targetId: meleeTgt }]);
     }
     session.abilityCooldowns[msg.ability] = 6;
   } else if (msg.ability === 'bash') {
     const dmg = combat.calcBashDamage(session);
     if (dmg > 0) {
-       mob.hp -= dmg;
-       sendCombatLog(session, [{ event: 'MELEE_HIT', source: 'You', target: mob.name, damage: dmg, text: 'Bash!' }]);
+       if (mob.char) mob.char.hp -= dmg;
+       else mob.hp -= dmg;
+       sendCombatLog(session, [{ event: 'MELEE_HIT', source: 'You', target: tgtName, damage: dmg, text: 'Bash!', type: 'bash', sourceId: meleeSrc, targetId: meleeTgt }]);
     } else {
-       sendCombatLog(session, [{ event: 'MELEE_MISS', source: 'You', target: mob.name, text: 'Bash missed' }]);
+       sendCombatLog(session, [{ event: 'MELEE_MISS', source: 'You', target: tgtName, text: 'Bash missed', type: 'bash', sourceId: meleeSrc, targetId: meleeTgt }]);
     }
     session.abilityCooldowns[msg.ability] = 6;
   } else if (msg.ability === 'taunt') {
@@ -2097,10 +2103,11 @@ async function handleAbility(session, msg) {
     const weapon = StatsSystem.getWeaponStats(char.inventory || []);
     const dmg = combat.calcBackstabDamage(session, weapon.damage);
     if (dmg > 0) {
-      mob.hp -= dmg;
-      sendCombatLog(session, [{ event: 'MELEE_HIT', source: 'You', target: mob.name, damage: dmg, text: 'Backstab!' }]);
+      if (mob.char) mob.char.hp -= dmg;
+      else mob.hp -= dmg;
+      sendCombatLog(session, [{ event: 'MELEE_HIT', source: 'You', target: tgtName, damage: dmg, text: 'Backstab!', type: 'piercing', sourceId: meleeSrc, targetId: meleeTgt }]);
     } else {
-      sendCombatLog(session, [{ event: 'MELEE_MISS', source: 'You', target: mob.name, text: 'Backstab missed' }]);
+      sendCombatLog(session, [{ event: 'MELEE_MISS', source: 'You', target: tgtName, text: 'Backstab missed', type: 'piercing', sourceId: meleeSrc, targetId: meleeTgt }]);
     }
     session.abilityCooldowns[msg.ability] = 10;
   } else if (msg.ability === 'disarm') {
@@ -2355,6 +2362,44 @@ async function processQuestActions(session, npc, actions) {
         }
         break;
       }
+      case 'faction': {
+        const factionId = Number(act.faction_id);
+        const amount = Number(act.amount) || 0;
+        if (factionId && amount) {
+          if (!session.char.factionValues) session.char.factionValues = {};
+          const cur = Number(session.char.factionValues[factionId]) || 0;
+          let newValue = cur + amount;
+          const caches = DB.getFactionCaches();
+          const baseData = caches.FACTION_BASE_DATA[factionId];
+          if (baseData) {
+            if (newValue > baseData.max) newValue = baseData.max;
+            if (newValue < baseData.min) newValue = baseData.min;
+          }
+          session.char.factionValues[factionId] = newValue;
+          await DB.updateCharacterFactionValue(session.char.id, factionId, newValue, 0);
+          const factionDef = caches.FACTION_LIST[factionId];
+          const nm = factionDef && factionDef.name ? factionDef.name : `faction ${factionId}`;
+          const directionText = amount > 0 ? 'gotten better' : 'gotten worse';
+          events.push({ event: 'MESSAGE', text: `Your faction standing with ${nm} has ${directionText}.` });
+        }
+        break;
+      }
+      case 'givecash': {
+        const plat = Number(act.platinum) || 0;
+        const gold = Number(act.gold) || 0;
+        const sil = Number(act.silver) || 0;
+        const cop = Number(act.copper) || 0;
+        const addCopper = plat * 1000 + gold * 100 + sil * 10 + cop;
+        if (addCopper !== 0) {
+          session.char.copper = (Number(session.char.copper) || 0) + addCopper;
+          await DB.updateCharacterState(session.char);
+          sendStatus(session);
+          events.push({ event: 'MESSAGE', text: `You receive coin.` });
+        }
+        break;
+      }
+      case 'ding':
+        break;
       case 'anim':
         // Broadcast animation to zone
         broadcastToZone(npc.zoneId, { type: 'NPC_ANIM', id: npc.id, anim: act.anim });
@@ -2385,8 +2430,28 @@ async function processQuestActions(session, npc, actions) {
           // Force an instant save to DB
           DB.updateCharacterState(session.char);
         } else {
-          // General NPC casting (assuming SpellSystem has a way, otherwise stub it)
           events.push({ event: 'MESSAGE', text: `${npc.name} begins to cast a spell.` });
+          const spellIdNum = act.spellId != null ? Number(act.spellId) : 0;
+          const spellDef = spellIdNum ? SpellDB.getById(spellIdNum) : null;
+          if (spellDef && spellDef.goodEffect === false && session) {
+            if (!Array.isArray(session.buffs)) session.buffs = [];
+            const dotEffect = (spellDef.effects || []).find(e => (e.spa === 0 || e.spa === 79 || e.spa === 334) && e.base < 0);
+            if (dotEffect) {
+              let dur = 36;
+              if (typeof spellDef.duration === 'number') dur = Math.max(6, spellDef.duration);
+              else if (spellDef.duration && typeof spellDef.duration.ticks === 'number') {
+                dur = Math.max(6, spellDef.duration.ticks * 6);
+              }
+              const tickDamage = Math.abs(dotEffect.base);
+              SpellSystem.applyBuff(session, spellDef, dur, npc.name, false, null, {
+                tickDamage,
+                casterMobId: npc.id
+              });
+              SpellSystem.sendBuffs(session);
+              session.effectiveStats = StatsSystem.calcEffectiveStats(session.char, session.inventory, session.buffs);
+              events.push({ event: 'MESSAGE', text: spellDef.messages?.castOnYou || `${npc.name}'s magic sears you.` });
+            }
+          }
           broadcastToZone(npc.zoneId, { type: 'EMOTE', charName: npc.name, emote: 't04' });
           send(session.ws, { type: 'SPELL_ANIMATION', casterId: npc.id.toString(), targetId: 'You', spellAnimId: 42, isAura: false });
           const spellPayload = JSON.stringify({ type: 'SPELL_ANIMATION', casterId: npc.id.toString(), targetId: `player_${session.char.id}`, spellAnimId: 42, isAura: false });
@@ -2647,6 +2712,90 @@ function spawnPet(session, petDef, spellDef) {
   events.push({ event: 'MESSAGE', text: `[color=cyan]${petName} says, 'I live to serve you, master.'[/color]` });
 
   return { pet, events };
+}
+
+/**
+ * Spawn a beastlord warder using race-based appearance (EQEmu pets_beastlord_data + custom overrides).
+ */
+function spawnBeastlordWarder(session, spellDef) {
+  const events = [];
+  const zoneId = session.char.zoneId;
+  const zone = zoneInstances[zoneId];
+  if (!zone) {
+    return { pet: null, events: [{ event: 'MESSAGE', text: 'You cannot summon a warder here.' }] };
+  }
+
+  if (session.pet) {
+    despawnPet(session, 'Your previous pet fades away.');
+  }
+
+  const playerRaceId = session.char.raceId || 1;
+  const look = getBeastlordWarderAppearance(playerRaceId);
+  const lvl = Math.max(1, session.char.level || 1);
+  const hp = 24 + lvl * 10;
+  const baseSize = 6 * (look.sizeModifier || 1);
+
+  const pet = {
+    id: `warder_${session.char.name}_${Date.now()}`,
+    name: `${session.char.name}'s Warder`,
+    ownerSession: session,
+    ownerId: session.char.id,
+    isPet: true,
+    isWarder: true,
+    isCharmed: false,
+    level: lvl,
+    hp,
+    maxHp: hp,
+    minDmg: 2 + Math.floor(lvl / 3),
+    maxDmg: 5 + Math.floor(lvl / 2),
+    attackDelay: 3.0,
+    attackTimer: 0,
+    ac: 10 + lvl,
+    race: look.petRace,
+    gender: look.gender || 0,
+    texture: look.texture,
+    modelCode: look.modelCode || null,
+    size: baseSize,
+    npcType: NPC_TYPES.MOB,
+    x: (session.char.x || 0) + 3,
+    y: (session.char.y || 0) + 3,
+    z: session.char.z || 0,
+    spawnX: session.char.x || 0,
+    spawnY: session.char.y || 0,
+    state: 'follow',
+    guardX: null,
+    guardY: null,
+    target: null,
+    hateList: [],
+    taunting: true,
+    alive: true,
+    regen: 6,
+    regenTimer: 0,
+    skills: { magicWeapons: true },
+    innateSpells: [],
+    innateSpellCooldowns: {},
+    equipment: {},
+    inventory: [],
+    summonManaCost: spellDef?.manaCost || 0,
+    summonSpellId: spellDef?.id || spellDef?._spellId || 0,
+    totalDamageDealt: 0,
+    networkData: null,
+  };
+
+  session.pet = pet;
+  zone.liveMobs.push(pet);
+
+  events.push({ event: 'MESSAGE', text: 'Your warder answers your call.' });
+  return { pet, events };
+}
+
+function ensureBeastlordWarder(session) {
+  if (!session?.char || session.isBot || session.pet) return;
+  if (session.char.class !== 'beastlord') return;
+  const zone = zoneInstances[session.char.zoneId];
+  if (!zone) return;
+  spawnBeastlordWarder(session, null);
+  handleLook(session, true);
 }
 
 /**
@@ -3116,9 +3265,17 @@ function processPetAI(pet, zone, zoneId, dt) {
             target.target = pet; // Mob now attacks the pet instead of player
           }
 
-          events.push({ event: 'MELEE_HIT', source: pet.name, target: target.name, damage: totalDmg });
+          let petTgtId = '';
+          if (target.char && target.char.id != null) petTgtId = `player_${target.char.id}`;
+          else if (target.id != null && target.id !== '') petTgtId = String(target.id);
+          const petSrcId = pet.id != null && pet.id !== '' ? String(pet.id) : '';
+          events.push({ event: 'MELEE_HIT', source: pet.name, target: target.name, damage: totalDmg, type: 'slash', sourceId: petSrcId, targetId: petTgtId });
         } else {
-          events.push({ event: 'MELEE_MISS', source: pet.name, target: target.name });
+          let petTgtId = '';
+          if (target.char && target.char.id != null) petTgtId = `player_${target.char.id}`;
+          else if (target.id != null && target.id !== '') petTgtId = String(target.id);
+          const petSrcId = pet.id != null && pet.id !== '' ? String(pet.id) : '';
+          events.push({ event: 'MELEE_MISS', source: pet.name, target: target.name, type: 'slash', sourceId: petSrcId, targetId: petTgtId });
         }
 
         // Pet innate spells
@@ -3160,7 +3317,7 @@ function processPetAI(pet, zone, zoneId, dt) {
               if (innateDmg > 0) {
                 target.hp -= innateDmg;
                 pet.totalDamageDealt += innateDmg;
-                events.push({ event: 'SPELL_DAMAGE', source: pet.name, target: target.name, spell: innateMsg, damage: innateDmg });
+                events.push({ event: 'SPELL_DAMAGE', source: pet.name, target: target.name, spell: innateMsg, damage: innateDmg, sourceId: String(pet.id), targetId: String(target.id) });
               } else if (innateMsg && innateMsg !== 'Root') {
                 events.push({ event: 'MESSAGE', text: `${pet.name} casts ${innateMsg} on ${target.name}!` });
               }
@@ -4808,6 +4965,7 @@ function handleLook(session, forceSync = false) {
                   race: mob.race || 1, gender: mob.gender || 0, appearance: mob.appearance,
                   isPet: mob.isPet || false, ownerName: mob.ownerSession ? mob.ownerSession.char.name : null,
                   size: mob.size || 6,
+                  modelCode: mob.modelCode || null,
                   maxHp: mob.maxHp,
                   equipVisuals: {
                       head: mob.textures?.h || 0, chest: mob.textures?.t || 0,
@@ -5850,10 +6008,13 @@ async function bootstrapServer() {
     sendBuffs: SpellSystem.sendBuffs,
     handleStopCombat: CombatSystem.handleStopCombat,
     handleMobDeath: handleMobDeath,
+    handlePlayerDeath: (session, events) => CombatSystem.handlePlayerDeath(session, events || []),
+    isRespawnProtected: CombatSystem.isRespawnProtected,
     despawnPet: despawnPet,
     zoneInstances: State.zoneInstances,
     sessions: State.sessions,
     summonItemMap: SUMMON_ITEM_MAP,
+    spawnBeastlordWarder,
     ensureZoneLoaded: (zoneKey) => ZoneSystem.ensureZoneLoaded(zoneKey, SpawningSystem.spawnMob, MiningSystem.spawnMiningNodes, MiningSystem.spawnMiningNPCs),
     resolveZoneKey: ZoneSystem.resolveZoneKey,
     getZoneDef: ZoneSystem.getZoneDef,

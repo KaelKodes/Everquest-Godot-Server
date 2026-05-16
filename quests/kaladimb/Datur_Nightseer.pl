@@ -26,6 +26,8 @@ sub EVENT_ITEM {
    if (plugin::check_handin(\%itemcount, 18768 => 1)) {
 	  quest::say("Welcome, we are the Paladins of the Underfoot. I am Datur, and I will help teach you the word and will of the Duke of Below, Brell Serilis. Here is our guild tunic. Let's get started, shall we?");
       quest::summonitem(13514); # Item: Dusty Tunic*
+      quest::ding();
+      quest::exp(100);
       quest::faction(227,100); # Clerics of Underfoot
       quest::faction(274,100); # Kazon Stormhammer
       quest::faction(293,75); # Miners Guild 249

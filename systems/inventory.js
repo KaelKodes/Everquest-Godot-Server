@@ -354,7 +354,9 @@ async function handleNPCGiveItems(session, msg) {
   const char = session.char;
   const targetId = msg.npcId;
   const items = msg.items || [];
-  
+
+  console.log(`[NPC_TRADE] ${char.name} zone=${char.zoneId} npcId=${targetId} slots=${items.map((it) => `${it.item_id}@${it.slotId ?? '?'}`).join(',')}`);
+
   if (items.length === 0) {
     sendInventory(session);
     return;
@@ -503,8 +505,10 @@ async function handleNPCGiveItems(session, msg) {
   // Trigger Event
   const zoneShortName = char.zoneId;
   const trade = {};
+  let i = 1;
   for (const it of items) {
-    trade[`item${it.slot}`] = it.item_id;
+    trade[`item${i}`] = it.item_id;
+    i++;
   }
   
   const eData = { trade: trade, rawItems: items };

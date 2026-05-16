@@ -10,32 +10,33 @@ my $args = decode_json($json_arg);
 # Populate global variables expected by EQEmu Perl scripts
 our $text = $args->{text} || '';
 our $name = $args->{name} || '';
-our $class = $args->{class} || '';
+# PEQ scripts compare $class to title-case names (e.g. "Paladin"); prefer class_name from Node.
+our $class = $args->{class_name} || $args->{class} || '';
 our $race = $args->{race} || '';
 our $ulevel = $args->{ulevel} || 1;
 our %itemcount = %{ $args->{itemcount} || {} };
+our $item1 = $args->{item1} || 0;
+our $item2 = $args->{item2} || 0;
+our $item3 = $args->{item3} || 0;
+our $item4 = $args->{item4} || 0;
+our $platinum = $args->{platinum} || 0;
+our $gold = $args->{gold} || 0;
+our $silver = $args->{silver} || 0;
+our $copper = $args->{copper} || 0;
+
 # Stubs for plugin::val('$client') / plugin::val('$npc') via globals.pl (package plugin)
-our $client = bless { name => $name }, 'ClientProxy';
+# qg = in-memory quest globals for this Perl invocation (persisted qglobals would need Node/DB).
+our $client = bless { name => $name, qg => ($args->{qglobals} || {}) }, 'ClientProxy';
 our $npc = bless {}, 'NPCProxy';
+our $item1_inst = bless { item_id => $item1 }, 'ItemInstProxy';
+our $item2_inst = bless { item_id => $item2 }, 'ItemInstProxy';
+our $item3_inst = bless { item_id => $item3 }, 'ItemInstProxy';
+our $item4_inst = bless { item_id => $item4 }, 'ItemInstProxy';
 my $script_path = $args->{script_path};
 my $event_type = $args->{event_type} || 'EVENT_SAY';
 
-# Load all plugins from the plugins directory
-my $plugins_dir = $args->{quests_dir} . '/plugins';
-if (-d $plugins_dir) {
-    opendir(my $dh, $plugins_dir) || die "Can't opendir $plugins_dir: $!";
-    while (my $file = readdir($dh)) {
-        next if ($file =~ /^\./);
-        if ($file =~ /\.pl$/i) {
-            # Use do() so plugins need not end with `1;` (PEQ require() would die otherwise).
-            my $path = "$plugins_dir/$file";
-            eval { do $path; 1 } or warn "Quest plugin $file: $@\n";
-        }
-    }
-    closedir($dh);
-}
-
 # Define the quest:: package to intercept calls and emit JSON commands
+# (Must exist before plugin stubs that call quest::say / quest::emit.)
 package quest;
 use JSON;
 
@@ -72,8 +73,9 @@ sub targlobal { 1; }
 package plugin;
 
 # val, nullzero, random, var, takeItems, etc. come from globals.pl (also package plugin).
-# Minimal stubs not provided by globals:
-# quests/plugins/default.pl wires EVENT_* to these — must exist before EVENT_* runs.
+# Minimal stubs — MUST load before quests/plugins/*.pl so PEQ files override them.
+# default-actions.pl must use the same prototype as this stub (none). Empty () on either side
+# causes "Prototype mismatch" or "Constant subroutine redefined" when the other loads.
 sub defaultSay { 1; }
 sub defaultItem { 1; }
 sub defaultCombat { 1; }
@@ -108,6 +110,29 @@ package ClientProxy;
 sub GetName { return $_[0]->{name}; }
 sub Message { quest::emit('message', { color => $_[1], text => $_[2] }); }
 
+# EQEmu qglobals — many epics use $client->GetGlobal("name"). Return "" when unset (numeric compares stay false).
+sub GetGlobal {
+    my ($self, $key) = @_;
+    return '' unless defined $key;
+    my $qg = $self->{qg} || {};
+    return $qg->{$key} if exists $qg->{$key};
+    return '';
+}
+
+sub SetGlobal {
+    my ($self, $key, $value, $opts, $duration) = @_;
+    return unless defined $key;
+    $self->{qg}{$key} = defined $value ? $value : '';
+    return 1;
+}
+
+sub DeleteGlobal {
+    my ($self, $key) = @_;
+    return unless defined $key;
+    delete $self->{qg}{$key};
+    return 1;
+}
+
 # Minimal NPC proxy for plugin::takeItems / givenItems (globals.pl) — mutates hand-in hash like EQEmu CheckHandin
 package NPCProxy;
 sub CheckHandin {
@@ -126,6 +151,27 @@ sub CheckHandin {
         delete $handin->{$k} if ($handin->{$k} <= 0);
     }
     return 1;
+}
+
+package ItemInstProxy;
+sub GetID { return $_[0]->{item_id}; }
+
+# Load all plugins from the plugins directory (override stubs above)
+my $plugins_dir = $args->{quests_dir} . '/plugins';
+if (-d $plugins_dir) {
+    opendir(my $dh, $plugins_dir) || die "Can't opendir $plugins_dir: $!";
+    while (my $file = readdir($dh)) {
+        next if ($file =~ /^\./);
+        if ($file =~ /\.pl$/i) {
+            my $path = "$plugins_dir/$file";
+            eval {
+                package plugin;
+                do $path;
+                1;
+            } or warn "Quest plugin $file: $@\n";
+        }
+    }
+    closedir($dh);
 }
 
 package main;

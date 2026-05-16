@@ -738,6 +738,7 @@ async function createCharacter(accountId, name, className, raceName, deityId, st
             );
 
             const ItemDB = require('./data/itemDatabase');
+            await ItemDB.loadItems();
             const itemsToGive = [];
             for (const item of starterItems) {
                 const def = ItemDB.getById(item.item_id);

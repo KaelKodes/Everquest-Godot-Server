@@ -225,7 +225,7 @@ function deriveSpellType(effects, named) {
     if (spaIds.includes(33))  return 'pet';
     if (spaIds.includes(120)) return 'pet';         // Temp pet
     if (spaIds.includes(111)) return 'resurrect';
-    if (spaIds.includes(106)) return 'teleport';
+    if (spaIds.includes(106)) return 'warder';
     if (spaIds.includes(24))  return 'gate';
     if (spaIds.includes(60))  return 'illusion';
     if (spaIds.includes(57))  return 'rune';

@@ -9,7 +9,7 @@ const { send } = require('../utils');
 
 const SPELLS = SpellDB.createLegacyProxy();
 
-let sendCombatLog, sendStatus, calcEffectiveStatsFn, ensureZoneLoaded, getZoneDef, resolveZoneKey, handleStopCombat, handleSuccor, combat, handleMobDeath, broadcastTargetUpdate;
+let sendCombatLog, sendStatus, calcEffectiveStatsFn, ensureZoneLoaded, getZoneDef, resolveZoneKey, handleStopCombat, handleSuccor, combat, handleMobDeath, broadcastTargetUpdate, spawnBeastlordWarderFn;
 
 function init(deps) {
   sendCombatLog = deps.sendCombatLog;
@@ -23,6 +23,7 @@ function init(deps) {
   combat = deps.combat;
   handleMobDeath = deps.handleMobDeath;
   broadcastTargetUpdate = deps.broadcastTargetUpdate;
+  spawnBeastlordWarderFn = deps.spawnBeastlordWarder;
 
   // Internal function pointers
   module.exports.calcEffectiveStatsFn = deps.calcEffectiveStats;
@@ -140,6 +141,15 @@ function applyBuff(entity, spellDef, duration, casterName, isBeneficial = true, 
         effects: spellDef.effects || [],
         ...extraProps
     };
+
+    if (!isBeneficial) {
+      if (buffObj.casterCharId == null && session && session.char && session.char.id != null) {
+        buffObj.casterCharId = session.char.id;
+      }
+      if (buffObj.casterMobId != null) {
+        buffObj.casterMobId = String(buffObj.casterMobId);
+      }
+    }
 
     // Auto-calculate tickDamage if not provided and it's a detrimental spell
     if (!isBeneficial && !buffObj.tickDamage) {
@@ -1145,6 +1155,20 @@ async function applySpellEffect(session, spellDef) {
     return;
   }
 
+  // SPA 106: Summon Beastlord Warder
+  const isWarderSpell = spellDef.effect === 'warder'
+    || (spellDef.effects || []).some((e) => e.spa === 106);
+  if (isWarderSpell && spawnBeastlordWarderFn) {
+    if (session.char.class !== 'beastlord') {
+      events.push({ event: 'MESSAGE', text: 'Only beastlords can summon a warder.' });
+    } else {
+      const { events: warderEvents } = spawnBeastlordWarderFn(session, spellDef);
+      events.push(...(warderEvents || []));
+    }
+    if (sendCombatLog) sendCombatLog(session, events);
+    return;
+  }
+
   // Handle instant Mana / Endurance (SPA 15, 189)
   const isDetrimental = !spellDef.goodEffect;
   let instantTarget = session.char;
@@ -1676,9 +1700,9 @@ async function applySpellEffect(session, spellDef) {
           if (mob.hateList) mob.hateList.addEntToHateList(session.char.name, dmg, dmg);
           breakMez(mob, events);
           if (isSpellCrit) {
-              events.push({ event: 'SPELL_DAMAGE', source: 'You', target: mob.name, spell: spellDef.name, damage: dmg, text: 'Critical Blast!' });
+              events.push({ event: 'SPELL_DAMAGE', source: 'You', target: mob.name, spell: spellDef.name, damage: dmg, text: 'Critical Blast!', sourceId: `player_${session.char.id}`, targetId: String(mob.id) });
           } else {
-              events.push({ event: 'SPELL_DAMAGE', source: 'You', target: mob.name, spell: spellDef.name, damage: dmg });
+              events.push({ event: 'SPELL_DAMAGE', source: 'You', target: mob.name, spell: spellDef.name, damage: dmg, sourceId: `player_${session.char.id}`, targetId: String(mob.id) });
           }
           if (mob.hp <= 0) {
               await handleMobDeath(session, mob, events);
@@ -1717,7 +1741,7 @@ async function applySpellEffect(session, spellDef) {
               mob.hp -= actualDmg;
               if (mob.hateList) mob.hateList.addEntToHateList(session.char.name, actualDmg, actualDmg);
               breakMez(mob, events);
-              events.push({ event: 'SPELL_DAMAGE', source: 'You', target: mob.name, spell: spellDef.name, damage: actualDmg });
+              events.push({ event: 'SPELL_DAMAGE', source: 'You', target: mob.name, spell: spellDef.name, damage: actualDmg, sourceId: `player_${session.char.id}`, targetId: String(mob.id) });
               if (mob.hp <= 0) {
                   await handleMobDeath(session, mob, events);
                   continue;
@@ -1743,7 +1767,11 @@ async function applySpellEffect(session, spellDef) {
               }
           }
 
-          applyBuff(mob, spellDef, dur, session.char.name, false, session, { tickDamage, isSong: spellDef.derived?.isBardSong === true, casterName: session.char.name });
+          applyBuff(mob, spellDef, dur, session.char.name, false, session, {
+            tickDamage,
+            isSong: spellDef.derived?.isBardSong === true,
+            casterName: session.char.name
+          });
           events.push({ event: 'MESSAGE', text: `${mob.name} is afflicted by ${spellDef.name}.` });
       }
       break;
@@ -1960,6 +1988,7 @@ module.exports = {
   breakMez,
   getAoeTargets,
   init,
+  applyBuff,
   handleRemoveBuff: (session, msg) => {
     if (!msg.name) return;
     const buffName = msg.name;

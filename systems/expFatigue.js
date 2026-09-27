@@ -6,10 +6,6 @@
  * Player-facing hints are vague (mindSky / mindMurmur); exact math stays server-side.
  */
 
-function xpForLevel(level) {
-  return require('../combat').xpForLevel(level);
-}
-
 const MAX_FATIGUE = 1000;
 
 /** Per kill: fatigue += (killXp / xpThisLevel) * this factor. */
@@ -137,9 +133,8 @@ function getKillXpMultiplier(fatigue) {
   return 1;
 }
 
-function xpSpanForLevel(level) {
-  const lv = Math.max(1, level || 1);
-  return Math.max(1, xpForLevel(lv + 1) - xpForLevel(lv));
+function levelSpan(char) {
+  return require('./groupExp').xpSpanForChar(char);
 }
 
 function clampChar(char) {
@@ -163,7 +158,7 @@ function addFromKillXp(session, rawKillXp, sendCombatLog) {
   if (!char || rawKillXp <= 0) return;
   clampChar(char);
   const prev = getTierIndex(char.learningFatigue);
-  const span = xpSpanForLevel(char.level);
+  const span = levelSpan(char);
   const gain = (rawKillXp / span) * KILL_FATIGUE_PER_LEVEL_RATIO;
   char.learningFatigue = Math.min(MAX_FATIGUE, char.learningFatigue + gain);
   notifyTierChange(session, sendCombatLog, prev, getTierIndex(char.learningFatigue));
@@ -174,7 +169,7 @@ function relieveFromRestorativeXp(session, xpAmount, sendCombatLog) {
   if (!char || xpAmount <= 0) return;
   clampChar(char);
   const prev = getTierIndex(char.learningFatigue);
-  const span = xpSpanForLevel(char.level);
+  const span = levelSpan(char);
   const drop = (xpAmount / span) * RESTORATIVE_RELIEF_PER_LEVEL_RATIO;
   char.learningFatigue = Math.max(0, char.learningFatigue - drop);
   notifyTierChange(session, sendCombatLog, prev, getTierIndex(char.learningFatigue));

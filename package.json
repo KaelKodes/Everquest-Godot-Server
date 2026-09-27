@@ -11,6 +11,7 @@
     "partition:nodes:apply": "node tools/partition_zone_nodes.js --apply"
   },
   "dependencies": {
+    "@cursor/sdk": "^1.0.32",
     "@gltf-transform/core": "^4.3.0",
     "@gltf-transform/extensions": "^4.3.0",
     "dotenv": "^17.4.2",

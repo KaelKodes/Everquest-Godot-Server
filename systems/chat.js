@@ -8,12 +8,41 @@ const FactionSystem = require('./faction');
 const GroupManager = require('./groups');
 const { GUILD_MASTER_CLASS, getTaughtClassId, CLASSES_MAP } = require('../utils/npcUtils');
 const combat = require('../combat');
-const ChatSpamGuard = require('./chatSpamGuard');
 const CombatSystem = require('./combat');
 const OocRegen = require('./oocRegen');
+const GuardAssist = require('./guardAssist');
+
+function takenPicture(msg) {
+  const raw = msg && typeof msg.image === 'string' ? msg.image : '';
+  const data = raw.replace(/^data:image\/\w+;base64,/, '').replace(/\s/g, '');
+  if (data.length < 32 || data.length > 600000) return null;
+  if (!/^[A-Za-z0-9+/=]+$/.test(data)) return null;
+  const mime = msg.imageType === 'image/png' ? 'image/png' : 'image/jpeg';
+  return { data, mime };
+}
+
+function chatLine(msg) {
+  const image = takenPicture(msg);
+  let text = String((msg && msg.text) || '').trim();
+  if (image) text = text ? `${text} [image]` : '[image]';
+  return { text, image };
+}
 
 function getDistanceSq(x1, y1, x2, y2) {
   return (x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1);
+}
+
+/** Spoken orders reach class brains. Group chat already does this on broadcast. */
+function tellGroupBots(session, text) {
+  const group = session && session.group;
+  if (!group || !group.members || !text) return;
+  for (const member of group.members) {
+    if (!member || member === session || !member.bot || typeof member.bot.handleChat !== 'function') continue;
+    if (member.char && session.char && member.char.name === session.char.name) continue;
+    try {
+      member.bot.handleChat(text, session.char.name);
+    } catch (e) { /* ignore */ }
+  }
 }
 
 let sendCombatLogFn, processQuestActionsFn, handleHailFn, awardExpFn, sendStatusFn;
@@ -53,7 +82,7 @@ function isStudentAssistPhrase(text) {
  * @param {object} mentorSession — player giving the order (must own the bots)
  * @param {string} text — chat line to scan
  */
-function tryOrderStudentsAssist(mentorSession, text) {
+function tryOrderStudentsAssist(mentorSession, text, onlySession) {
   if (!mentorSession || !mentorSession.char || !isStudentAssistPhrase(text)) return;
   if (!sendCombatLogFn || !sendStatusFn) return;
 
@@ -81,6 +110,7 @@ function tryOrderStudentsAssist(mentorSession, text) {
   const z = mentorSession.char.zoneId;
   let n = 0;
   for (const [, s] of sessions) {
+    if (onlySession && s !== onlySession) continue;
     if (!s.isBot || !s.char || s.char.ownerId !== mentorSession.char.id) continue;
     if (s.char.zoneId !== z) continue;
     if (s.char.hp <= 0 || s.char.state === 'dead') continue;
@@ -175,26 +205,19 @@ function processRPExperience(session, text, opts = {}) {
 
 async function handleSay(session, msg) {
   const char = session.char;
-  const text = (msg.text || '').trim();
+  const { text, image } = chatLine(msg);
   if (!text) return;
-
-  if (ChatSpamGuard.isMuted(session)) {
-    ChatSpamGuard.onMutedChatAttempt(session, sendCombatLog);
-    return;
-  }
-  const spam = ChatSpamGuard.onPublicMessage(session, text, sendCombatLog);
-  if (spam.block) return;
 
   // Echo the player's speech via CHAT
   send(session.ws, { type: 'CHAT', channel: 'say', sender: char.name, text: text });
 
-  if (!spam.skipRp) {
-    processRPExperience(session, text, {
-      nearbyPlayerCount: countNearbyOtherPlayers(session, 200),
-    });
-  }
+  processRPExperience(session, text, {
+    nearbyPlayerCount: countNearbyOtherPlayers(session, 200),
+  });
 
   tryOrderStudentsAssist(session, text);
+  tellGroupBots(session, text);
+  require('./companionMind').notice(session, 'say', text, image);
 
   // If we have a targeted NPC, check for keyword responses
   if (session.combatTarget && session.combatTarget.npcType) {
@@ -309,6 +332,7 @@ async function handleSay(session, msg) {
   }
 
   // Broadcast to other players within say range (200 units)
+  if (msg && msg.alreadyBroadcast) return;
   broadcastChat(session, 'say', text, 200);
 }
 
@@ -332,89 +356,65 @@ function handleShout(session, msg) {
   const text = (msg.text || '').trim();
   if (!text) return;
 
-  if (ChatSpamGuard.isMuted(session)) {
-    ChatSpamGuard.onMutedChatAttempt(session, sendCombatLog);
-    return;
-  }
-  const spam = ChatSpamGuard.onPublicMessage(session, text, sendCombatLog);
-  if (spam.block) return;
-
   send(session.ws, { type: 'CHAT', channel: 'shout', sender: char.name, text: text });
   broadcastChat(session, 'shout', text, 600);
-  if (!spam.skipRp) {
-    processRPExperience(session, text, {
-      nearbyPlayerCount: countNearbyOtherPlayers(session, 600),
-    });
-  }
+  processRPExperience(session, text, {
+    nearbyPlayerCount: countNearbyOtherPlayers(session, 600),
+  });
 }
 
 // ── /ooc — same as say radius (200u), local only ────────────────────
 function handleOOC(session, msg) {
   const char = session.char;
-  const text = (msg.text || '').trim();
+  const { text, image } = chatLine(msg);
   if (!text) return;
-
-  if (ChatSpamGuard.isMuted(session)) {
-    ChatSpamGuard.onMutedChatAttempt(session, sendCombatLog);
-    return;
-  }
-  const spam = ChatSpamGuard.onPublicMessage(session, text, sendCombatLog);
-  if (spam.block) return;
 
   send(session.ws, { type: 'CHAT', channel: 'ooc', sender: char.name, text: text });
   broadcastChat(session, 'ooc', text, 200);
+  require('./companionMind').notice(session, 'ooc', text, image);
 }
 
-// ── /yell — 2x say radius (400u) + guard AI assist ─────────────────
+// ── /yell — 2x say radius (400u). "help" calls nearby city guards. ─
 function handleYell(session, msg) {
   const char = session.char;
   const text = (msg.text || '').trim() || 'Help!!';
 
-  if (ChatSpamGuard.isMuted(session)) {
-    ChatSpamGuard.onMutedChatAttempt(session, sendCombatLog);
-    return;
-  }
-  const spam = ChatSpamGuard.onPublicMessage(session, text, sendCombatLog);
-  if (spam.block) return;
-
   send(session.ws, { type: 'CHAT', channel: 'yell', sender: char.name, text: text });
   broadcastChat(session, 'yell', text, 400);
 
-  // Guard AI: nearby guards respond to the yell
+  // Players and bots share this path. A help yell brings guards in earshot.
+  if (!GuardAssist.isHelpYell(text)) return;
   const instance = zoneInstances[char.zoneId];
-  if (!instance) return;
+  if (!instance || !instance.liveMobs) return;
+  GuardAssist.callForHelp(session, instance.liveMobs, sendCombatLog);
+}
 
-  for (const mob of instance.liveMobs) {
-    if (!mob.alive) continue;
-    // Identify guards by key prefix (guard_ or watchman_)
-    const isGuard = mob.key && (mob.key.startsWith('guard_') || mob.key.startsWith('watchman_'));
-    if (!isGuard) continue;
+function deliverWhisper(fromSession, toSession, text) {
+  const line = String(text || '').trim();
+  if (!line || !fromSession || !toSession || !fromSession.char || !toSession.char) return;
+  send(toSession.ws, {
+    type: 'CHAT',
+    channel: 'whisper',
+    sender: fromSession.char.name,
+    text: line,
+    direction: 'from',
+  });
+  send(fromSession.ws, {
+    type: 'CHAT',
+    channel: 'whisper',
+    sender: toSession.char.name,
+    text: line,
+    direction: 'to',
+  });
+}
 
-    const guardDistSq = getDistanceSq(mob.x, mob.y, char.x, char.y);
-    if (guardDistSq > 160000) continue; // Guard must hear the yell
-
-    // Check if the player is being attacked by a mob
-    // Find mobs that are targeting this player
-    for (const attacker of instance.liveMobs) {
-      if (!attacker.alive || attacker === mob) continue;
-      if (attacker.target && attacker.target === char.name) {
-        // Don't help if the attacker IS a guard (guards help each other)
-        const attackerIsGuard = attacker.key && (attacker.key.startsWith('guard_') || attacker.key.startsWith('watchman_'));
-        if (attackerIsGuard) {
-          // Player is fighting guards — guards assist each other, not the player
-          continue;
-        }
-        // Don't help in PvP (attacker is a player session, not a mob)
-        if (!attacker.npcType) continue;
-
-        // Guard engages the mob attacking the player
-        mob.target = attacker.id || attacker.name;
-        mob.inCombat = true;
-        sendCombatLog(session, [{ event: 'MESSAGE', text: `${mob.name} shouts, 'I'll protect you, citizen!'` }]);
-        break; // Guard only assists against one attacker
-      }
-    }
-  }
+function tellOneBot(session, targetSession, text) {
+  if (!targetSession || !targetSession.bot || typeof targetSession.bot.handleChat !== 'function') return;
+  targetSession._whisperReplyTo = session;
+  try {
+    targetSession.bot.handleChat(text, session.char.name);
+  } catch (e) { /* ignore */ }
+  targetSession._whisperReplyTo = null;
 }
 
 // ── /whisper — global private message (cross-node via broker) ───────
@@ -437,12 +437,19 @@ async function handleWhisper(session, msg) {
   }
 
   if (targetSession) {
-    // Local delivery
-    send(targetSession.ws, { type: 'CHAT', channel: 'whisper', sender: char.name, text: text, direction: 'from' });
-    send(session.ws, { type: 'CHAT', channel: 'whisper', sender: targetName, text: text, direction: 'to' });
+    deliverWhisper(session, targetSession, text);
 
-    if (targetSession.isBot && targetSession.char && targetSession.char.ownerId === char.id) {
-      tryOrderStudentsAssist(session, text);
+    if (targetSession.isCompanion) {
+      try {
+        require('./companionMind').hearWhisper(session, targetSession, text);
+      } catch (e) {
+        console.error('[WHISPER] companion:', e.message);
+      }
+    } else if (targetSession.isBot) {
+      tellOneBot(session, targetSession, text);
+      if (targetSession.char && targetSession.char.ownerId === char.id) {
+        tryOrderStudentsAssist(session, text, targetSession);
+      }
     }
     return;
   }
@@ -469,10 +476,11 @@ async function handleWhisper(session, msg) {
 
 // ── /group — broadcast to party ────────────────────────────────────
 function handleGroup(session, msg) {
-  const text = (msg.text || '').trim();
+  const { text, image } = chatLine(msg);
   if (!text) return;
   GroupManager.handleGroupChat(session, text);
   tryOrderStudentsAssist(session, text);
+  require('./companionMind').notice(session, 'group', text, image);
 }
 
 // ── /invite — invite player to group ────────────────────────────────
@@ -498,13 +506,20 @@ function handleGrouproles(session, msg) {
 
 // ── /guild — global (stub: not implemented) ─────────────────────────
 function handleGuild(session, msg) {
-  const text = (msg.text || '').trim();
+  const { text, image } = chatLine(msg);
   if (!text) return;
 
-  if (!session.guild) {
-    send(session.ws, { type: 'CHAT', channel: 'system', sender: '', text: 'You are not in a guild.' });
-    return;
+  const char = session.char;
+  send(session.ws, { type: 'CHAT', channel: 'guild', sender: char.name, text: text });
+  for (const [, other] of sessions) {
+    if (!other.char || other.char.id === char.id) continue;
+    const grouped = session.group && other.group && session.group === other.group;
+    const sameZone = other.char.zoneId === char.zoneId;
+    if (grouped || sameZone) {
+      send(other.ws, { type: 'CHAT', channel: 'guild', sender: char.name, text: text });
+    }
   }
+  require('./companionMind').notice(session, 'guild', text, image);
 }
 
 // ── /raid — global (stub: not implemented) ──────────────────────────
@@ -550,6 +565,7 @@ module.exports = {
   handleOOC,
   handleYell,
   handleWhisper,
+  deliverWhisper,
   handleGroup,
   handleInvite,
   handleDisband,
@@ -558,6 +574,7 @@ module.exports = {
   handleRaid,
   handleAnnouncement,
   broadcastChat,
+  handleHail,
   init,
   processRPExperience,
   countNearbyOtherPlayers,

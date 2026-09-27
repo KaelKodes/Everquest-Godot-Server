@@ -3,6 +3,7 @@ const FactionSystem = require('./faction');
 const SpatialSystem = require('./spatial');
 const { NPC_TYPES } = require('../data/npcTypes');
 const { isTriggerPlaceholder } = require('../utils/npcUtils');
+const GuardAssist = require('./guardAssist');
 
 function iterZoneSessions(api, zoneId) {
   if (!api.sessions) return [];
@@ -126,6 +127,7 @@ function processMobAI(zone, zoneId, dt, api) {
       }
       continue;
     }
+    if (mob.pendingRemove || mob.alive === false) continue;
     // Process mob debuffs (DOTs, snares, etc.)
     if (Array.isArray(mob.buffs)) {
       for (let i = mob.buffs.length - 1; i >= 0; i--) {
@@ -207,7 +209,10 @@ function processMobAI(zone, zoneId, dt, api) {
         if (api.sessions) {
           for (const s of (api.sessions.values ? Array.from(api.sessions.values()) : Object.values(api.sessions))) {
             if (s.char && s.char.name === mob.hateList?.getMobWithMostHateOnList()) {
-              api.handleMobDeath(s, mob, []);
+              const deathEvents = [];
+              Promise.resolve(api.handleMobDeath(s, mob, deathEvents)).then(() => {
+                if (deathEvents.length && api.sendCombatLog) api.sendCombatLog(s, deathEvents);
+              });
               killerFound = true;
               break;
             }
@@ -217,7 +222,10 @@ function processMobAI(zone, zoneId, dt, api) {
         if (!killerFound && api.sessions) {
             for (const s of (api.sessions.values ? Array.from(api.sessions.values()) : Object.values(api.sessions))) {
                 if (s.combatTarget === mob) {
-                    api.handleMobDeath(s, mob, []);
+                    const deathEvents = [];
+                    Promise.resolve(api.handleMobDeath(s, mob, deathEvents)).then(() => {
+                      if (deathEvents.length && api.sendCombatLog) api.sendCombatLog(s, deathEvents);
+                    });
                     killerFound = true;
                     break;
                 }
@@ -234,7 +242,9 @@ function processMobAI(zone, zoneId, dt, api) {
       const topHateName = mob.hateList.getMobWithMostHateOnList();
       if (topHateName) {
         let resolvedTarget = null;
-        if (api.sessions) {
+        if (GuardAssist.isGuardHateId(topHateName)) {
+          resolvedTarget = GuardAssist.resolveGuardTarget(zone, topHateName);
+        } else if (api.sessions) {
           const sessionList = (api.sessions.values ? Array.from(api.sessions.values()) : Object.values(api.sessions));
           for (const s of sessionList) {
             if (s.char && s.char.name === topHateName && s.char.zoneId === zoneId && s.char.hp > 0 && s.char.state !== 'dead') {
@@ -243,7 +253,7 @@ function processMobAI(zone, zoneId, dt, api) {
             }
           }
         }
-        
+
         // If the top target is valid, they are our target. Otherwise, we wipe them from the list.
         if (resolvedTarget) {
           mob.target = resolvedTarget;
@@ -349,6 +359,12 @@ function processMobAI(zone, zoneId, dt, api) {
       }
     }
 
+    // City guards answering a help yell chase and taunt on their own.
+    // That path owns the tick so generic aggro does not walk them back to a player.
+    if (mob.hp > 0 && GuardAssist.tick(mob, zone, zoneId, dt, api)) {
+      continue;
+    }
+
     if (mob.hp > 0 && mob.target) {
       // Check if mob is CC'd (mez/stun/fear/root/charm) — skip attack if so
       if (Array.isArray(mob.buffs)) {
@@ -390,9 +406,10 @@ function processMobAI(zone, zoneId, dt, api) {
         }
       }
 
-      // Determine if target is a pet or a player session
+      // Pet, player/bot session, or an NPC (a guard who taunted this mob).
       const targetIsPet = mob.target.isPet === true;
-      const targetIsSession = !targetIsPet && mob.target.char;
+      const targetIsSession = !targetIsPet && !!(mob.target.char && mob.target.char.name) && mob.target.maxHp == null;
+      const targetIsNpc = !targetIsPet && !targetIsSession && mob.target.maxHp != null && !!mob.target.name;
 
       // If target is dead or invalid, reset aggro
       if (targetIsPet) {
@@ -406,6 +423,18 @@ function processMobAI(zone, zoneId, dt, api) {
           mob.target = null;
           continue;
         }
+        // Feign Death: treat as dead for aggro purposes.
+        if (session.feigned || session.char.state === 'feigned') {
+          if (mob.hateList) mob.hateList.removeEntFromHateList(session.char.name);
+          mob.target = null;
+          continue;
+        }
+      } else if (targetIsNpc) {
+        if (mob.target.hp <= 0 || mob.target.alive === false || mob.target.pendingRemove) {
+          if (mob.hateList) mob.hateList.removeEntFromHateList(GuardAssist.guardHateId(mob.target));
+          mob.target = null;
+          continue;
+        }
       } else {
         mob.target = null;
         continue;
@@ -413,14 +442,14 @@ function processMobAI(zone, zoneId, dt, api) {
 
       // Get target position and HP reference
       let targetX, targetY, targetZ;
-      if (targetIsPet) {
-        targetX = mob.target.x;
-        targetY = mob.target.y;
-        targetZ = mob.target.z || 0;
-      } else {
+      if (targetIsSession) {
         targetX = mob.target.char.x;
         targetY = mob.target.char.y;
         targetZ = mob.target.char.z || 0;
+      } else {
+        targetX = mob.target.x;
+        targetY = mob.target.y;
+        targetZ = mob.target.z || 0;
       }
 
       // Check for haste/slow and movement buffs/debuffs (SPA 11, SPA 3)
@@ -521,7 +550,7 @@ function processMobAI(zone, zoneId, dt, api) {
         mob.attackTimer = mob.attackDelay / mobAtkSpeedMod;
         
         const events = [];
-        let playerSession = targetIsPet ? null : mob.target;
+        let playerSession = targetIsSession ? mob.target : null;
 
         if (targetIsPet) {
           // ── Mob attacks pet ──
@@ -551,6 +580,8 @@ function processMobAI(zone, zoneId, dt, api) {
             api.handlePetDeath(pet, zone);
             mob.target = null;
           }
+        } else if (targetIsNpc) {
+          GuardAssist.strikeNpc(mob, mob.target, zone, api);
         } else {
           // ── Mob attacks player session (existing code) ──
           const session = playerSession;
@@ -658,6 +689,10 @@ function processMobAI(zone, zoneId, dt, api) {
       // Roaming logic when not in combat
       processMobRoaming(mob, dt, zoneId, api);
     }
+  }
+
+  if (zone.liveMobs.some((m) => m && m.pendingRemove)) {
+    zone.liveMobs = zone.liveMobs.filter((m) => m && !m.pendingRemove);
   }
 }
 

@@ -71,6 +71,7 @@ function spawnMob(zoneId, mobDef, forcedX = null, forcedY = null, forcedZ = null
     textures: mobDef.textures || {},
     npc_faction_id: mobDef.npc_faction_id || 0,
     xpBase: mobDef.xpBase, loot: mobDef.loot || [],
+    loottable_id: Number(mobDef.loottable_id) || 0,
     target: null,
     hateList: new HateList(),
   };
@@ -133,6 +134,7 @@ function processRespawns(zoneId, TICK_RATE) {
               size: picked.size || 6, runspeed: picked.runspeed || 1.25, walkspeed: picked.walkspeed || 0.4,
               textures: picked.textures || {},
               npc_faction_id: picked.npc_faction_id || 0,
+              loottable_id: Number(picked.loottable_id) || 0,
             };
             spawn.mobDef = mobDef;
             spawn.mobKey = mobDef.key;

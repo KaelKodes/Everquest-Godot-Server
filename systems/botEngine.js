@@ -114,6 +114,9 @@ class TLO_Me extends TLO_Spawn {
     if (ct.char) {
       return new TLO_Spawn(ct.char, this.session, ct);
     }
+    if (ct.npcType && ct.npcType !== 'mob') {
+      return new TLO_Spawn(null, this.session, null);
+    }
     return new TLO_Spawn(ct, this.session, null);
   }
 }
@@ -151,7 +154,12 @@ class MQWrapper {
       formatted = formatted.replace('%s', arg);
     });
 
-    console.log(`[MQ] ${this.session.char?.name || '?'} executes: ${formatted}`);
+    const now = Date.now();
+    const last = this._lastLoggedCmd;
+    if (!last || last.text !== formatted || now - last.at > 2000) {
+      console.log(`[MQ] ${this.session.char?.name || '?'} executes: ${formatted}`);
+      this._lastLoggedCmd = { text: formatted, at: now };
+    }
 
     const parts = formatted.trim().split(/\s+/);
     const baseCmd = parts[0].toLowerCase();
@@ -165,6 +173,7 @@ class MQWrapper {
       for (const [, s] of State.sessions) {
         if (s.char && s.char.zoneId === zoneId && s.char.name.toLowerCase() === want) {
           this.session.combatTarget = s;
+          if (this.session.attackTarget && this.session.attackTarget !== s) this.session.lookHold = true;
           return true;
         }
       }

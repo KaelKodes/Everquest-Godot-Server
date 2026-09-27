@@ -9,7 +9,7 @@ const { send } = require('../utils');
 
 const SPELLS = SpellDB.createLegacyProxy();
 
-let sendCombatLog, sendStatus, calcEffectiveStatsFn, ensureZoneLoaded, getZoneDef, resolveZoneKey, handleStopCombat, handleSuccor, combat, handleMobDeath, broadcastTargetUpdate, spawnBeastlordWarderFn;
+let sendCombatLog, sendStatus, calcEffectiveStatsFn, ensureZoneLoaded, getZoneDef, resolveZoneKey, handleStopCombat, handleSuccor, combat, handleMobDeath, broadcastTargetUpdate, spawnBeastlordWarderFn, spawnPetFn, charmMobFn;
 
 function init(deps) {
   sendCombatLog = deps.sendCombatLog;
@@ -24,6 +24,8 @@ function init(deps) {
   handleMobDeath = deps.handleMobDeath;
   broadcastTargetUpdate = deps.broadcastTargetUpdate;
   spawnBeastlordWarderFn = deps.spawnBeastlordWarder;
+  spawnPetFn = deps.spawnPet;
+  charmMobFn = deps.charmMob;
 
   // Internal function pointers
   module.exports.calcEffectiveStatsFn = deps.calcEffectiveStats;
@@ -1169,6 +1171,21 @@ async function applySpellEffect(session, spellDef) {
     return;
   }
 
+  // SPA 33: Summon Pet (enchanter animation, magician elemental, and the rest)
+  const petSummon = (spellDef.effects || []).find((e) => e.spa === 33);
+  if (petSummon) {
+    const { PET_SPELLS } = require('../data/petData');
+    const petDef = PET_SPELLS[spellDef.id] || PET_SPELLS[spellDef._spellId];
+    if (!petDef || !spawnPetFn) {
+      events.push({ event: 'MESSAGE', text: 'The summoning fails to take shape.' });
+    } else {
+      const spawned = spawnPetFn(session, petDef, spellDef);
+      events.push(...((spawned && spawned.events) || []));
+    }
+    if (sendCombatLog) sendCombatLog(session, events);
+    return;
+  }
+
   // Handle instant Mana / Endurance (SPA 15, 189)
   const isDetrimental = !spellDef.goodEffect;
   let instantTarget = session.char;
@@ -1261,7 +1278,7 @@ async function applySpellEffect(session, spellDef) {
       events.push({ event: 'RESIST', target: mob.name, spell: spellDef.name });
     } else {
       const dur = calculateSpellDuration(spellDef, durMod, resistResult, 6);
-      applyBuff(mob, spellDef, dur, session.char.name, false, session);
+      applyBuff(mob, spellDef, dur, session.char.name, false, session, { isMez: true });
       mob.target = null; // Drop aggro target
       events.push({ event: 'MESSAGE', text: `${mob.name} has been mesmerized.` });
     }
@@ -1387,13 +1404,16 @@ async function applySpellEffect(session, spellDef) {
       if (mob.hateList) mob.hateList.addEntToHateList(session.char.name, 500, 0);
     } else {
       const dur = calculateSpellDuration(spellDef, durMod, resistResult, 36);
-      // Mark mob as charmed — the AI system will treat it like a pet
       applyBuff(mob, spellDef, dur, session.char.name, false, session, { isCharm: true });
-      mob.isCharmed = true;
-      mob.charmOwner = session;
-      mob.target = null;
-      if (mob.hateList) mob.hateList.wipeHateList();
-      events.push({ event: 'MESSAGE', text: `${mob.name} regards you as an ally!` });
+      if (charmMobFn) {
+        events.push(...(charmMobFn(session, mob, spellDef) || []));
+      } else {
+        mob.isCharmed = true;
+        mob.charmOwner = session;
+        mob.target = null;
+        if (mob.hateList) mob.hateList.wipeHateList();
+        events.push({ event: 'MESSAGE', text: `${mob.name} regards you as an ally!` });
+      }
     }
     if (sendCombatLog) sendCombatLog(session, events);
     return;

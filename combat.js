@@ -428,6 +428,32 @@ function checkDualWield(session) {
 
 // ── Special Abilities ───────────────────────────────────────────────
 
+/**
+ * Player Taunt skill check + hate bump (classic-style).
+ * Always attempts a skill-up when the character has the skill.
+ * @returns {{ success: boolean, skill: number }}
+ */
+function attemptTaunt(session, mob) {
+  const char = session.char;
+  const skill = getCharSkill(char, 'taunt');
+  if (skill <= 0) return { success: false, skill: 0 };
+
+  trySkillUp(session, 'taunt');
+
+  const tauntRoll = Math.floor(Math.random() * 200) + 1;
+  if (tauntRoll > skill + 30) return { success: false, skill };
+
+  if (!mob || mob.char || !mob.hateList) return { success: false, skill };
+
+  const topEnt = mob.hateList.getMobWithMostHateOnList();
+  const topEntry = topEnt ? mob.hateList.entries.find(e => e.entityId === topEnt) : null;
+  const topHate = topEntry ? topEntry.hateAmount : 0;
+  // Classic EQ: set hate to top + bonus so the mob switches to the taunter
+  mob.hateList.setHateAmount(char.name, topHate + 10);
+  mob.target = session;
+  return { success: true, skill };
+}
+
 function calcKickDamage(session) {
   const skill = getCharSkill(session.char, 'kick');
   if (skill <= 0) return 0;
@@ -698,7 +724,7 @@ module.exports = {
   calcPlayerATK, calcMobDefense, calcHitChance, calcMobHitChance,
   checkAvoidance, calcPlayerDamage, calcMobDamage,
   checkCritical, checkCripplingBlow, checkDoubleAttack, checkDualWield,
-  calcKickDamage, calcBashDamage, calcBackstabDamage,
+  attemptTaunt, calcKickDamage, calcBashDamage, calcBackstabDamage,
   calcSpellResist, RESIST_TYPES,
   getCon, xpForLevel, calcXPGain, getRegenRates, getMeditateManaRegenFactor, checkFizzle,
   calcMaxHP, calcMaxMana, init,

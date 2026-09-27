@@ -184,6 +184,9 @@ async function init() {
             await pool.query('ALTER TABLE character_data ADD COLUMN mentor_character_id INT NULL DEFAULT NULL');
         } catch (e) { /* column exists */ }
         try {
+            await pool.query('ALTER TABLE character_data ADD COLUMN eqmud_anonymous TINYINT NOT NULL DEFAULT 0');
+        } catch (e) { /* column exists */ }
+        try {
             await pool.query('CREATE INDEX idx_character_mentor ON character_data (mentor_character_id)');
         } catch (e) { /* exists */ }
     } catch (e) {
@@ -321,6 +324,18 @@ async function loginAccount(username, password) {
         return { id: rows[0].id, name: rows[0].name, status: rows[0].status };
     } catch (e) {
         console.error('[DB] loginAccount Error:', e.message);
+        return null;
+    }
+}
+
+async function getAccountByName(username) {
+    await init();
+    try {
+        const [rows] = await pool.query('SELECT id, name, status FROM account WHERE name = ?', [username]);
+        if (!rows.length) return null;
+        return { id: rows[0].id, name: rows[0].name, status: rows[0].status };
+    } catch (e) {
+        console.error('[DB] getAccountByName Error:', e.message);
         return null;
     }
 }
@@ -582,7 +597,8 @@ async function mapCharacterDataRow(char) {
         copper: 0,
         mentorCharacterId: char.mentor_character_id != null && char.mentor_character_id !== 0
             ? char.mentor_character_id
-            : null
+            : null,
+        anonymous: Number(char.eqmud_anonymous) === 1
     };
 
     result.hasBindPoint = false;
@@ -905,6 +921,14 @@ async function updateCharacterState(char) {
     } catch (e) {
         console.error('[DB] updateCharacterState Error:', e.message);
     }
+}
+
+async function setCharacterAnonymous(characterId, anonymous) {
+    if (!pool || characterId == null) return;
+    await pool.query(
+        'UPDATE character_data SET eqmud_anonymous = ? WHERE id = ?',
+        [anonymous ? 1 : 0, characterId]
+    );
 }
 
 async function updateCharacterBind(char) {
@@ -2352,51 +2376,133 @@ async function saveCharacterBuffs(charId, buffs) {
     }
 }
 
-async function rollLootFromTable(loottableId) {
-    if (!pool || !loottableId) return { items: [], coins: 0 };
-    try {
-        // 1. Get coins from loottable
-        const [ltRows] = await pool.query(`SELECT mincash, maxcash FROM loottable WHERE id = ?`, [loottableId]);
-        let rolledCoins = 0;
-        if (ltRows.length > 0) {
-            const { mincash, maxcash } = ltRows[0];
-            if (maxcash > mincash) {
-                rolledCoins = Math.floor(Math.random() * (maxcash - mincash + 1)) + mincash;
-            } else {
-                rolledCoins = mincash;
+function lootEntryMeetsLevel(entry, npcLevel) {
+    const min = Number(entry.npc_min_level) || 0;
+    const max = Number(entry.npc_max_level) || 0;
+    const lvl = Number(npcLevel) || 0;
+    if (min > 0 && lvl < min) return false;
+    if (max > 0 && lvl > max) return false;
+    return true;
+}
+
+function pushRolledLootItem(rolledItems, item) {
+    const id = Number(item.item_id) || 0;
+    if (id <= 0) return;
+    let qty = Number(item.item_charges);
+    if (!Number.isFinite(qty) || qty <= 0) qty = 1;
+    rolledItems.push({ itemKey: String(id), qty });
+}
+
+/**
+ * EQEmu NPC::AddLootDropTable. droplimit/mindrop 0 rolls each entry on its own chance.
+ * Otherwise pick up to droplimit weighted items, guaranteeing mindrop.
+ */
+function rollLootDropEntries(items, dropLimit, minDrop, npcLevel, rolledItems) {
+    const eligible = (items || []).filter((e) => lootEntryMeetsLevel(e, npcLevel) && Number(e.item_id) > 0);
+    if (eligible.length === 0) return;
+
+    let limit = Number(dropLimit) || 0;
+    let minimum = Number(minDrop) || 0;
+
+    if (limit === 0 && minimum === 0) {
+        for (const e of eligible) {
+            const copies = Math.max(1, Number(e.multiplier) || 1);
+            const chance = Number(e.chance) || 0;
+            for (let j = 0; j < copies; j++) {
+                if (Math.random() * 100 <= chance) pushRolledLootItem(rolledItems, e);
             }
         }
+        return;
+    }
 
-        // 2. Get all lootdrops for this loottable
+    if (eligible.length > 100 && limit === 0) limit = 10;
+    if (limit < minimum) limit = minimum;
+
+    let rollTotal = 0;
+    let noLootProb = 1;
+    let chanceBypass = false;
+    for (const e of eligible) {
+        const chance = Number(e.chance) || 0;
+        rollTotal += chance;
+        if (chance >= 100) chanceBypass = true;
+        else noLootProb *= (100 - chance) / 100;
+    }
+    if (rollTotal <= 0 || limit <= 0) return;
+
+    let drops = 0;
+    for (let i = 0; i < limit; i++) {
+        if (!(drops < minimum || chanceBypass || Math.random() >= noLootProb)) continue;
+        let roll = Math.random() * rollTotal;
+        for (const e of eligible) {
+            const chance = Number(e.chance) || 0;
+            if (roll < chance) {
+                pushRolledLootItem(rolledItems, e);
+                drops++;
+                const extra = Math.max(1, Number(e.multiplier) || 1);
+                for (let k = 1; k < extra; k++) {
+                    if (Math.random() * 100 <= chance) pushRolledLootItem(rolledItems, e);
+                }
+                break;
+            }
+            roll -= chance;
+        }
+    }
+}
+
+function rollLootCash(mincash, maxcash, avgcoin) {
+    let min = Math.max(0, Math.floor(Number(mincash) || 0));
+    let max = Math.max(0, Math.floor(Number(maxcash) || 0));
+    if (min > max) {
+        const t = min;
+        min = max;
+        max = t;
+    }
+    const avg = Math.floor(Number(avgcoin) || 0);
+    if (max > min && avg > 0 && avg >= min && avg <= max) {
+        const upperChance = (avg - min) / (max - min);
+        if (Math.random() < upperChance) {
+            return avg + Math.floor(Math.random() * (max - avg + 1));
+        }
+        return min + Math.floor(Math.random() * (avg - min + 1));
+    }
+    if (max > min) return min + Math.floor(Math.random() * (max - min + 1));
+    return min;
+}
+
+async function rollLootFromTable(loottableId, npcLevel = 0) {
+    if (!pool || !loottableId) return { items: [], coins: 0 };
+    try {
+        const [ltRows] = await pool.query(
+            `SELECT mincash, maxcash, avgcoin FROM loottable WHERE id = ?`,
+            [loottableId]
+        );
+        let rolledCoins = 0;
+        if (ltRows.length > 0) {
+            rolledCoins = rollLootCash(ltRows[0].mincash, ltRows[0].maxcash, ltRows[0].avgcoin);
+        }
+
         const [entries] = await pool.query(`
-            SELECT lte.lootdrop_id, lte.probability, lte.multiplier
+            SELECT lte.lootdrop_id, lte.probability, lte.multiplier, lte.droplimit, lte.mindrop
             FROM loottable_entries lte
             WHERE lte.loottable_id = ?
         `, [loottableId]);
 
         const rolledItems = [];
         for (const entry of entries) {
-            // Roll for the lootdrop itself
-            if (Math.random() * 100 <= entry.probability) {
-                // multiplier > 1 means multiple rolls on the same drop
-                const count = entry.multiplier || 1;
-                for (let i = 0; i < count; i++) {
-                    // 3. Get items in this lootdrop
-                    const [items] = await pool.query(`
-                        SELECT item_id, item_charges, chance
-                        FROM lootdrop_entries
-                        WHERE lootdrop_id = ?
-                    `, [entry.lootdrop_id]);
+            const probability = Number(entry.probability) || 0;
+            if (probability === 0) continue;
+            const rolls = entry.multiplier == null ? 1 : Math.max(0, Number(entry.multiplier) || 0);
+            for (let i = 0; i < rolls; i++) {
+                let dropChance = 0;
+                if (probability >= 0 && probability <= 100) dropChance = Math.random() * 100;
+                if (!(probability === 100 || dropChance <= probability)) continue;
 
-                    for (const item of items) {
-                        if (Math.random() * 100 <= item.chance) {
-                            rolledItems.push({
-                                itemKey: item.item_id.toString(),
-                                qty: item.item_charges || 1
-                            });
-                        }
-                    }
-                }
+                const [items] = await pool.query(`
+                    SELECT item_id, item_charges, chance, multiplier, npc_min_level, npc_max_level
+                    FROM lootdrop_entries
+                    WHERE lootdrop_id = ?
+                `, [entry.lootdrop_id]);
+                rollLootDropEntries(items, entry.droplimit, entry.mindrop, npcLevel, rolledItems);
             }
         }
         return { items: rolledItems, coins: rolledCoins };
@@ -2549,7 +2655,8 @@ module.exports = {
   getArchiveShortName,
   getLanternArchiveBase,
   LANTERN_ARCHIVE_ALIASES,
-  loginAccount,
+    loginAccount,
+    getAccountByName,
     createAccount,
     getCharactersByAccount,
     getStartZone,
@@ -2566,6 +2673,7 @@ module.exports = {
     countStudentsForMentor,
     getMentorStudents,
     updateCharacterState,
+    setCharacterAnonymous,
     getInventory,
     addItem,
     updateItemQuantity,

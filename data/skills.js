@@ -300,9 +300,8 @@ const Skills = {
     name: 'Feign Death',
     type: 'ability',
     classes: {
+      // Skill FD is monk-only. Necros / SKs get Feign Death as a spell, not this skill.
       monk: { levelGranted: 17, capFormula: (level) => (level * 5) + 5, maxCap: 200 },
-      necromancer: { levelGranted: 16, capFormula: (level) => (level * 5) + 5, maxCap: 200 },
-      shadowknight: { levelGranted: 27, capFormula: (level) => (level * 5) + 5, maxCap: 200 },
     }
   },
   'mend': {

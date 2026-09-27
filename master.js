@@ -1,6 +1,36 @@
 require('dotenv').config();
 const { spawn } = require('child_process');
+const fs = require('fs');
 const path = require('path');
+
+const AGENT_LOG = path.join(__dirname, 'logs', 'agent.log');
+const AGENT_LOG_MAX = 1500000;
+let agentLogWrites = 0;
+
+function appendAgentLog(line) {
+  try {
+    fs.appendFileSync(AGENT_LOG, `${line}\n`);
+    agentLogWrites += 1;
+    if (agentLogWrites % 40 !== 0) return;
+    const size = fs.statSync(AGENT_LOG).size;
+    if (size <= AGENT_LOG_MAX) return;
+    const kept = fs.readFileSync(AGENT_LOG, 'utf8').slice(-Math.floor(AGENT_LOG_MAX / 2));
+    fs.writeFileSync(AGENT_LOG, kept);
+  } catch (e) { /* the live console still works if the file cannot be written */ }
+}
+
+fs.mkdirSync(path.dirname(AGENT_LOG), { recursive: true });
+fs.writeFileSync(AGENT_LOG, '');
+const writeConsole = console.log.bind(console);
+const writeConsoleError = console.error.bind(console);
+console.log = (...args) => {
+  writeConsole(...args);
+  appendAgentLog(args.map((part) => String(part)).join(' '));
+};
+console.error = (...args) => {
+  writeConsoleError(...args);
+  appendAgentLog(args.map((part) => String(part)).join(' '));
+};
 
 // Public hostname/IP that we advertise to *remote clients* in HANDOFF packets.
 // On a dev box hosting only local connections this stays as 'localhost'.
@@ -123,6 +153,7 @@ console.log('========================================');
 console.log('       EQMUD CLUSTER MASTER BOOT        ');
 console.log('========================================');
 console.log(`[MASTER] Advertised public host: ${PUBLIC_HOST}`);
+console.log('[MASTER] Agent log: logs/agent.log');
 if (PUBLIC_HOST === 'localhost') {
   console.log('[MASTER] (Set PUBLIC_HOST in .env to your LAN/WAN IP to allow remote clients.)');
 }

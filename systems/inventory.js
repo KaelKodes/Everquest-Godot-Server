@@ -99,8 +99,12 @@ function computeMaxBuyOnPerson(session, itemKey, stackSize) {
   return room;
 }
 
-/** Grant count units of addKey into main pockets; merges stacks then fills empty slots. Returns how many were placed. */
-async function grantPurchasedItems(charId, addKey, count, stackSize, session) {
+/**
+ * Place count units of addKey into main pockets (22–29).
+ * Merges into existing stacks first, then fills empty slots.
+ * Returns how many were placed.
+ */
+async function grantItemsToInventory(charId, addKey, count, stackSize, session) {
   let remaining = count;
   const stack = Math.max(1, stackSize || 1);
   while (remaining > 0) {
@@ -127,6 +131,11 @@ async function grantPurchasedItems(charId, addKey, count, stackSize, session) {
   }
   session.inventory = await DB.getInventory(charId);
   return count - remaining;
+}
+
+/** @deprecated alias — merchant buy uses the same merge-first path */
+async function grantPurchasedItems(charId, addKey, count, stackSize, session) {
+  return grantItemsToInventory(charId, addKey, count, stackSize, session);
 }
 
 let calcEffectiveStatsFn, sendCombatLogFn, sendInventoryFn, sendStatusFn, processQuestActionsFn, handleTrainSkillFn;
@@ -351,6 +360,7 @@ async function handleSell(session, msg) {
 }
 
 async function handleNPCGiveItems(session, msg) {
+  if (await require('./companionMind').receiveOffer(session, msg)) return;
   const char = session.char;
   const targetId = msg.npcId;
   const items = msg.items || [];
@@ -507,7 +517,9 @@ async function handleNPCGiveItems(session, msg) {
   const trade = {};
   let i = 1;
   for (const it of items) {
-    trade[`item${i}`] = it.item_id;
+    const catalogId = Number(it.item_id) || Number(it.eq_item_id) || Number(it.inst_id) || 0;
+    trade[`item${i}`] = catalogId;
+    if (!it.item_id) it.item_id = catalogId;
     i++;
   }
   
@@ -735,8 +747,19 @@ async function handleEquipItem(session, msg) {
   const itemDef = ItemDB.getById(invRow.item_key) || ITEMS[invRow.item_key] || {};
   if (!itemDef || Object.keys(itemDef).length === 0) return;
 
-  const targetSlot = slot || itemDef.slot;
-  if (targetSlot <= 0) return;
+  const allowed = [];
+  const mask = Number(itemDef.slot) || 0;
+  for (let i = 0; i <= 21; i++) {
+    if (mask & (1 << i)) allowed.push(i);
+  }
+  const asked = slot == null || slot === '' ? NaN : Number(slot);
+  let targetSlot = null;
+  if (Number.isInteger(asked) && asked >= 0 && asked <= 21 && (allowed.length === 0 || allowed.includes(asked))) {
+    targetSlot = asked;
+  } else if (allowed.length) {
+    targetSlot = allowed[0];
+  }
+  if (targetSlot == null) return;
 
   // Class/Race restriction check (EQEmu bitmask: bit N = class/race ID N+1; 65535 = all)
   const constants = require('../data/constants');
@@ -767,6 +790,10 @@ async function handleEquipItem(session, msg) {
 
   sendInventory(session);
   sendStatus(session);
+  try {
+    const ge = require('../gameEngine');
+    if (typeof ge.broadcastEquipVisuals === 'function') ge.broadcastEquipVisuals(session);
+  } catch (e) { /* ignore */ }
 }
 
 async function handleUnequipItem(session, msg) {
@@ -776,6 +803,10 @@ async function handleUnequipItem(session, msg) {
   session.effectiveStats = calcEffectiveStats(session.char, session.inventory, session.buffs);
   sendInventory(session);
   sendStatus(session);
+  try {
+    const ge = require('../gameEngine');
+    if (typeof ge.broadcastEquipVisuals === 'function') ge.broadcastEquipVisuals(session);
+  } catch (e) { /* ignore */ }
 }
 
 async function handleSplitMoveItem(session, msg) {
@@ -992,9 +1023,13 @@ async function handleSellJunk(session, msg) {
       const itemDef = ItemDB.getById(invRow.item_key) || ITEMS[invRow.item_key];
       if (!itemDef) continue;
       
+      // Containers (backpacks, satchels, boxes) are identified by bagslots > 0.
+      // Food, drink, and bandages are useful even with no combat stats.
+      if ((itemDef.bagslots || 0) > 0) continue;
+      const itemType = Number(itemDef.itemtype) || 0;
+      if (itemType === 14 || itemType === 15 || itemType === 18 || itemType === 38) continue;
+
       // Heuristic for junk: No stats, no scroll effect, low value.
-      // This might be risky in classic EQ, but we'll use a basic heuristic.
-      // Alternatively, we could rely on a specific 'junk' flag if it existed.
       // Let's look for items with no stat bonuses and value < 1000cp (1pp).
       const hasStats = (itemDef.ac > 0) || (itemDef.damage > 0) || (itemDef.hp > 0) || (itemDef.mana > 0) || (itemDef.astr > 0) || (itemDef.scrolleffect > 0) || (itemDef.classes !== 65535 && itemDef.classes > 0);
       
@@ -1133,7 +1168,12 @@ async function handleRightClick(session, msg) {
   let effectiveType = target ? target.npcType : null;
 
   if (!target && zone.corpses) {
-      target = zone.corpses.find(c => String(c.id) === String(targetId));
+      const rawId = String(targetId || '');
+      const bareId = rawId.replace(/@.*$/, '');
+      target = zone.corpses.find(c => String(c.id) === rawId || String(c.id) === bareId);
+      if (!target && session.combatTarget && session.combatTarget.type === 'corpse') {
+          target = zone.corpses.find(c => c.id === session.combatTarget.id) || null;
+      }
       if (target) effectiveType = 'corpse';
   }
 
@@ -1158,7 +1198,7 @@ async function handleRightClick(session, msg) {
           return;
       }
 
-      // 1. Handle Coins immediately upon opening (Part 1 - Req 3)
+      // 1. Coins are copper (PEQ mincash/maxcash). Purse is char.copper.
       if (target.coins > 0) {
           const totalCoins = target.coins;
           target.coins = 0; // Prevent double-looting coins
@@ -1171,18 +1211,18 @@ async function handleRightClick(session, msg) {
               for (let i = 0; i < members.length; i++) {
                   const m = members[i];
                   const amount = share + (i === 0 ? extra : 0);
-                  m.char.platinum = (m.char.platinum || 0) + amount;
-                  sendCombatLog(m, [{ event: 'MESSAGE', text: `You receive ${amount} platinum as your share of the loot.` }]);
-                  const { sendStatus, send } = require('../gameEngine');
+                  m.char.copper = (Number(m.char.copper) || 0) + amount;
+                  await DB.updateCharacterState(m.char);
+                  sendCombatLog(m, [{ event: 'MESSAGE', text: `You receive ${formatCurrency(amount)} as your share of the loot.` }]);
                   sendStatus(m);
-                  send(m.ws, { type: 'LOOT_COIN', amount: amount, currency: 'platinum' });
+                  send(m.ws, { type: 'LOOT_COIN', amount: amount, currency: 'copper' });
               }
           } else {
-              char.platinum = (char.platinum || 0) + totalCoins;
-              sendCombatLog(session, [{ event: 'MESSAGE', text: `You loot ${totalCoins} platinum from the corpse.` }]);
-              const { sendStatus, send } = require('../gameEngine');
+              char.copper = (Number(char.copper) || 0) + totalCoins;
+              await DB.updateCharacterState(char);
+              sendCombatLog(session, [{ event: 'MESSAGE', text: `You loot ${formatCurrency(totalCoins)} from the corpse.` }]);
               sendStatus(session);
-              send(session.ws, { type: 'LOOT_COIN', amount: totalCoins, currency: 'platinum' });
+              send(session.ws, { type: 'LOOT_COIN', amount: totalCoins, currency: 'copper' });
           }
       }
 
@@ -1200,7 +1240,8 @@ async function handleRightClick(session, msg) {
 
       // 3. Send message to open loot window ONLY if there are items
       if (lootItems.length > 0) {
-          const { send } = require('../gameEngine');
+          const names = lootItems.map((it) => (it.qty > 1 ? `${it.name} x${it.qty}` : it.name));
+          sendCombatLog(session, [{ event: 'LOOT', text: `The corpse holds ${names.join(', ')}.` }]);
           send(session.ws, {
               type: 'LOOT_CORPSE_OPEN',
               corpseId: target.id,
@@ -1333,9 +1374,39 @@ async function handleRightClick(session, msg) {
   }
 }
 
+async function listMerchantStock(session, merchant) {
+  const char = session.char;
+  const eqemuDB = require('../eqemu_db');
+  let dbItems = [];
+  const shopData = MERCHANT_INVENTORIES[merchant.key];
+  if (shopData) {
+    dbItems = shopData.items.map((i) => {
+      const def = ItemDB.getById(i.itemKey) || ITEMS[i.itemKey] || {};
+      return { itemKey: i.itemKey, name: def.name || i.itemKey, price: i.price || def.value || 10 };
+    });
+  } else {
+    const mKey = parseInt(merchant.key, 10);
+    if (!isNaN(mKey)) dbItems = await eqemuDB.getMerchantItems(mKey);
+  }
+  const buyMod = await getChaBuyMod(session, merchant.id);
+  return dbItems.map((di) => {
+    const itemDef = ItemDB.getById(di.itemKey) || ITEMS[di.itemKey] || {};
+    const price = Math.max(1, Math.floor((di.price || 10) * buyMod));
+    return {
+      itemKey: di.itemKey,
+      name: di.name,
+      price,
+      priceText: formatCurrency(price),
+      classes: itemDef.classes || di.classes || 65535,
+      reclevel: itemDef.reclevel || di.reclevel || 0,
+    };
+  });
+}
+
 module.exports = {
   handleTradeskillFn: null,
   handleBuy,
+  listMerchantStock,
   handleRightClick,
   handleSell,
   handleNPCGiveItems,
@@ -1349,6 +1420,8 @@ module.exports = {
   handleGetOffer,
   handleSellJunk,
   handleBuyRecover,
+  sendInventory,
   init,
   getFirstEmptySlot,
+  grantItemsToInventory,
 };

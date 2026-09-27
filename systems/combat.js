@@ -2,6 +2,8 @@ const combat = require('../combat');
 const StatsSystem = require('./stats');
 const OocRegen = require('./oocRegen');
 const ExpFatigue = require('./expFatigue');
+const GroupExp = require('./groupExp');
+const ItemDB = require('../data/itemDatabase');
 
 let handleMobDeathFn, sendCombatLog, sendStatus, despawnPet, combat_utility, zoneInstances, spellDb, spellSystem, items, db, sendFullState, calcEffectiveStats, broadcastToZone, sessions;
 let getEquipVisuals;
@@ -91,18 +93,46 @@ async function resolveRespawnLocation(char) {
 }
 
 async function handleMobDeath(session, mob, events) {
+  if (!mob || mob.alive === false) return;
+  mob.alive = false;
   // whoId matches ZONE_STATE entity ids so the client can play death on the correct instance (duplicate names).
   events.push({ event: 'DEATH', who: mob.name, whoId: mob.id != null ? String(mob.id) : '' });
 
-  // XP
+  // XP — solo gets the full kill. A group splits it (see groupExp.js).
   const zone = zoneInstances[session.char.zoneId];
   const zem = zone && zone.def ? zone.def.zem : 1.0;
-  const xp = combat_utility.calcXPGain(session.char.level, mob.level, mob.xpBase, zem);
-  
-  if (xp > 0) {
-    await awardExp(session, xp, events, mob);
-  } else {
-    events.push({ event: 'MESSAGE', text: 'You gain no experience for such a trivial opponent.' });
+  const split = GroupExp.splitKillXp({
+    killer: session,
+    mob,
+    zoneId: session.char.zoneId,
+    zem,
+    calcXPGain: (playerLevel, mobLevel, mobXpBase, zoneZem) =>
+      combat_utility.calcXPGain(playerLevel, mobLevel, mobXpBase, zoneZem),
+  });
+
+  if (split.baseXp <= 0) {
+    const text = 'You gain no experience for such a trivial opponent.';
+    events.push({ event: 'MESSAGE', text });
+    for (const member of split.present) {
+      if (member !== session && sendCombatLog) {
+        sendCombatLog(member, [{ event: 'MESSAGE', text }]);
+      }
+    }
+    return;
+  }
+
+  const killerShare = split.shares.find(share => share.session === session);
+  if (!killerShare) {
+    events.push({
+      event: 'MESSAGE',
+      text: 'You are too far in level from your group to gain experience.',
+    });
+  }
+  await awardExp(session, killerShare ? killerShare.xp : 0, events, mob);
+
+  for (const share of split.shares) {
+    if (share.session === session) continue;
+    await awardExp(share.session, share.xp, null, null, { source: 'kill', xpOnly: true });
   }
 }
 
@@ -124,7 +154,7 @@ async function awardExp(session, xp, events = null, mob = null, meta = {}) {
   }
 
   let grantXp = xp;
-  if (source === 'kill' && mob && xp > 0) {
+  if (source === 'kill' && xp > 0) {
     const mult = ExpFatigue.getKillXpMultiplier(session.char.learningFatigue || 0);
     grantXp = Math.max(1, Math.floor(xp * mult));
     ExpFatigue.addFromKillXp(session, xp, sendCombatLog);
@@ -134,13 +164,15 @@ async function awardExp(session, xp, events = null, mob = null, meta = {}) {
     ExpFatigue.relieveFromRpTick(session, sendCombatLog);
   }
 
-  session.char.experience += grantXp;
-  localEvents.push({ event: 'XP_GAIN', amount: grantXp });
+  if (grantXp > 0) {
+    session.char.experience += grantXp;
+    localEvents.push({ event: 'XP_GAIN', amount: grantXp });
+  }
 
-  // Level up check
+  // Level up check. The next-level mark includes race and class XP factors.
   let levelsGained = 0;
   while (session.char.level < 60 && levelsGained < 5) {
-    const nextLevelXp = combat_utility.xpForLevel(session.char.level + 1);
+    const nextLevelXp = GroupExp.xpToReachNextLevel(session.char);
     if (session.char.experience < nextLevelXp) break;
     
     session.char.level++;
@@ -168,6 +200,8 @@ async function awardExp(session, xp, events = null, mob = null, meta = {}) {
     sendFullState(session);
   }
 
+  // Group shares must not clear the recipient's fight or spawn another corpse.
+  if (meta.xpOnly) return;
 
   const zone = (zoneInstances && session.char) ? zoneInstances[session.char.zoneId] : null;
 
@@ -176,7 +210,7 @@ async function awardExp(session, xp, events = null, mob = null, meta = {}) {
   let generatedCoins = 0;
   if (mob) {
     if (mob.loottable_id > 0 && db && db.rollLootFromTable) {
-      const lootRes = await db.rollLootFromTable(mob.loottable_id);
+      const lootRes = await db.rollLootFromTable(mob.loottable_id, mob.level);
       generatedItems = lootRes.items || [];
       generatedCoins = lootRes.coins || 0;
     } else if (mob.loot) {
@@ -190,6 +224,16 @@ async function awardExp(session, xp, events = null, mob = null, meta = {}) {
         }
       }
     }
+  }
+
+  if (mob && generatedItems.length > 0 && Array.isArray(events)) {
+    const labels = generatedItems.map((entry) => {
+      const def = ItemDB.getById(entry.itemKey);
+      const name = def && def.name ? def.name : `item ${entry.itemKey}`;
+      const qty = Number(entry.qty) || 1;
+      return qty > 1 ? `${name} x${qty}` : name;
+    });
+    events.push({ event: 'LOOT', text: `${mob.name} dropped ${labels.join(', ')}.` });
   }
 
   // Create Corpse (only if a mob was provided)
@@ -232,7 +276,27 @@ async function awardExp(session, xp, events = null, mob = null, meta = {}) {
     };
     
     zone.corpses.push(corpse);
-    
+
+    if (generatedItems.length > 0 && session.ws) {
+      const lootItems = generatedItems.map((le, index) => {
+        const def = ItemDB.getById(le.itemKey) || {};
+        return {
+          lootIndex: index,
+          itemKey: le.itemKey || '',
+          name: def.name || 'Unknown Item',
+          icon: Number(def.icon) || 0,
+          qty: le.qty || 1
+        };
+      });
+      const { send } = require('../utils');
+      send(session.ws, {
+        type: 'LOOT_CORPSE_OPEN',
+        corpseId: corpse.id,
+        corpseName: corpse.name,
+        items: lootItems
+      });
+    }
+
     events.push({ event: 'MESSAGE', text: `You have slain ${mob.name}!` });
   }
 
@@ -250,7 +314,18 @@ async function awardExp(session, xp, events = null, mob = null, meta = {}) {
 }
 
 async function processCombatTick(session, dt) {
+  if (session.feigned || (session.char && session.char.state === 'feigned')) return;
   if (!session.inCombat || !session.combatTarget) return;
+
+  if (session.isCompanion && session.autoFight) {
+    const foe = session.attackTarget;
+    const foeAlive = foe && !foe.char && foe.alive !== false && (foe.hp == null || foe.hp > 0);
+    if (session.casting) return;
+    if (foeAlive) session.combatTarget = foe;
+    else if (session.combatTarget && session.combatTarget.char) return;
+  } else if (session.isCompanion && session.combatTarget && session.combatTarget.char) {
+    return;
+  }
 
   const mob = session.combatTarget;
   const isTargetPlayer = !!mob.char;
@@ -268,7 +343,10 @@ async function processCombatTick(session, dt) {
 
   // -- The Rogue Loop --
   if (session.char.class === 'rogue') {
-    if ((!session.abilityCooldowns['backstab'] || session.abilityCooldowns['backstab'] <= 0) && session.attackTimer <= 0) {
+    const backstabReady = (!session.abilityCooldowns['backstab'] || session.abilityCooldowns['backstab'] <= 0) && session.attackTimer <= 0;
+    const behind = !session.isBot || require('./botAI/profiles/rogue').isBehind(session, mob);
+    const canBackstab = combat.getCharSkill(session.char, 'backstab') > 0;
+    if (backstabReady && behind && canBackstab) {
       const { damage } = StatsSystem.getWeaponStats(session.inventory);
       const bsDmg = combat.calcBackstabDamage(session, damage);
       if (bsDmg > 0) {
@@ -287,13 +365,9 @@ async function processCombatTick(session, dt) {
   // -- The Warrior Loop (Taunt) --
   else if (session.char.class === 'warrior') {
     if ((!session.abilityCooldowns['taunt'] || session.abilityCooldowns['taunt'] <= 0) && session.attackTimer <= 0) {
-      if (!isTargetPlayer && mob.hateList) {
-        const topEnt = mob.hateList.getMobWithMostHateOnList();
-        if (topEnt !== session.char.name) {
-          const topEntry = mob.hateList.entries.find(e => e.entityId === topEnt);
-          const topHate = topEntry ? topEntry.hateAmount : 0;
-          // Taunt sets hate to Top Hate + 1 (classic EQ rule) + small flat amount
-          mob.hateList.setHateAmount(session.char.name, topHate + 10);
+      if (!isTargetPlayer) {
+        const { success } = combat.attemptTaunt(session, mob);
+        if (success) {
           events.push({ event: 'MESSAGE', text: `You taunt ${tName} to ignore others and attack you!` });
         } else {
           events.push({ event: 'MESSAGE', text: `You fail to taunt ${tName}.` });
@@ -430,7 +504,7 @@ async function processCombatTick(session, dt) {
 
         const hitChance = combat.calcHitChance(atk, def, charLvl - tLevel);
         if (combat.chance(hitChance)) {
-          if (!isTargetPlayer && mob.target !== session) mob.target = session;
+          if (!isTargetPlayer && !mob.target) mob.target = session;
           if (isTargetPlayer && mob.combatTarget !== session) {
             // PvP auto-retaliate? No, just let them be hit.
           }
@@ -553,7 +627,13 @@ async function processCombatTick(session, dt) {
 
   // Check mob death
   if (!isTargetPlayer && mob.hp <= 0) {
-    await handleMobDeath(session, mob, events);
+    if (mob.alive !== false) await handleMobDeath(session, mob, events);
+    else {
+      if (session.inCombat) OocRegen.markCombatEnded(session);
+      session.inCombat = false;
+      session.autoFight = false;
+      session.combatTarget = null;
+    }
   }
   
   // Player target death check

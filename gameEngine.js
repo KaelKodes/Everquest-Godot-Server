@@ -35,9 +35,9 @@ const AISystem = require('./systems/ai');
 const EnvironmentSystem = require('./systems/environment');
 const SpellSystem = require('./systems/spells');
 const ChatSystem = require('./systems/chat');
-const ChatSpamGuard = require('./systems/chatSpamGuard');
 const InventorySystem = require('./systems/inventory');
 const GroupManager = require('./systems/groups');
+const GroupExp = require('./systems/groupExp');
 
 const MovementSystem = require('./systems/movement');
 const FollowSystem = require('./systems/follow');
@@ -51,7 +51,8 @@ const ZoneSystem = require('./systems/zones');
 const CombatSystem = require('./systems/combat');
 const ExpFatigue = require('./systems/expFatigue');
 const SurvivalSystem = require('./systems/survival');
-const ClericBot = require('./systems/botAI/profiles/cleric');
+const { createClassBot } = require('./systems/botAI/createClassBot');
+const Companion = require('./systems/companion');
 const { mapEqemuClassToNpcType, GUILD_MASTER_CLASS } = require('./utils/npcUtils');
 const { INV_CLASSES, INV_RACES } = require('./data/constants');
 
@@ -425,6 +426,7 @@ function removeSession(ws) {
         sessions.delete(botWs);
       }
     }
+    Companion.dismissFor(session);
     
     // Unregister from global player directory
     if (!session.isBot && session.char && session.char.name) {
@@ -488,6 +490,7 @@ async function handleMessage(ws, msg) {
     case 'ZONE': return MovementSystem.handleZone(session, msg);
     // 'MOVE' — removed (legacy room-grid system, 3D client uses UPDATE_POS)
     case 'UPDATE_POS': return MovementSystem.handleUpdatePos(session, msg);
+    case 'FOLLOW_STOP': return FollowSystem.breakFollow(session, 'manual movement');
     case 'UPDATE_SNEAK': return MovementSystem.handleUpdateSneak(session, msg);
     case 'USE_HIDE': return MovementSystem.handleHide(session, msg);
     case 'SWIM_TICK': return MovementSystem.handleSwimTick(session, msg);
@@ -520,6 +523,10 @@ async function handleMessage(ws, msg) {
     case 'GET_OFFER': return InventorySystem.handleGetOffer(session, msg);
     case 'SELL_JUNK': return InventorySystem.handleSellJunk(session, msg);
     case 'NPC_GIVE_ITEMS': return InventorySystem.handleNPCGiveItems(session, msg);
+    case 'TRADE_INVITE': return require('./systems/playerTrade').invite(session, msg);
+    case 'TRADE_SET': return require('./systems/playerTrade').setOffer(session, msg);
+    case 'TRADE_LOCK': return require('./systems/playerTrade').lock(session, msg);
+    case 'TRADE_CANCEL': return require('./systems/playerTrade').cancel(session, msg);
     case 'NPC_GIVE_CANCEL': 
       sendInventory(session);
       return;
@@ -551,6 +558,18 @@ async function handleMessage(ws, msg) {
           }
         }
       }
+      break;
+    }
+    case 'GROUP_PROMOTE': {
+      GroupManager.handlePromote(session, msg.targetName);
+      break;
+    }
+    case 'GROUP_SET_ROLE': {
+      GroupManager.handleSetRole(session, msg.targetName, msg.role);
+      break;
+    }
+    case 'GROUP_UNSET_ROLE': {
+      GroupManager.handleUnsetRole(session, msg.targetName, msg.role);
       break;
     }
     case 'ASSIST_GROUP': {
@@ -597,6 +616,8 @@ async function handleMessage(ws, msg) {
     case 'SUCCOR': return await MovementSystem.handleSuccor(session);
     case 'DOOR_CLICK': return handleDoorClick(session, msg);
     case 'WHO': return handleWho(session, msg);
+    case 'INSPECT': return handleInspect(session, msg);
+    case 'ANNON': return handleAnnon(session, msg);
     case 'TIME': return handleTime(session);
     case 'ROLL': return handleRoll(session, msg);
     case 'RANDOM': return handleRandom(session, msg);
@@ -715,6 +736,7 @@ async function handleSelectCharacter(ws, msg) {
   console.log(`[ENGINE] ${char.name} entered world (level ${char.level} ${char.class}).`);
   sendFullState(session);
   ensureBeastlordWarder(session);
+  await Companion.ensureCompanion(session);
 }
 
 async function handleDeleteCharacter(ws, msg) {
@@ -829,6 +851,7 @@ async function handleLogin(ws, msg) {
   console.log(`[ENGINE] ${char.name} logged in (level ${char.level} ${char.class}).`);
   sendFullState(session);
   ensureBeastlordWarder(session);
+  await Companion.ensureCompanion(session);
 }
 
 async function handleCreateCharacter(ws, msg) {
@@ -946,12 +969,18 @@ function handleStopRanged(session) {
 function handleStand(session) {
   SpellSystem.cancelPendingScribe(session, 'stand', false);
   SpellSystem.cancelPendingMemorize(session, 'stand', false);
+  if (session.feigned || session.char.state === 'feigned') {
+    require('./systems/feignDeath').breakFeign(session, 'stand');
+  }
   session.char.state = 'standing';
   sendCombatLog(session, [{ event: 'MESSAGE', text: 'You stand up.' }]);
   sendStatus(session);
 }
 
 function handleStartCombat(session) {
+  if (session.feigned || session.char.state === 'feigned') {
+    require('./systems/feignDeath').breakFeign(session, 'attack');
+  }
   if (session.char.state === 'medding') {
     SpellSystem.cancelPendingScribe(session, 'stand', false);
     SpellSystem.cancelPendingMemorize(session, 'stand', false);
@@ -1151,6 +1180,9 @@ function handleClearTarget(session) {
 }
 
 function handleAttackTarget(session, msg) {
+  if (session.feigned || (session.char && session.char.state === 'feigned')) {
+    require('./systems/feignDeath').breakFeign(session, 'attack');
+  }
   const targetId = msg.targetId;
   if (!targetId) {
     // No target specified, fall back to auto-engage
@@ -1203,11 +1235,6 @@ function handleAttackTarget(session, msg) {
     const { isTriggerPlaceholder } = require('./utils/npcUtils');
     if (isTriggerPlaceholder({ race: targetEntity.race, name: targetEntity.name })) {
       sendCombatLog(session, [{ event: 'MESSAGE', text: 'You cannot attack that.' }]);
-      return;
-    }
-
-    if (targetEntity.target && targetEntity.target !== session) {
-      sendCombatLog(session, [{ event: 'MESSAGE', text: `${targetEntity.name} is already engaged by another player.` }]);
       return;
     }
   }
@@ -1304,6 +1331,11 @@ function handleSpellInspect(session, msg) {
 async function handleCastSpell(session, msg) {
   const slotIndex = msg.slot;
   const isMelody = msg.isMelody === true;
+
+  if (session.feigned || (session.char && session.char.state === 'feigned')) {
+    sendCombatLog(session, [{ event: 'MESSAGE', text: 'You cannot cast while feigning death.' }]);
+    return false;
+  }
 
   // If manual cast, cancel any active melody
   if (!isMelody && session.melody) {
@@ -1520,7 +1552,15 @@ async function handleCastSpell(session, msg) {
 async function botTryCastSpellByName(botSession, spellName) {
   if (!botSession || !spellName) return false;
   const SpellDB = require('./data/spellDatabase');
-  const def = SpellDB.getByName(String(spellName).trim());
+  let def = SpellDB.getByName(String(spellName).trim());
+  if (!def) {
+    const want = String(spellName).trim().toLowerCase();
+    const rowGuess = (botSession.spells || []).find((s) => {
+      const known = SpellDB.getByKey(s.spell_key);
+      return known && String(known.name || '').toLowerCase().includes(want);
+    });
+    if (rowGuess) def = SpellDB.getByKey(rowGuess.spell_key);
+  }
   if (!def || !def._key) {
     sendCombatLog(botSession, [{ event: 'MESSAGE', text: `Unknown spell "${spellName}".` }]);
     return false;
@@ -1549,6 +1589,16 @@ async function processCasting(session, dt) {
     session.casting = null;
 
     await applySpellEffect(session, spellDef);
+    if (session.isCompanion && session.lookHold) {
+      session.lookHold = false;
+      const foe = session.attackTarget;
+      const foeAlive = foe && !foe.char && foe.alive !== false && (foe.hp == null || foe.hp > 0);
+      if (session.autoFight && foeAlive) {
+        session.combatTarget = foe;
+        session.inCombat = true;
+        console.log(`[COMPANION] ${session.char.name} returns to ${foe.name}`);
+      }
+    }
     const completeMsg = { type: 'CAST_COMPLETE', casterId, spellName: spellDef.name };
     send(session.ws, completeMsg);
     broadcastToZone(session.char.zoneId, completeMsg);
@@ -1845,6 +1895,22 @@ function meleeCombatLogIds(session, target) {
 async function handleAbility(session, msg) {
   const ability = (msg.ability || '').toLowerCase().trim();
   const char = session.char;
+  const Feign = require('./systems/feignDeath');
+  const isFdAbility = ability === 'feigndeath' || ability === 'feign_death' || ability === 'feign death';
+
+  // While feigning, the only legal action is standing back up (FD toggle / stand).
+  if (Feign.isFeigned(session)) {
+    if (isFdAbility) {
+      Feign.breakFeign(session, 'ability_toggle');
+      sendCombatLog(session, [{ event: 'MESSAGE', text: 'You stand up.' }]);
+      sendStatus(session);
+      return;
+    }
+    return sendCombatLog(session, [{
+      event: 'MESSAGE',
+      text: 'You cannot do that while feigning death. Stand up first.',
+    }]);
+  }
 
   // ── Non-combat utility skills (no combat/target required) ──
   if (ability === 'hide') return MovementSystem.handleHide(session, { hiding: true });
@@ -1902,16 +1968,18 @@ async function handleAbility(session, msg) {
       return;
     }
 
-    const emptySlot = InventorySystem.getFirstEmptySlot(session.inventory);
-    if (emptySlot === -1) {
+    const stackSize = (Number(pick.def?.stackable) > 0 && Number(pick.def?.stacksize) > 0)
+      ? Number(pick.def.stacksize)
+      : 1;
+    const granted = await InventorySystem.grantItemsToInventory(
+      session.char.id, pick.itemKey, 1, stackSize, session
+    );
+    if (granted < 1) {
       sendCombatLog(session, [{ event: 'MESSAGE', text: 'Your inventory is full.' }]);
       combat.trySkillUp(session, 'forage');
       flushSkillUps(session);
       return;
     }
-
-    await DB.addItem(session.char.id, pick.itemKey, 0, emptySlot, 1);
-    session.inventory = await DB.getInventory(session.char.id);
     session.effectiveStats = StatsSystem.calcEffectiveStats(session.char, session.inventory, session.buffs);
     sendInventory(session);
     sendStatus(session);
@@ -1948,6 +2016,27 @@ async function handleAbility(session, msg) {
       sendCombatLog(session, [{ event: 'MESSAGE', text: `[color=green]You expertly mend your wounds for ${heal} hit points![/color]` }]);
     }
     session.abilityCooldowns['mend'] = 360; // 6 minute cooldown like classic EQ
+    sendStatus(session);
+    return;
+  }
+
+  if (isFdAbility) {
+    const result = Feign.tryFeignDeath(session);
+    flushSkillUps(session);
+    if (!result.ok) {
+      return sendCombatLog(session, [{ event: 'MESSAGE', text: result.text || 'You cannot feign death.' }]);
+    }
+    if (result.success) {
+      sendCombatLog(session, [{ event: 'MESSAGE', text: result.text || 'You feign death.' }]);
+      // Nearby players see the fall.
+      broadcastToZone(session.char.zoneId, {
+        type: 'NPC_ANIM',
+        id: `player_${session.char.id}`,
+        anim: 'd05',
+      });
+    } else {
+      sendCombatLog(session, [{ event: 'MESSAGE', text: result.failText || 'Your feign death has failed!' }]);
+    }
     sendStatus(session);
     return;
   }
@@ -2086,17 +2175,11 @@ async function handleAbility(session, msg) {
     }
     session.abilityCooldowns[msg.ability] = 6;
   } else if (msg.ability === 'taunt') {
-    const tauntSkill = combat.getCharSkill(char, 'taunt');
-    const tauntRoll = Math.floor(Math.random() * 200) + 1;
-    const tauntSuccess = tauntRoll <= (tauntSkill + 30);
-    combat.trySkillUp(session, 'taunt');
-    if (tauntSuccess) {
-      // Lock aggro on this player — mob focuses on taunter
-      mob.taunted = true;
-      mob.tauntedBy = session;
-      sendCombatLog(session, [{ event: 'MESSAGE', text: `[color=yellow]You taunt ${mob.name}, grabbing its attention![/color]` }]);
+    const { success } = combat.attemptTaunt(session, mob);
+    if (success) {
+      sendCombatLog(session, [{ event: 'MESSAGE', text: `[color=yellow]You taunt ${tgtName} to ignore others and attack you![/color]` }]);
     } else {
-      sendCombatLog(session, [{ event: 'MESSAGE', text: `You try to taunt ${mob.name} but fail to get its attention.` }]);
+      sendCombatLog(session, [{ event: 'MESSAGE', text: `You try to taunt ${tgtName} but fail to get its attention.` }]);
     }
     session.abilityCooldowns[msg.ability] = 6;
   } else if (msg.ability === 'backstab') {
@@ -2142,13 +2225,42 @@ function handleTactic(session, msg) {
 
 // ── NPC Interaction Handlers ────────────────────────────────────────
 
+function resolvePlayerTarget(session, targetId) {
+  if (!targetId || !String(targetId).startsWith('player_')) return null;
+  const pId = String(targetId).substring(7);
+  for (const s of sessions.values()) {
+    if (!s.char || s.char.zoneId !== session.char.zoneId) continue;
+    if (String(s.char.id) === pId) return s;
+  }
+  return null;
+}
+
 async function handleHail(session, msg) {
   const char = session.char;
   const zone = zoneInstances[char.zoneId];
 
+  const fromId = resolvePlayerTarget(session, msg && msg.targetId);
+  if (fromId) session.combatTarget = fromId;
+
   // If no target, just hail into the void
   if (!session.combatTarget) {
     sendCombatLog(session, [{ event: 'MESSAGE', text: `You say, 'Hail!'` }]);
+    return;
+  }
+
+  if (session.combatTarget.isCompanion || (session.combatTarget.char && session.combatTarget.isCompanion)) {
+    return Companion.onHail(session, session.combatTarget);
+  }
+
+  if (session.combatTarget.char && !session.combatTarget.npcType) {
+    const me = session.combatTarget.char;
+    const dx = (Number(char.x) || 0) - (Number(me.x) || 0);
+    const dy = (Number(char.y) || 0) - (Number(me.y) || 0);
+    if (dx * dx + dy * dy > HAIL_RANGE * HAIL_RANGE) {
+      sendCombatLog(session, [{ event: 'MESSAGE', text: `You are too far away to speak with ${me.name}.` }]);
+      return;
+    }
+    sendCombatLog(session, [{ event: 'MESSAGE', text: `You say, 'Hail, ${me.name}!'` }]);
     return;
   }
 
@@ -2334,16 +2446,19 @@ async function processQuestActions(session, npc, actions) {
         const itemKey = act.item_id;
         const qty = Math.max(1, Number(act.count) || 1);
         if (itemKey && itemKey > 0) {
-          const emptySlot = InventorySystem.getFirstEmptySlot(session.inventory);
-          if (emptySlot === -1) {
+          const def = ItemDB.getById(itemKey) || ITEMS[itemKey] || {};
+          const stackSize = (Number(def.stackable) > 0 && Number(def.stacksize) > 0)
+            ? Number(def.stacksize)
+            : 1;
+          const granted = await InventorySystem.grantItemsToInventory(
+            session.char.id, itemKey, qty, stackSize, session
+          );
+          if (granted < qty) {
             events.push({ event: 'MESSAGE', text: 'Your inventory is full; you cannot receive the item.' });
           } else {
-            await DB.addItem(session.char.id, itemKey, 0, emptySlot, qty);
-            session.inventory = await DB.getInventory(session.char.id);
             session.effectiveStats = StatsSystem.calcEffectiveStats(session.char, session.inventory, session.buffs);
             sendInventory(session);
             sendStatus(session);
-            const def = ItemDB.getById(itemKey) || ITEMS[itemKey];
             const nm = def && def.name ? def.name : String(itemKey);
             events.push({ event: 'MESSAGE', text: `You receive ${nm}.` });
           }
@@ -2704,6 +2819,12 @@ function spawnPet(session, petDef, spellDef) {
     totalDamageDealt: 0,
   };
 
+  // Enchanter animations only strike what is striking their master.
+  if (petDef.element === 'animation') {
+    pet.defensiveOnly = true;
+    pet.taunting = false;
+  }
+
   // Add pet to session and zone
   session.pet = pet;
   zone.liveMobs.push(pet);
@@ -2862,11 +2983,10 @@ function charmMob(session, mob, spellDef) {
 
   session.pet = mob;
 
-  // Stop combat
-  if (session.inCombat) OocRegen.markCombatEnded(session);
-  session.inCombat = false;
-  session.autoFight = false;
-  session.combatTarget = null;
+  if (session.combatTarget === mob) {
+    session.combatTarget = null;
+    session.autoFight = false;
+  }
 
   events.push({ event: 'MESSAGE', text: `${mob.name} regards you as an ally!` });
   events.push({ event: 'MESSAGE', text: `[color=cyan]${mob.name} is now under your command.[/color]` });
@@ -3053,7 +3173,7 @@ async function handleMercenaryAction(session, msg) {
     const fakeWs = { id: studentChar.id, send: () => {}, on: () => {} };
     const newBot = await createSession(fakeWs, studentChar);
     newBot.isBot = true;
-    newBot.bot = new ClericBot(newBot);
+    newBot.bot = createClassBot(newBot);
 
     GroupManager.handleInvite(session, studentChar.name);
     GroupManager.handleInviteResponse(newBot, true);
@@ -3146,6 +3266,19 @@ async function handleMercenaryAction(session, msg) {
   }
 }
 
+function releaseCharm(pet, owner, message) {
+  if (message) sendCombatLog(owner, [{ event: 'MESSAGE', text: message }]);
+  pet.isPet = false;
+  pet.isCharmed = false;
+  pet.target = owner;
+  if (!pet.hateList || typeof pet.hateList.addEntToHateList !== 'function') {
+    const HateList = require('./systems/hate');
+    pet.hateList = new HateList();
+  }
+  if (owner && owner.char) pet.hateList.addEntToHateList(owner.char.name, 1000, 0);
+  if (owner) owner.pet = null;
+}
+
 /**
  * Process pet AI for a single pet during the mob AI tick.
  * Called from processMobAI for mobs with isPet === true.
@@ -3165,12 +3298,7 @@ function processPetAI(pet, zone, zoneId, dt) {
     pet.charmDuration -= dt;
     pet.charmTickTimer -= dt;
     if (pet.charmDuration <= 0) {
-      // Charm expired
-      sendCombatLog(owner, [{ event: 'MESSAGE', text: `[color=red]Your charm has worn off! ${pet.name} turns hostile![/color]` }]);
-      pet.isPet = false;
-      pet.isCharmed = false;
-      pet.target = owner; // Attack the charmer
-      owner.pet = null;
+      releaseCharm(pet, owner, `[color=red]Your charm has worn off! ${pet.name} turns hostile![/color]`);
       return;
     }
     if (pet.charmTickTimer <= 0) {
@@ -3178,14 +3306,24 @@ function processPetAI(pet, zone, zoneId, dt) {
       // Periodic resist check — chance to break early
       const breakChance = 5 + Math.max(0, (pet.level - owner.char.level) * 2); // Higher level = more likely to break
       if (Math.random() * 100 < breakChance) {
-        sendCombatLog(owner, [{ event: 'MESSAGE', text: `[color=red]Your charm has been broken! ${pet.name} turns hostile![/color]` }]);
-        pet.isPet = false;
-        pet.isCharmed = false;
-        pet.target = owner;
-        owner.pet = null;
+        releaseCharm(pet, owner, `[color=red]Your charm has been broken! ${pet.name} turns hostile![/color]`);
         return;
       }
     }
+  }
+
+  // Animation pets only fight whatever is hitting their master.
+  if (pet.defensiveOnly) {
+    const threats = [];
+    for (const m of (zone && zone.liveMobs) || []) {
+      if (!m || m === pet || m.isPet || m.alive === false || (m.hp != null && m.hp <= 0)) continue;
+      if (m.buffs && m.buffs.some((b) => b.isMez)) continue;
+      const tgt = m.target;
+      const hittingUs = tgt === owner || tgt === pet
+        || (tgt && owner && tgt.char && owner.char && tgt.char.id === owner.char.id);
+      if (hittingUs) threats.push({ mob: m, hate: 100 });
+    }
+    pet.hateList = threats;
   }
 
   // ── Regen ──
@@ -3221,6 +3359,7 @@ function processPetAI(pet, zone, zoneId, dt) {
     const dx = pet.target.x - pet.x;
     const dy = pet.target.y - pet.y;
     const distSq = dx * dx + dy * dy;
+    const dist = Math.sqrt(distSq);
 
     if (distSq > MELEE_RANGE * MELEE_RANGE) {
       const moveAmt = PET_SPEED * dt;
@@ -3337,7 +3476,10 @@ function processPetAI(pet, zone, zoneId, dt) {
             if (s.combatTarget === target) { xpSession = s; break; }
           }
           if (!xpSession) xpSession = owner; // Owner gets XP if no one else is fighting
-          handleMobDeath(xpSession, target, []);
+          const deathEvents = [];
+          handleMobDeath(xpSession, target, deathEvents).then(() => {
+            if (deathEvents.length) sendCombatLog(xpSession, deathEvents);
+          });
           pet.hateList = pet.hateList.filter(h => h.mob !== target);
           pet.target = null;
         }
@@ -3601,6 +3743,33 @@ function handleCorpseDrag(session) {
   }
 }
 
+function sendCorpseLootState(session, corpse) {
+  if (!session || !session.ws || !corpse) return;
+  if ((!corpse.loot || corpse.loot.length === 0) && (!corpse.coins || corpse.coins === 0)) {
+    corpse.decayTime = 0;
+    if (DB && DB.deletePlayerCorpse) DB.deletePlayerCorpse(corpse.id);
+    send(session.ws, { type: 'LOOT_CORPSE_UPDATE', corpseId: corpse.id, items: [] });
+    return;
+  }
+  const ItemDB = require('./data/itemDatabase');
+  const items = (corpse.loot || []).map((le, index) => {
+    const def = ItemDB.getById(le.itemKey) || {};
+    return {
+      lootIndex: index,
+      itemKey: le.itemKey || '',
+      name: def.name || 'Unknown Item',
+      icon: Number(def.icon) || 0,
+      qty: le.qty || 1
+    };
+  });
+  send(session.ws, {
+    type: 'LOOT_CORPSE_OPEN',
+    corpseId: corpse.id,
+    corpseName: corpse.name,
+    items
+  });
+}
+
 async function handleTakeLootItem(session, msg) {
   const { corpseId, lootIndex } = msg;
   const char = session.char;
@@ -3628,16 +3797,27 @@ async function handleTakeLootItem(session, msg) {
   if (!lootEntry) return;
 
   const itemKey = lootEntry.itemKey;
-  const itemDef = ItemDB.getById(itemKey) || CombatSystem.getItems()[itemKey];
-  
-  if (!itemDef) return;
+  const itemDef = ItemDB.getById(itemKey) || CombatSystem.getItems()[itemKey] || {};
+  const itemName = itemDef.name || `item ${itemKey}`;
+  const qty = Math.max(1, Number(lootEntry.qty) || 1);
+  const stackSize = (Number(itemDef.stackable) > 0 && Number(itemDef.stacksize) > 0)
+    ? Number(itemDef.stacksize)
+    : 1;
 
-  // Add to inventory
-  await DB.addItem(char.id, itemKey, 0, 0, lootEntry.qty || 1);
-  session.inventory = await DB.getInventory(char.id);
-  
-  // Remove from corpse
-  corpse.loot.splice(lootIndex, 1);
+  const granted = await InventorySystem.grantItemsToInventory(
+    char.id, itemKey, qty, stackSize, session
+  );
+  if (granted <= 0) {
+    sendCombatLog(session, [{ event: 'MESSAGE', text: 'Your inventory is full. The loot is still on the corpse.' }]);
+    sendCorpseLootState(session, corpse);
+    return;
+  }
+  if (granted < qty) {
+    lootEntry.qty = qty - granted;
+    sendCombatLog(session, [{ event: 'MESSAGE', text: 'Your inventory is full.' }]);
+  } else {
+    corpse.loot.splice(lootIndex, 1);
+  }
 
   // Persist corpse loot update
   if (DB && DB.updatePlayerCorpse) {
@@ -3648,11 +3828,11 @@ async function handleTakeLootItem(session, msg) {
   InventorySystem.sendInventory(session);
   
   // Broadcast loot message (Part 1 - Req 5 & 6)
-  const itemName = itemDef.name || itemKey;
   const playerName = char.name;
-  
-  // Create clickable message for nearby players
-  const broadcastText = `<span color="#ffff00" onclick="SetTargetByName('${playerName}')">${playerName}</span> picked up [<span color="#00ff00" onclick="ItemInspect('${itemKey}')">${itemName}</span>]`;
+  const safePlayer = String(playerName).replace(/\[/g, '(').replace(/\]/g, ')');
+  const safeItem = String(itemName).replace(/\[/g, '(').replace(/\]/g, ')');
+  const itemId = Number(itemKey) || 0;
+  const broadcastText = `[color=#ffff00]${safePlayer}[/color] picked up [url={"type":"item","id":${itemId}}][color=#00ff00][${safeItem}][/color][/url]`;
   
   const NEARBY_RANGE = 15; // User asked for ~10 feet, let's use 15 units for "nearby"
   
@@ -4043,6 +4223,15 @@ function getEquipVisuals(session) {
   return visuals;
 }
 
+function broadcastEquipVisuals(session) {
+  if (!session || !session.char) return;
+  broadcastToZone(session.char.zoneId, {
+    type: 'MOB_VISUAL_UPDATE',
+    id: `player_${session.char.id}`,
+    equipVisuals: getEquipVisuals(session),
+  });
+}
+
 function sendFullState(session, opts = {}) {
   // Set a login freeze to ignore movement updates for a few seconds
   // while the client loads geometry to prevent falling through floor
@@ -4079,7 +4268,7 @@ function sendLoginOk(session) {
       face: char.face || 0,
       level: char.level,
       experience: char.experience,
-      nextLevelXp: combat.xpForLevel(char.level + 1),
+      nextLevelXp: GroupExp.xpToReachNextLevel(char),
       hp: char.hp,
       maxHp: effective.hp,
       mana: char.mana,
@@ -4091,12 +4280,15 @@ function sendLoginOk(session) {
       zone: zone ? zone.name : 'Unknown',
       zoneId: char.zoneId,
       zoneNumericId: eqemuDB.getZoneIdByShortName(char.zoneId),
+      mapSize: zone && zone.mapSize ? zone.mapSize : { width: 400, length: 400 },
+      centerOffset: zone && zone.centerOffset ? zone.centerOffset : { x: 0, y: 0 },
+      zoneLines: zone && Array.isArray(zone.zoneLines) ? zone.zoneLines : [],
       ...(() => {
         const arch = eqemuDB.getLanternArchiveBase(char.zoneId);
         const zid = String(char.zoneId).trim().toLowerCase();
         return arch && arch !== zid ? { zoneArchiveBase: arch } : {};
       })(),
-      connections: zone ? zone.connections : [],
+      connections: zone && Array.isArray(zone.connections) ? zone.connections : [],
       copper: char.copper,
       ...(() => {
         const auth = authSessions.get(session.ws);
@@ -4194,7 +4386,7 @@ function sendStatus(session, forceSync = false) {
       for (const skillKey of keys) {
         const skVal = combat.getCharSkill(char, skillKey);
         if (skVal > 0) {
-          const max = combat.getMaxSkill(session, skillKey);
+          const max = combat.getMaxSkill(char.class, skillKey, char.level, char.race);
           skillData[skillKey] = { value: skVal, max: max };
           if (Skills[skillKey].type === 'ability') {
             availableAbilities.push(Skills[skillKey].name.toLowerCase());
@@ -4327,7 +4519,7 @@ function sendStatus(session, forceSync = false) {
       hasSeeInvis: Array.isArray(session.buffs) && session.buffs.some(b => b.effects && b.effects.some(e => e.spa === 13)),
       level: char.level,
       experience: char.experience,
-      nextLevelXp: combat.xpForLevel(char.level + 1),
+      nextLevelXp: GroupExp.xpToReachNextLevel(char),
       zone: zone ? zone.name : 'Unknown',
       zoneId: char.zoneId,
       zoneNumericId: eqemuDB.getZoneIdByShortName(char.zoneId),
@@ -4561,6 +4753,71 @@ function sendInventory(session) {
 // ── Spell System extracted to systems/spells.js ──────────────────────
 function sendCombatLog(session, events) {
   send(session.ws, { type: 'COMBAT_LOG', events });
+  if (!session || !Array.isArray(events) || events.length === 0) return;
+
+  // Combat log only goes to participants, but nearby clients still need to see
+  // the swing (mob hitting someone else, remote player auto-attack, etc.).
+  const zoneId = session.char && session.char.zoneId;
+  const zoneSet = zoneId ? sessionsByZone.get(zoneId) : null;
+  if (zoneSet) {
+    const attackPayloads = [];
+    for (const ev of events) {
+      if (!ev || (ev.event !== 'MELEE_HIT' && ev.event !== 'MELEE_MISS')) continue;
+      if (!ev.sourceId) continue;
+      attackPayloads.push(JSON.stringify({
+        type: 'ENTITY_ATTACK',
+        id: String(ev.sourceId),
+        attackType: ev.type || 'slash',
+        hit: ev.event === 'MELEE_HIT'
+      }));
+    }
+    if (attackPayloads.length > 0) {
+      const sx = session.char ? session.char.x : 0;
+      const sy = session.char ? session.char.y : 0;
+      const viewSq = VIEW_DISTANCE * VIEW_DISTANCE;
+      for (const other of zoneSet) {
+        if (!other || other === session || other.isCompanion || other.isBot) continue;
+        if (!other.ws || other.ws.readyState !== 1 || !other.char) continue;
+        const dx = (other.char.x || 0) - (sx || 0);
+        const dy = (other.char.y || 0) - (sy || 0);
+        if (dx * dx + dy * dy > viewSq) continue;
+        for (const payload of attackPayloads) {
+          try { other.ws.send(payload); } catch (e) { /* ignore */ }
+        }
+      }
+    }
+  }
+
+  // Companion combat chatter / overhear for nearby humans (text only;
+  // ENTITY_ATTACK is already handled above for all sessions).
+  if (!session.isCompanion) return;
+  const mind = require('./systems/companionMind');
+  const lines = [];
+  for (const ev of events) {
+    if (ev && ev.event === 'NPC_SAY' && ev.text) mind.overhear(session, ev.npcName, ev.text);
+    else if (ev && (ev.event === 'MELEE_HIT' || ev.event === 'MELEE_MISS')) {
+      const hers = ev.source === 'You';
+      const incoming = ev.target === 'You';
+      if (hers) {
+        const text = ev.event === 'MELEE_HIT'
+          ? `${session.char.name} hits ${ev.target} for ${ev.damage}.`
+          : `${session.char.name} misses ${ev.target}.`;
+        lines.push({ text });
+      } else if (incoming) {
+        const who = ev.source || 'Something';
+        const text = ev.event === 'MELEE_HIT'
+          ? `${who} hits ${session.char.name} for ${ev.damage}.`
+          : `${who} misses ${session.char.name}.`;
+        lines.push({ text });
+      }
+    }
+  }
+  if (!lines.length || !zoneSet) return;
+  const payload = JSON.stringify({ type: 'COMBAT_LOG', events: lines.map((line) => ({ event: 'MESSAGE', text: line.text })) });
+  for (const other of zoneSet) {
+    if (!other || other === session || other.isCompanion || !other.ws || other.ws.readyState !== 1) continue;
+    try { other.ws.send(payload); } catch (e) { /* ignore */ }
+  }
 }
 
 // ── Skill Cooldown Processing ───────────────────────────────────────
@@ -4597,8 +4854,10 @@ function startGameLoop() {
 
     for (const [ws, session] of sessions) {
       try {
-        if (session.char && !session.isBot) {
+        if (session.char && (!session.isBot || session.isCompanion)) {
           FollowSystem.updateBreadcrumbs(session);
+        }
+        if (session.char && !session.isBot) {
           FollowSystem.processFollowTick(session, dt);
         }
         // --- Heartbeat PING (15s) ---
@@ -4753,7 +5012,7 @@ function startGameLoop() {
         }
 
         // --- Group Stat Sync (SPA parity) ---
-        if (tickCount % 20 === 0 && session.group && session.group.leaderId === session.char.id) {
+        if (tickCount % 5 === 0 && session.group && session.group.leaderId === session.char.id) {
           GroupManager.updateGroupPresence(session.group);
         }
       } catch (err) {
@@ -5314,14 +5573,6 @@ function handleEmote(session, msg) {
   const anim = msg.anim || null;
   if (!emote) return;
 
-  if (ChatSpamGuard.isMuted(session)) {
-    ChatSpamGuard.onMutedChatAttempt(session, sendCombatLog);
-    return;
-  }
-  const emoteRpText = 'emote ' + emote + ' command';
-  const spam = ChatSpamGuard.onPublicMessage(session, emoteRpText, sendCombatLog);
-  if (spam.block) return;
-
   const zoneId = session.char.zoneId;
   for (const [, s] of sessions) {
     if (s.char && s.char.zoneId === zoneId) {
@@ -5335,9 +5586,13 @@ function handleEmote(session, msg) {
   }
 
   // RP Exp for social emotes
-  if (!spam.skipRp && ChatSystem.processRPExperience) {
+  if (ChatSystem.processRPExperience) {
+    const emoteRpText = 'emote ' + emote + ' command';
     const nearby = ChatSystem.countNearbyOtherPlayers(session, 200);
     ChatSystem.processRPExperience(session, emoteRpText, { nearbyPlayerCount: nearby });
+  }
+  if (!/^t0[456]$/.test(emote)) {
+    require('./systems/companionMind').notice(session, 'emote', emote);
   }
 }
 
@@ -5494,7 +5749,7 @@ async function handleHireStudent(session, msg) {
   const fakeWs = { id: char.id, send: () => {}, on: () => {} };
   const botSession = await createSession(fakeWs, char);
   botSession.isBot = true;
-  botSession.bot = new ClericBot(botSession);
+  botSession.bot = createClassBot(botSession);
 
   GroupManager.handleInvite(session, botSession.char.name);
   GroupManager.handleInviteResponse(botSession, true);
@@ -5626,12 +5881,15 @@ async function gmGrantItemToSession(targetSession, itemKeyRaw, qty = 1) {
   if (dbKey == null) {
     return { ok: false, msg: `Item '${itemKeyRaw}' has no numeric item id (use EQ item id).` };
   }
-  const emptySlot = InventorySystem.getFirstEmptySlot(targetSession.inventory);
-  if (emptySlot === -1) {
+  const stackSize = (Number(def.stackable) > 0 && Number(def.stacksize) > 0)
+    ? Number(def.stacksize)
+    : 1;
+  const granted = await InventorySystem.grantItemsToInventory(
+    targetSession.char.id, dbKey, qty, stackSize, targetSession
+  );
+  if (granted < qty) {
     return { ok: false, msg: `${targetSession.char.name}'s inventory is full.` };
   }
-  await DB.addItem(targetSession.char.id, dbKey, 0, emptySlot, qty);
-  targetSession.inventory = await DB.getInventory(targetSession.char.id);
   targetSession.effectiveStats = StatsSystem.calcEffectiveStats(targetSession.char, targetSession.inventory, targetSession.buffs);
   sendInventory(targetSession);
   sendStatus(targetSession);
@@ -5667,7 +5925,7 @@ function gmApplyExpChange(ts, mode, amount) {
   else if (mode === 'remove') next = Math.max(0, char.experience - amount);
   else next = char.experience + amount;
   char.experience = Math.max(0, Math.floor(next));
-  while (char.level < 60 && char.experience >= xpl(char.level + 1)) {
+  while (char.level < 60 && char.experience >= GroupExp.xpToReachNextLevel(char)) {
     char.level++;
     char.practices = (char.practices || 0) + 5;
   }
@@ -5888,6 +6146,95 @@ async function handleManualLogin(ws, data) {
   }
   console.log(`[ENGINE] ${char.name} manually logged in (handoff) with full state sync.`);
   sendFullState(session);
+  await Companion.ensureCompanion(session);
+}
+
+/** Same horizontal radius as say (chat.js broadcasts say at 200). */
+const INSPECT_SAY_RANGE = 200;
+
+function findPlayerSessionByTargetId(zoneId, targetId) {
+  if (!targetId || !String(targetId).startsWith('player_')) return null;
+  const pIdStr = String(targetId).substring(7);
+  const pIdNum = parseInt(pIdStr, 10);
+  for (const [, s] of sessions) {
+    if (!s.char || s.char.zoneId !== zoneId) continue;
+    if (s.char.id === pIdNum || String(s.char.id) === pIdStr) return s;
+  }
+  return null;
+}
+
+function handleInspect(session, msg) {
+  const targetId = msg && msg.targetId ? String(msg.targetId) : '';
+  let target = null;
+  if (targetId) {
+    if (!targetId.startsWith('player_')) {
+      sendCombatLog(session, [{ event: 'MESSAGE', text: 'You can only inspect other players.' }]);
+      return;
+    }
+    target = findPlayerSessionByTargetId(session.char.zoneId, targetId);
+  } else if (session.combatTarget && session.combatTarget.char) {
+    target = session.combatTarget;
+  }
+  if (!target || !target.char) {
+    sendCombatLog(session, [{
+      event: 'MESSAGE',
+      text: targetId ? 'They are too far away to inspect.' : 'You must target someone to inspect them.'
+    }]);
+    return;
+  }
+  if (String(target.char.id) === String(session.char.id)) {
+    sendCombatLog(session, [{ event: 'MESSAGE', text: 'Target someone else to inspect them.' }]);
+    return;
+  }
+  if (target.char.zoneId !== session.char.zoneId) {
+    sendCombatLog(session, [{ event: 'MESSAGE', text: 'They are too far away to inspect.' }]);
+    return;
+  }
+  if (getDistanceSq(session.char.x, session.char.y, target.char.x, target.char.y) > INSPECT_SAY_RANGE * INSPECT_SAY_RANGE) {
+    sendCombatLog(session, [{ event: 'MESSAGE', text: 'They are too far away to inspect.' }]);
+    return;
+  }
+  if (target.char.anonymous) {
+    sendCombatLog(session, [{ event: 'MESSAGE', text: 'You cannot inspect an anonymous player.' }]);
+    return;
+  }
+  const equipped = (Array.isArray(target.inventory) ? buildInventoryClientArray(target) : [])
+    .filter((row) => Number(row.equipped) === 1);
+  send(session.ws, {
+    type: 'INSPECT_VIEW',
+    targetName: target.char.name,
+    className: target.char.class || '',
+    level: target.char.level || 1,
+    inventory: equipped,
+  });
+}
+
+async function handleAnnon(session, msg) {
+  let enabled = null;
+  if (msg && typeof msg.enabled === 'boolean') enabled = msg.enabled;
+  else if (msg && msg.enabled != null) {
+    const raw = String(msg.enabled).trim().toLowerCase();
+    if (raw === 'on' || raw === 'true' || raw === '1') enabled = true;
+    else if (raw === 'off' || raw === 'false' || raw === '0') enabled = false;
+  }
+  if (enabled == null) {
+    sendCombatLog(session, [{ event: 'MESSAGE', text: 'Usage: /annon on, /annon off' }]);
+    return;
+  }
+  session.char.anonymous = enabled;
+  if (!session.isBot && session.char.id != null) {
+    try {
+      await DB.setCharacterAnonymous(session.char.id, enabled);
+    } catch (e) {
+      console.error(`[ANNON] Failed to save anonymous flag for ${session.char.name}:`, e.message);
+    }
+  }
+  sendCombatLog(session, [{
+    event: 'MESSAGE',
+    text: enabled
+      ? 'You are now anonymous. Others cannot inspect you.'
+      : 'You are no longer anonymous. Others can inspect you.'
+  }]);
 }
 
 async function handleWho(session, msg) {
@@ -5957,13 +6304,6 @@ function clampDieSides(raw, fallback) {
 
 /** /roll — emote-style; default d20, optional max sides from client. */
 function handleRoll(session, msg) {
-  if (ChatSpamGuard.isMuted(session)) {
-    ChatSpamGuard.onMutedChatAttempt(session, sendCombatLog);
-    return;
-  }
-  const spam = ChatSpamGuard.onPublicMessage(session, 'roll command', sendCombatLog);
-  if (spam.block) return;
-
   const max = clampDieSides(msg.max, 20);
   const roll = Math.floor(Math.random() * max) + 1;
   const text = `${session.char.name} rolled a ${roll}.`;
@@ -5973,13 +6313,6 @@ function handleRoll(session, msg) {
 
 /** /random — same emote line; default d100. */
 function handleRandom(session, msg) {
-  if (ChatSpamGuard.isMuted(session)) {
-    ChatSpamGuard.onMutedChatAttempt(session, sendCombatLog);
-    return;
-  }
-  const spam = ChatSpamGuard.onPublicMessage(session, 'random command', sendCombatLog);
-  if (spam.block) return;
-
   const max = clampDieSides(msg.max, 100);
   const roll = Math.floor(Math.random() * max) + 1;
   const text = `${session.char.name} rolled a ${roll}.`;
@@ -6015,6 +6348,8 @@ async function bootstrapServer() {
     sessions: State.sessions,
     summonItemMap: SUMMON_ITEM_MAP,
     spawnBeastlordWarder,
+    spawnPet,
+    charmMob,
     ensureZoneLoaded: (zoneKey) => ZoneSystem.ensureZoneLoaded(zoneKey, SpawningSystem.spawnMob, MiningSystem.spawnMiningNodes, MiningSystem.spawnMiningNPCs),
     resolveZoneKey: ZoneSystem.resolveZoneKey,
     getZoneDef: ZoneSystem.getZoneDef,
@@ -6029,6 +6364,7 @@ async function bootstrapServer() {
     handleStand: handleStand,
     broadcastToZone: broadcastToZone,
     getEquipVisuals: getEquipVisuals,
+    broadcastEquipVisuals: broadcastEquipVisuals,
     broadcastEntityState: broadcastEntityState,
     FollowSystem: FollowSystem,
     TradeskillSystem: TradeskillSystem
@@ -6044,6 +6380,7 @@ async function bootstrapServer() {
   
   // 3. Initialize Utility Systems
   ChatSystem.init(deps);
+  Companion.init({ createSession, handleLook, broadcastEntityState });
   MovementSystem.init(deps);
   FollowSystem.init(deps);
   TradeskillSystem.init(deps);
@@ -6082,6 +6419,7 @@ module.exports = {
   sessions,
   botTryCastSpellByName,
   getPopulation,
+  broadcastEquipVisuals,
 };
 
 

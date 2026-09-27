@@ -1,0 +1,118 @@
+[
+  {
+    "label": "Felwithe tunnel (SE Faydark)",
+    "zone": "The Greater Faydark",
+    "zoneId": "gfaydark",
+    "x": -2358.6,
+    "y": -1999.9,
+    "z": 24.4,
+    "around": [
+      "Kuldaien (player)",
+      "Guard Highmoon (monster)",
+      "Guard Crystalwind (monster)",
+      "a giant wasp worker (monster)",
+      "a black wolf (monster)"
+    ]
+  },
+  {
+    "label": "Greater Faydark PoK book",
+    "zone": "The Greater Faydark",
+    "zoneId": "gfaydark",
+    "x": -1809.3,
+    "y": -2249.6,
+    "z": -1.2,
+    "around": [
+      "Kuldaien (player)",
+      "a giant wasp drone (monster)",
+      "a widow hatchling (monster)",
+      "a black wolf (monster)"
+    ]
+  },
+  {
+    "label": "Bandit camp",
+    "zone": "The Greater Faydark",
+    "zoneId": "gfaydark",
+    "x": -787.1,
+    "y": -1204.2,
+    "z": -3.8,
+    "around": [
+      "Kuldaien (player)",
+      "a bandit (monster)",
+      "a bandit (monster)",
+      "a bandit (monster)",
+      "orc pawn (monster)"
+    ]
+  },
+  {
+    "label": "Kelethin Book of knowledge",
+    "zone": "The Greater Faydark",
+    "zoneId": "gfaydark",
+    "x": -750.4,
+    "y": -163.3,
+    "z": -3.8,
+    "around": [
+      "Kuldaien (player)",
+      "a large widow (monster)",
+      "Merchant Nluolian (merchant)"
+    ]
+  },
+  {
+    "label": "PoD lift",
+    "zone": "The Greater Faydark",
+    "zoneId": "gfaydark",
+    "x": 219.2,
+    "y": 168.9,
+    "z": -3.8,
+    "around": [
+      "Kuldaien (player)",
+      "Guard Fireblight (monster)",
+      "Priest of Discord (monster)",
+      "Guard Rainstrider (monster)",
+      "Guard Sunweaver (monster)",
+      "Dougal Coalbeard (merchant)",
+      "Merchant Vaelias (merchant)",
+      "Merchant Kwein (merchant)",
+      "Guard Sunblaze (monster)",
+      "a decaying skeleton (monster)",
+      "Merchant Linolyen (merchant)",
+      "Merchant Muvien (merchant)"
+    ]
+  },
+  {
+    "label": "Orc lift",
+    "zone": "The Greater Faydark",
+    "zoneId": "gfaydark",
+    "x": 215.4,
+    "y": 1000.6,
+    "z": -22.4,
+    "around": [
+      "Kuldaien (player)",
+      "Guard Fayfear (monster)",
+      "Guard Pineshade (monster)",
+      "Guard Orcflayer (monster)",
+      "Innkeep Larya (merchant)",
+      "Merchant Nildar (merchant)",
+      "Barkeep Syntan (merchant)"
+    ]
+  },
+  {
+    "label": "Noob Lift",
+    "zone": "The Greater Faydark",
+    "zoneId": "gfaydark",
+    "x": -114.9,
+    "y": 14,
+    "z": -3.8,
+    "around": [
+      "Mordecai (player)",
+      "Kuldaien (player)",
+      "Sera (player)",
+      "Guard Brookrock (monster)",
+      "Merchant Iludarae (merchant)",
+      "a large sylvan bat (monster)",
+      "Merchant Gaeadin (merchant)",
+      "a giant wasp drone (monster)",
+      "Guard Briarstorm (monster)",
+      "a decaying skeleton (monster)"
+    ]
+  }
+]

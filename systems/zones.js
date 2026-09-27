@@ -176,6 +176,7 @@ async function ensureZoneLoaded(zoneKey, spawnMobFn, spawnMiningNodesFn, spawnMi
         see_invis: picked.see_invis || 0, see_invis_undead: picked.see_invis_undead || 0,
         textures: picked.textures,
         npc_faction_id: picked.npc_faction_id || 0,
+        loottable_id: Number(picked.loottable_id) || 0,
       };
 
       const newMob = spawnMobFn(zoneKey, mobDef, point.x, point.y, point.z, point.heading);

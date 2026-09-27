@@ -46,6 +46,7 @@ module.exports = {
   initDatabase,
   loginAccount: eqemuDB.loginAccount,
   createAccount: eqemuDB.createAccount,
+  getAccountByName: eqemuDB.getAccountByName,
   getCharactersByAccount: eqemuDB.getCharactersByAccount,
   getCharCreateData: eqemuDB.getCharCreateData,
   getStartZone: eqemuDB.getStartZone,
@@ -59,6 +60,7 @@ module.exports = {
   deleteCharacter: eqemuDB.deleteCharacter,
   
   // Write-Behind Cache interceptors
+  setCharacterAnonymous: eqemuDB.setCharacterAnonymous,
   updateCharacterState: (char) => {
     if (!writeBehindCache.has(char.id)) writeBehindCache.set(char.id, {});
     // Store a shallow copy to prevent reference mutation issues over time

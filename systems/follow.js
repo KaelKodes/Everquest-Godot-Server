@@ -23,7 +23,8 @@ function init(deps) {
  * Updates breadcrumbs for a session. Called every tick for all active players.
  */
 function updateBreadcrumbs(session) {
-  if (!session.char || session.isBot) return;
+  if (!session.char) return;
+  if (session.isBot && !session.isCompanion) return;
 
   if (!session.breadcrumbs) {
     session.breadcrumbs = [];
@@ -133,12 +134,17 @@ function processFollowTick(session, dt) {
     }
   } else if (distSq < FOLLOW_STOP_RADIUS * FOLLOW_STOP_RADIUS) {
     session.isMovingToFollow = false;
+    sendFollowPoint(session, target.char, false);
     return;
   }
 
-  if (!session.isMovingToFollow) return;
+  if (!session.isMovingToFollow) {
+    sendFollowPoint(session, target.char, false);
+    return;
+  }
 
-  // Breadcrumb logic: find the oldest breadcrumb that is further than STOP_RADIUS
+  // Breadcrumb logic: oldest crumb still ahead of the follower.
+  // Walking that trail keeps him on the ground she already crossed.
   let nextPoint = null;
   if (target.breadcrumbs && target.breadcrumbs.length > 0) {
     for (const point of target.breadcrumbs) {
@@ -151,53 +157,22 @@ function processFollowTick(session, dt) {
     }
   }
 
-  // If no breadcrumb is far enough, or no breadcrumbs, just go to target directly
-  if (!nextPoint) {
-    nextPoint = target.char;
-  }
+  if (!nextPoint) nextPoint = target.char;
 
-  const ndx = nextPoint.x - me.x;
-  const ndy = nextPoint.y - me.y;
-  const ndist = Math.sqrt(ndx * ndx + ndy * ndy);
+  const run = distSq > FOLLOW_RESUME_RADIUS * FOLLOW_RESUME_RADIUS;
+  sendFollowPoint(session, nextPoint, run);
+}
 
-  if (ndist > 0) {
-    // Use effective speed if available, or base run speed
-    const speed = (session.effectiveStats && session.effectiveStats.speedMod) ? (25.0 * session.effectiveStats.speedMod) : 25.0;
-    const moveDist = Math.min(speed * dt, ndist);
-
-    const angle = Math.atan2(ndy, ndx);
-    me.x += Math.cos(angle) * moveDist;
-    me.y += Math.sin(angle) * moveDist;
-    me.z = nextPoint.z;
-
-    // Heading calculation (0-511)
-    let heading = (Math.atan2(ndx, ndy) / (2 * Math.PI)) * 512;
-    if (heading < 0) heading += 512;
-    me.heading = heading;
-
-    // Send position to the follower's client
-    if (session.ws) {
-      send(session.ws, {
-        type: 'TELEPORT',
-        x: me.x,
-        y: me.y,
-        z: me.z,
-        heading: me.heading,
-        zoneId: me.zoneId
-      });
-    }
-
-    // Broadcast movement to others
-    if (broadcastEntityStateFn) {
-      broadcastEntityStateFn(session, 'MOB_MOVE', {
-        x: me.x,
-        y: me.y,
-        z: me.z,
-        heading: me.heading,
-        hasLightSource: me.hasLightSource
-      });
-    }
-  }
+function sendFollowPoint(session, point, run) {
+  if (!session.ws || session.ws.readyState !== 1 || !point) return;
+  send(session.ws, {
+    type: 'FOLLOW_POINT',
+    x: point.x,
+    y: point.y,
+    z: point.z,
+    run: !!run,
+    stop: false,
+  });
 }
 
 function breakFollow(session, reason) {
@@ -206,6 +181,9 @@ function breakFollow(session, reason) {
   const targetName = session.followingTarget.char ? session.followingTarget.char.name : "target";
   session.followingTarget = null;
   session.isMovingToFollow = false;
+  if (session.ws && session.ws.readyState === 1) {
+    send(session.ws, { type: 'FOLLOW_POINT', stop: true });
+  }
   
   if (session.ws) {
     const text = reason ? `You stop following ${targetName}. (${reason})` : `You stop following ${targetName}.`;

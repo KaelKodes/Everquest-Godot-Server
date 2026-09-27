@@ -1,9 +1,17 @@
 const BaseBot = require('../baseBot');
-const { pickFirstMemmedByNames } = require('../botSpellUtils');
+const {
+  pickFirstMemmedByNames,
+  isGroupBuffTarget,
+  partyBuffsToKeep,
+  partyBuffTargets,
+  buffHold,
+  needsPartyBuff,
+} = require('../botSpellUtils');
 
 /**
  * Cleric bot — group heals, cures, rez, buffs; uses real `/cast` + memorized gems.
- * Respects MAINTANK / PULLER roles and stance modifiers from BaseBot.
+ * Cleric bot — group heals, cures, rez, buffs; uses real `/cast` + memorized gems.
+ * Respects Tank / Puller / Healer group roles (mindset boosters) from BaseBot.
  */
 class ClericBot extends BaseBot {
   constructor(session) {
@@ -33,8 +41,6 @@ class ClericBot extends BaseBot {
       completeHeal: ['Complete Heal', 'Superior Healing', 'Greater Healing', 'Healing', 'Greater Heal'],
       fastHeal: ['Remedy', 'Renewal', 'Celestial Health', 'Healing', 'Greater Healing', 'Light Healing', 'Minor Healing'],
       hot: ['Celestial Healing', 'Celestial Remedy', 'Celestial Health'],
-      groupHpBuff: ['Aegolism', 'Temperance', 'Symbol of Transal', 'Heroism'],
-      acBuff: ['Armor of Faith', 'Shield of Words', 'Guard', 'Holy Armor'],
       cureAll: ['Radiant Cure', 'Ethereal Cleansing'],
       curePoison: ['Counteract Poison', 'Cure Poison', 'Antidote'],
       cureDisease: ['Counteract Disease', 'Cure Disease', 'Remove Lesser Curse'],
@@ -66,6 +72,15 @@ class ClericBot extends BaseBot {
         break;
       default:
         break;
+    }
+
+    // Designated main healer: keep people topped and own the tank.
+    if (this.getMyRoles().has('healer')) {
+      this.config.HealAt = Math.min(92, this.config.HealAt + 8);
+      this.config.TankHealAt = Math.min(70, this.config.TankHealAt + 10);
+      this.config.PanicHealAt = Math.min(35, this.config.PanicHealAt + 5);
+      this.config.HoTAt = Math.min(95, this.config.HoTAt + 5);
+      this.config.PullerHealIgnoreAbove = Math.max(this.config.PullerHealIgnoreAbove, 40);
     }
   }
 
@@ -117,11 +132,9 @@ class ClericBot extends BaseBot {
       if (!s || !s.char) continue;
       const dead = s.char.hp <= 0 || s.char.state === 'dead';
       if (!dead) continue;
-      if (s.char.zoneId !== this.session.char.zoneId) continue;
+      if (!s.char.zoneId || s.char.zoneId !== this.session.char.zoneId) continue;
       if (!this.CheckReagents(picked.name)) return false;
-      await this.mq.cmdf('/target "%s"', s.char.name);
-      await this.mq.cmdf('/cast "%s"', picked.name);
-      return true;
+      return this.castSpellOn(s.char, picked);
     }
     return false;
   }
@@ -152,9 +165,7 @@ class ClericBot extends BaseBot {
       if (!pick) continue;
 
       if (!this.CheckReagents(pick.name)) return false;
-      await this.mq.cmdf('/target "%s"', s.char.name);
-      await this.mq.cmdf('/cast "%s"', pick.name);
-      return true;
+      return this.castSpellOn(s.char, pick);
     }
     return false;
   }
@@ -184,14 +195,14 @@ class ClericBot extends BaseBot {
     const tryHeal = async (spellPick) => {
       if (!spellPick) return false;
       if (!this.CheckReagents(spellPick.name)) return false;
-      await this.mq.cmdf('/target "%s"', char.name);
-      await this.mq.cmdf('/cast "%s"', spellPick.name);
-      return true;
+      return this.castSpellOn(char, spellPick);
     };
 
     if (lowestIsMainTank) {
       if (pct <= panicHealAt && fast && await tryHeal(fast)) return true;
       if (pct <= tankHealAt && complete && await tryHeal(complete)) return true;
+      // A cleric with no complete heal still has to keep the tank up.
+      if (!complete && pct <= healAt && fast && await tryHeal(fast)) return true;
     } else if (pct <= healAt && fast && await tryHeal(fast)) {
       return true;
     }
@@ -204,32 +215,36 @@ class ClericBot extends BaseBot {
   }
 
   async CheckBuffs() {
-    if (this.session.inCombat) return false;
+    if (this.session.inCombat || this.session.autoFight || this.session.casting) return false;
+    if (this.session.errand || this.session.pendingScribe || this.session.pendingMemorize) return false;
 
-    const myManaPct = (this.session.char.mana / (this.session.effectiveStats?.mana || 1)) * 100;
+    const maxMana = this.session.effectiveStats?.mana || this.session.char.maxMana || 1;
+    const myManaPct = (this.session.char.mana / maxMana) * 100;
     if (myManaPct < 40) return false;
 
-    const group = this.session.group;
-    if (!group) return false;
-
-    for (const mSession of group.members) {
-      if (!mSession || !mSession.char) continue;
-
-      const tloMember = new this.mq.TLO.Spawn(mSession.char, this.session, mSession);
-      const hpBuffPick = pickFirstMemmedByNames(this.session, this.spellPrefs.groupHpBuff);
-      if (hpBuffPick && !tloMember.Buff(hpBuffPick.name)()) {
-        if (!this.CheckReagents(hpBuffPick.name)) return false;
-        await this.mq.cmdf('/target "%s"', mSession.char.name);
-        await this.mq.cmdf('/cast "%s"', hpBuffPick.name);
-        return true;
+    for (const spell of partyBuffsToKeep(this.session)) {
+      const members = partyBuffTargets(this.session, spell);
+      if (isGroupBuffTarget(spell.def)) {
+        const aoe = (spell.def.range && spell.def.range.aoeRange) || 50;
+        const nearby = members.some((member) => {
+          const hold = buffHold(this.session, member, spell);
+          if (hold !== 'missing' && hold !== 'fading' && hold !== 'weaker') return false;
+          const dist = Math.hypot(
+            (member.char.x || 0) - (this.session.char.x || 0),
+            (member.char.y || 0) - (this.session.char.y || 0),
+          );
+          return dist <= aoe;
+        });
+        if (!nearby) continue;
+        if (!this.CheckReagents(spell.name)) return false;
+        console.log(`[COMPANION] ${this.session.char.name} refreshes group buff ${spell.name}`);
+        return this.castSpellOn(this.session.char, spell);
       }
-
-      const acPick = pickFirstMemmedByNames(this.session, this.spellPrefs.acBuff);
-      if (acPick && !tloMember.Buff(acPick.name)()) {
-        if (!this.CheckReagents(acPick.name)) return false;
-        await this.mq.cmdf('/target "%s"', mSession.char.name);
-        await this.mq.cmdf('/cast "%s"', acPick.name);
-        return true;
+      for (const member of members) {
+        if (!needsPartyBuff(this.session, member, spell)) continue;
+        if (!this.CheckReagents(spell.name)) return false;
+        console.log(`[COMPANION] ${this.session.char.name} refreshes ${spell.name} on ${member.char.name}`);
+        return this.castSpellOn(member.char, spell);
       }
     }
 

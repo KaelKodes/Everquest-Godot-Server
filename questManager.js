@@ -12,6 +12,99 @@ const PEQ_CLASS_NAMES = {
 };
 
 const factory = new LuaFactory();
+let warnedMissingPerl = false;
+
+/** First `{...}` block starting at `openIdx` (the `{`), skipping braces inside quotes. */
+function readBraceBlock(text, openIdx) {
+    if (text[openIdx] !== '{') return '';
+    let depth = 0;
+    let quote = null;
+    for (let i = openIdx; i < text.length; i++) {
+        const ch = text[i];
+        if (quote) {
+            if (ch === '\\') { i++; continue; }
+            if (ch === quote) quote = null;
+            continue;
+        }
+        if (ch === '"' || ch === "'") { quote = ch; continue; }
+        if (ch === '#') {
+            while (i + 1 < text.length && text[i + 1] !== '\n') i++;
+            continue;
+        }
+        if (ch === '{') depth++;
+        else if (ch === '}') {
+            depth--;
+            if (depth === 0) return text.slice(openIdx + 1, i);
+        }
+    }
+    return '';
+}
+
+/**
+ * PEQ guild-note scripts are Perl. This host often has no `perl` binary, so EVENT_ITEM
+ * never runs and the guildmaster says they have no need for the note.
+ * Evaluate the common plugin::check_handin / quest::say / quest::summonitem shape in JS.
+ */
+function perlHandinFallback(scriptText, itemcount, playerName) {
+    const eventAt = scriptText.search(/sub\s+EVENT_ITEM\b/);
+    const body = eventAt >= 0 ? scriptText.slice(eventAt) : scriptText;
+    const re = /plugin::check_handin\s*\(\s*\\%itemcount\s*,([\s\S]*?)\)/g;
+    let m;
+    while ((m = re.exec(body))) {
+        const req = {};
+        const pair = /(\d+)\s*=>\s*(\d+)/g;
+        let p;
+        let any = false;
+        while ((p = pair.exec(m[1]))) {
+            any = true;
+            req[p[1]] = (req[p[1]] || 0) + Number(p[2]);
+        }
+        if (!any) continue;
+        let ok = true;
+        for (const id of Object.keys(req)) {
+            if ((Number(itemcount[id]) || 0) < req[id]) { ok = false; break; }
+        }
+        if (!ok) continue;
+
+        const searchFrom = eventAt >= 0 ? scriptText.slice(eventAt) : scriptText;
+        const rel = searchFrom.indexOf('{', m.index + m[0].length);
+        if (rel < 0) continue;
+        const block = readBraceBlock(searchFrom, rel);
+        const actions = [];
+        const sayRe = /quest::say\s*\(\s*(["'])([\s\S]*?)\1\s*\)/g;
+        let s;
+        while ((s = sayRe.exec(block))) {
+            const text = s[2].replace(/\$name/g, playerName || '');
+            actions.push({ action: 'say', text });
+        }
+        const summonRe = /quest::summonitem\s*\(\s*(\d+)/g;
+        let sm;
+        while ((sm = summonRe.exec(block))) {
+            actions.push({ action: 'summonitem', item_id: Number(sm[1]) });
+        }
+        const expRe = /quest::exp\s*\(\s*(\d+)/g;
+        let ex;
+        while ((ex = expRe.exec(block))) {
+            actions.push({ action: 'exp', amount: Number(ex[1]) });
+        }
+        if (/quest::ding\s*\(/.test(block)) actions.push({ action: 'ding' });
+        const facRe = /quest::faction\s*\(\s*(\d+)\s*,\s*(-?\d+)/g;
+        let f;
+        while ((f = facRe.exec(block))) {
+            actions.push({ action: 'faction', faction_id: Number(f[1]), amount: Number(f[2]) });
+        }
+        const cashRe = /quest::givecash\s*\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/g;
+        let c;
+        while ((c = cashRe.exec(block))) {
+            actions.push({
+                action: 'givecash',
+                copper: Number(c[1]), silver: Number(c[2]), gold: Number(c[3]), platinum: Number(c[4]),
+            });
+        }
+        if (actions.length > 0) return actions;
+    }
+    return null;
+}
 
 class QuestManager {
     constructor() {
@@ -389,6 +482,35 @@ end`);
                 }
                 if (stderr) {
                     console.error(`[Perl Error] ${scriptPath}:`, stderr);
+                }
+                if (actions.length === 0 && (error || !stdout)) {
+                    const ev = String(argsObj.event_type || '');
+                    if (ev === 'EVENT_ITEM' || ev === 'EVENT_TRADE') {
+                        try {
+                            const scriptText = fs.readFileSync(scriptPath, 'utf8');
+                            const fallback = perlHandinFallback(scriptText, itemcount, player.name);
+                            if (fallback && fallback.length) {
+                                if (!warnedMissingPerl) {
+                                    warnedMissingPerl = true;
+                                    console.warn('[QuestManager] perl is unavailable; using the built-in hand-in reader for Perl quests.');
+                                }
+                                for (const act of fallback) {
+                                    act.source = npc.id;
+                                    if (act.action === 'message' || act.action === 'summonitem' || act.action === 'exp'
+                                        || act.action === 'faction' || act.action === 'givecash' || act.action === 'ding') {
+                                        act.target = player.id;
+                                    }
+                                    actions.push(act);
+                                }
+                            }
+                        } catch (e) {
+                            console.error(`[QuestManager] Perl hand-in fallback failed for ${scriptPath}:`, e.message);
+                        }
+                    }
+                }
+                if (error && actions.length === 0 && !warnedMissingPerl) {
+                    warnedMissingPerl = true;
+                    console.error(`[QuestManager] perl failed for ${scriptPath}:`, error.message);
                 }
                 resolve(actions);
             });

@@ -3,6 +3,7 @@ const DB = require('../db');
 const State = require('../state');
 const combat = require('../combat');
 const { zoneInstances, sessions } = State;
+const Companion = require('./companion');
 
 function getZoneDef(zoneId) {
   return module.exports.getZoneDefFn ? module.exports.getZoneDefFn(zoneId) : null;
@@ -126,6 +127,7 @@ async function handleZone(session, msg) {
   const zoneName = (newZoneDef && newZoneDef.name) || targetZone;
   sendCombatLog(session, [{ event: 'MESSAGE', text: `You have entered ${zoneName}.` }]);
   sendStatus(session);
+  await Companion.followThroughZone(session);
 }
 
 function handleUpdatePos(session, msg) {
@@ -211,17 +213,19 @@ function handleUpdatePos(session, msg) {
     session.lastMoveTime = now;
     session.tickDistance += Math.sqrt(dx*dx + dy*dy);
 
-    // Movement breaks sitting/medding
+    // Movement breaks sitting/medding/feign
     if (dx !== 0 || dy !== 0 || dz !== 0) {
       if (session.char.state === 'sitting' || session.char.state === 'medding') {
         handleStand(session);
       }
+      if (session.feigned || session.char.state === 'feigned') {
+        const Feign = require('./feignDeath');
+        Feign.breakFeign(session, 'move');
+      }
       
       // Manual movement breaks /follow
-      if (module.exports.FollowSystem && session.followingTarget) {
-        // If the movement is significantly different from what the server set, break follow.
-        // We allow some slack for latency, but if they are moving 'manually' (not follow teleport), break it.
-        const followTeleportSlack = 1.0; 
+      if (module.exports.FollowSystem && session.followingTarget && !msg.follow) {
+        const followTeleportSlack = 1.0;
         if (Math.abs(dx) > followTeleportSlack || Math.abs(dy) > followTeleportSlack) {
            module.exports.FollowSystem.breakFollow(session, "manual movement");
         }
@@ -241,6 +245,16 @@ function handleUpdatePos(session, msg) {
   }
 }
 
+function mirrorCompanionSneak(session, sneaking) {
+  const group = session.group;
+  if (!group || !group.members) return;
+  for (const member of group.members) {
+    if (!member || !member.isCompanion || !member.char) continue;
+    member.char.isSneaking = !!sneaking;
+    broadcastEntityState(member, 'ENTITY_SNEAK', { sneaking: !!sneaking });
+  }
+}
+
 function handleUpdateSneak(session, msg) {
   if (!session.char) return;
   const char = session.char;
@@ -256,6 +270,7 @@ function handleUpdateSneak(session, msg) {
       broadcastEntityState(session, 'ENTITY_HIDE', { hidden: false });
     }
     broadcastEntityState(session, 'ENTITY_SNEAK', { sneaking: false });
+    if (!msg.solo) mirrorCompanionSneak(session, false);
     // Only show "stop sneaking" if they were actually sneaking (had the skill)
     if (wasSneaking) {
       sendCombatLog(session, [{ event: 'MESSAGE', text: 'You stop sneaking.' }]);
@@ -269,6 +284,7 @@ function handleUpdateSneak(session, msg) {
     // No sneak skill — still allow the crouch visual, just no stealth benefit
     // Don't spam "You do not have the Sneak skill" every time they press Ctrl
     broadcastEntityState(session, 'ENTITY_SNEAK', { sneaking: true });
+    if (!msg.solo) mirrorCompanionSneak(session, true);
     return;
   }
 
@@ -295,6 +311,7 @@ function handleUpdateSneak(session, msg) {
       sendCombatLog(session, [{ event: 'MESSAGE', text: 'You begin to move silently.' }]);
     }
     broadcastEntityState(session, 'ENTITY_SNEAK', { sneaking: true });
+    if (!msg.solo) mirrorCompanionSneak(session, true);
     send(session.ws, { type: 'SNEAK_RESULT', success: true });
   } else {
     // Failed — 10s cooldown
@@ -571,9 +588,13 @@ async function handleGmGroupSuccor(session) {
 function handleJump(session) {
   if (!session || !session.char) return;
 
-  // Jumping breaks sitting/medding
+  // Jumping breaks sitting/medding/feign
   if (session.char.state === 'sitting' || session.char.state === 'medding') {
     handleStand(session);
+  }
+  if (session.feigned || session.char.state === 'feigned') {
+    const Feign = require('./feignDeath');
+    Feign.breakFeign(session, 'jump');
   }
 
   if (session.char.fatigue === undefined) session.char.fatigue = 0;

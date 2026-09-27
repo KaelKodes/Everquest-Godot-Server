@@ -120,7 +120,8 @@ The Godot client’s default WebSocket URL is **`ws://localhost:3005`** (login).
 ---
 ## Project layout
 
-- `systems/` — Combat, spells, zones, movement, AI, etc.  
+- `systems/` — Combat, spells, zones, movement, AI, etc.
+- `systems/botAI/` — Plugin host. Class brains are not in this repo. They load from `../bots` (or `BOT_PLUGINS_DIR`), one folder per bot, each with a `plugin.js`. Restart to pick up a plugin edit. Add a field on the bot API in `systems/botAI/botApi.js` only when a plugin needs a new server capability.  
 - `data/` — JSON lookups, spell DB output, zone metadata consumers.  
 - `tools/` — Parsers and one-off DB utilities.  
 - `quests/` — Quest scripts (Perl/Lua/WASM integration as wired in engine).  

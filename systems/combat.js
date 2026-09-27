@@ -1,4 +1,5 @@
 const combat = require('../combat');
+const { isBehind } = require('./botAI/facing');
 const StatsSystem = require('./stats');
 const OocRegen = require('./oocRegen');
 const ExpFatigue = require('./expFatigue');
@@ -344,7 +345,7 @@ async function processCombatTick(session, dt) {
   // -- The Rogue Loop --
   if (session.char.class === 'rogue') {
     const backstabReady = (!session.abilityCooldowns['backstab'] || session.abilityCooldowns['backstab'] <= 0) && session.attackTimer <= 0;
-    const behind = !session.isBot || require('./botAI/profiles/rogue').isBehind(session, mob);
+    const behind = !session.isBot || isBehind(session, mob);
     const canBackstab = combat.getCharSkill(session.char, 'backstab') > 0;
     if (backstabReady && behind && canBackstab) {
       const { damage } = StatsSystem.getWeaponStats(session.inventory);

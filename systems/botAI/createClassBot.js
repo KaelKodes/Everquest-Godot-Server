@@ -1,20 +1,34 @@
 'use strict';
 
-const BaseBot = require('./baseBot');
-const ClericBot = require('./profiles/cleric');
-const EnchanterBot = require('./profiles/enchanter');
-const RogueBot = require('./profiles/rogue');
+const { buildBotApi } = require('./botApi');
+const { loadBotPlugins } = require('./pluginHost');
+
+let api = null;
+let plugins = null;
+
+function ensureLoaded() {
+  if (plugins) return;
+  api = buildBotApi();
+  plugins = loadBotPlugins(api);
+}
+
+function matches(list, value) {
+  const want = String(value || '').toLowerCase();
+  if (!want) return false;
+  return (list || []).some((item) => String(item).toLowerCase() === want);
+}
 
 /**
- * Class brain for a bot session. A class without a profile yet follows
- * and meds, and does not borrow the cleric spell list.
+ * Class brain for a bot session. A named plugin wins over a class plugin.
+ * A class with no plugin follows and meds, and does not borrow another class.
  */
 function createClassBot(session) {
-  const cls = session && session.char && session.char.class;
-  if (cls === 'enchanter') return new EnchanterBot(session);
-  if (cls === 'cleric') return new ClericBot(session);
-  if (cls === 'rogue') return new RogueBot(session);
-  return new BaseBot(session);
+  ensureLoaded();
+  const char = session && session.char;
+  const named = plugins.find((plugin) => matches(plugin.names, char && char.name));
+  const picked = named || plugins.find((plugin) => matches(plugin.classes, char && char.class));
+  if (picked) return picked.create(session, api);
+  return new api.BaseBot(session);
 }
 
 module.exports = { createClassBot };

@@ -26,7 +26,7 @@ History cap is 16 turns, in memory, one zone process. One reply in flight, one p
 
 Wake and despawn are `server/systems/companion.js`. Name `Sera`, partner account `10000` (GMKael, Kuldaien is character 56). She spawns when that account enters, grouped, a few steps away. If she is already up but ungrouped, she is re-invited. She is removed when Kuldaien camps or disconnects. She does not exist while he is offline.
 
-Her body is `server/systems/botAI/profiles/cleric.js` on `baseBot.js`. Pathing is `server/systems/companionPath.js`: step around zone walls, follow the group, pull, run to the tank in combat, walk an errand to bind or succor and take a zone line. Places persist in `server/data/companion/sera-places.json`. Shop memory and owed copper are still in memory only.
+Her body is the Sera cleric plugin in `bots/sera/cleric.js`, loaded by the server plugin host, on `baseBot.js`. Pathing is `server/systems/companionPath.js`: step around zone walls, follow the group, pull, run to the tank in combat, walk an errand to bind or succor and take a zone line. Places persist in `server/data/companion/sera-places.json`. Shop memory and owed copper are still in memory only.
 
 There is no second companion. Do not spawn Autie. Do not expand the hired-student bot system.
 
